@@ -1,0 +1,539 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>harness · grup54 proje beyni</title>
+<style>
+  :root{
+    --bg:#0d1017; --panel:#11151d; --line:#1c222e; --line2:#232a36;
+    --ink:#cdd4e0; --ink-hi:#f4f6fa; --mut:#6b7585; --mut2:#8b95a5;
+    --amber:#f5b14c; --green:#7ee0a0; --code:#9fb0c8;
+    --mono:ui-monospace,'SF Mono',Menlo,Consolas,monospace;
+    --sans:ui-sans-serif,system-ui,-apple-system,'Segoe UI',sans-serif;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);
+       padding:20px 24px 48px;-webkit-font-smoothing:antialiased;}
+  a{color:inherit;}
+  code{font-family:var(--mono);}
+
+  header{display:flex;justify-content:space-between;align-items:center;gap:12px;
+         flex-wrap:wrap;padding-bottom:18px;border-bottom:1px solid var(--line);margin-bottom:18px;}
+  .brand{display:flex;align-items:center;gap:12px;}
+  .mark{position:relative;width:40px;height:40px;border-radius:10px;background:#f5b14c14;
+        border:1px solid #f5b14c44;color:var(--amber);display:flex;align-items:center;justify-content:center;}
+  .mark svg{width:20px;height:20px;}
+  .ping{position:absolute;inset:0;border-radius:10px;border:1px solid var(--amber);
+        animation:ping 2.4s cubic-bezier(0,0,.2,1) infinite;}
+  @keyframes ping{0%{transform:scale(1);opacity:.7}80%,100%{transform:scale(1.6);opacity:0}}
+  @media (prefers-reduced-motion:reduce){.ping{animation:none}}
+  .brand .t{font-size:18px;font-weight:700;color:var(--ink-hi);letter-spacing:-.5px;line-height:1;}
+  .brand .s{font-size:12px;color:var(--mut);margin-top:3px;}
+  .repo-ctrl{display:flex;align-items:center;gap:8px;}
+  .repo-ctrl input{background:var(--bg);border:1px solid var(--line2);border-radius:9px;
+        padding:9px 12px;color:var(--ink);font-size:13px;font-family:var(--mono);min-width:220px;outline:none;}
+  .repo-ctrl input:focus{border-color:#f5b14c66;}
+  .repo-ctrl button{background:var(--amber);border:none;border-radius:9px;padding:9px 16px;
+        color:var(--bg);font-weight:600;font-size:13px;cursor:pointer;}
+  .repo-ctrl button:disabled{opacity:.5;cursor:default;}
+
+  .stripe{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:18px;}
+  .metric{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px 16px;
+        display:flex;flex-direction:column;gap:6px;}
+  .metric .l{color:var(--mut);font-size:12px;display:flex;align-items:center;gap:6px;}
+  .metric .v{font-size:22px;font-weight:700;font-variant-numeric:tabular-nums;color:var(--ink);}
+  .metric .v.warn{color:var(--amber);} .metric .v.ok{color:var(--green);}
+
+  .grid{display:grid;grid-template-columns:1.05fr 1.25fr;gap:16px;align-items:start;}
+  @media (max-width:960px){.grid{grid-template-columns:1fr;}}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:20px;}
+  .head{margin-bottom:14px;}
+  .head .row{display:flex;align-items:center;gap:8px;color:var(--ink-hi);}
+  .head svg{width:16px;height:16px;color:var(--amber);}
+  .head .ttl{font-size:14.5px;font-weight:600;letter-spacing:-.2px;}
+  .head .sub{color:var(--mut);font-size:12px;margin-top:2px;margin-left:24px;}
+
+  .path{font-family:var(--mono);font-size:12.5px;color:var(--code);background:var(--bg);
+        padding:2px 7px;border-radius:6px;border:1px solid var(--line);display:inline-block;
+        max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:middle;}
+  .badge{font-size:11px;font-weight:600;padding:2px 9px;border-radius:999px;border:1px solid;
+        text-transform:uppercase;letter-spacing:.4px;}
+  .av{display:inline-flex;align-items:center;justify-content:center;border-radius:999px;
+        font-weight:700;flex-shrink:0;overflow:hidden;}
+  .av img{width:100%;height:100%;object-fit:cover;}
+
+  .conflict{border:1px solid var(--line2);border-radius:12px;padding:14px;margin-bottom:10px;}
+  .conflict.hi{border-color:#f5b14c55;background:#f5b14c0d;}
+  .conflict .top{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;gap:8px;}
+  .conflict .who{display:flex;align-items:center;gap:6px;margin-bottom:8px;flex-wrap:wrap;}
+  .conflict .note{color:var(--mut2);font-size:12.5px;margin:0;line-height:1.5;}
+
+  .trow{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid #161b25;}
+  .trow .meta{display:flex;gap:7px;font-size:11.5px;color:var(--mut);margin-top:3px;font-family:var(--mono);flex-wrap:wrap;}
+
+  .board{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;}
+  @media (max-width:560px){.board{grid-template-columns:repeat(2,1fr);}}
+  .col{background:var(--bg);border-radius:10px;padding:8px;border:1px solid #161b25;min-height:60px;}
+  .col .ch{display:flex;justify-content:space-between;font-size:11px;color:var(--mut2);font-weight:600;
+        text-transform:uppercase;letter-spacing:.3px;margin-bottom:8px;padding:0 2px;}
+  .col .cnt{background:var(--line);border-radius:999px;padding:0 6px;font-size:10.5px;}
+  .kc{background:#151a23;border:1px solid var(--line2);border-radius:8px;padding:9px;margin-bottom:7px;}
+  .kc .id{font-size:10.5px;font-weight:700;color:var(--amber);font-family:var(--mono);letter-spacing:.3px;}
+  .kc .tt{font-size:12.5px;color:var(--ink);margin-top:5px;line-height:1.35;}
+  .kc .top{display:flex;justify-content:space-between;align-items:flex-start;gap:8px;}
+
+  .scope{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid #161b25;}
+  .dot{width:7px;height:7px;border-radius:999px;flex-shrink:0;background:var(--green);}
+  .dot.drift{background:var(--amber);box-shadow:0 0 8px var(--amber);}
+
+  .divider{height:1px;background:var(--line);margin:18px 0 14px;}
+  .empty{color:var(--mut);font-size:13px;padding:10px 0;}
+  .err{color:var(--amber);font-size:13px;border:1px solid #f5b14c44;background:#f5b14c0d;
+        border-radius:10px;padding:12px 14px;line-height:1.5;}
+  .sync{display:inline-flex;align-items:center;gap:5px;font-size:12px;color:var(--green);
+        border:1px solid var(--line);border-radius:999px;padding:4px 12px;}
+  .spin{width:12px;height:12px;border:2px solid var(--line2);border-top-color:var(--amber);
+        border-radius:999px;animation:spin .7s linear infinite;display:inline-block;}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .muted{color:var(--mut);}
+  .rl{font-size:11px;color:var(--mut);margin-top:14px;line-height:1.5;}
+
+  /* beyne sor */
+  .ask-card{margin-top:16px;}
+  .ans{background:var(--bg);border:1px solid var(--line);border-left:2px solid var(--amber);
+       border-radius:10px;padding:14px;margin-bottom:14px;min-height:48px;}
+  .ans p{margin:0;font-size:13.5px;line-height:1.6;color:#dbe2ec;}
+  .ans .src{font-size:11px;color:var(--mut);margin-top:8px;display:flex;align-items:center;gap:5px;}
+  .sugs{display:flex;flex-wrap:wrap;gap:7px;margin-bottom:14px;}
+  .sug{background:transparent;border:1px solid var(--line2);color:var(--code);border-radius:9px;
+       padding:8px 12px;font-size:12.5px;cursor:pointer;transition:all .15s;}
+  .sug:hover{border-color:#f5b14c66;color:#f5d9ad;}
+  .ask-row{display:flex;gap:8px;}
+  .ask-row input{flex:1;background:var(--bg);border:1px solid var(--line2);border-radius:9px;
+       padding:10px 12px;color:var(--ink-hi);font-size:13px;outline:none;}
+  .ask-row input:focus{border-color:#f5b14c66;}
+  .ask-row button{background:var(--amber);border:none;border-radius:9px;padding:0 16px;
+       color:var(--bg);font-weight:600;font-size:13px;cursor:pointer;}
+  .key-row{display:flex;align-items:center;gap:8px;margin-bottom:12px;flex-wrap:wrap;}
+  .key-row input{flex:1;min-width:200px;background:var(--bg);border:1px solid var(--line2);
+       border-radius:9px;padding:8px 12px;color:var(--ink);font-size:12.5px;font-family:var(--mono);outline:none;}
+  .key-row .lbl{font-size:12px;color:var(--mut);display:flex;align-items:center;gap:6px;}
+  .pill{font-size:10.5px;padding:2px 8px;border-radius:999px;border:1px solid var(--line2);color:var(--mut2);}
+  .pill.live{color:var(--green);border-color:#7ee0a055;}
+</style>
+</head>
+<body>
+<header>
+  <div class="brand">
+    <div class="mark">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M19.07 4.93A10 10 0 0 0 6.99 3.34"/><path d="M4 6h.01"/><path d="M2.29 9.62A10 10 0 1 0 21.31 8.35"/><path d="M16.24 7.76A6 6 0 1 0 8.23 16.67"/><path d="M12 18h.01"/><path d="M17.99 11.66A6 6 0 0 1 15.77 16.67"/><circle cx="12" cy="12" r="2"/><path d="m13.41 10.59 5.66-5.66"/></svg>
+      <span class="ping"></span>
+    </div>
+    <div>
+      <div class="t">harness</div>
+      <div class="s" id="repoLabel">proje beyni</div>
+    </div>
+  </div>
+  <div class="repo-ctrl">
+    <input id="repoInput" value="FatihErenCetin/grup54" spellcheck="false" />
+    <button id="reloadBtn" onclick="boot()">Yenile</button>
+    <span class="sync" id="syncBadge"><span class="spin"></span> bağlanıyor</span>
+  </div>
+</header>
+
+<div class="stripe" id="stripe"></div>
+
+<div class="grid">
+  <section class="card">
+    <div class="head">
+      <div class="row"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19.07 4.93A10 10 0 0 0 6.99 3.34"/><path d="M2.29 9.62A10 10 0 1 0 21.31 8.35"/><circle cx="12" cy="12" r="2"/></svg><span class="ttl">Çakışma radarı</span></div>
+      <div class="sub">aynı dosyaya dokunan branch'leri çarpışmadan önce yakalar</div>
+    </div>
+    <div id="conflicts"><div class="empty">yükleniyor…</div></div>
+    <div class="divider"></div>
+    <div class="head">
+      <div class="row"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg><span class="ttl">Kim neye dokunuyor</span></div>
+      <div class="sub">branch'lerin son commit'lerinden okunur</div>
+    </div>
+    <div id="touches"><div class="empty">yükleniyor…</div></div>
+  </section>
+
+  <section class="card">
+    <div class="head">
+      <div class="row"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M13 6h3a2 2 0 0 1 2 2v7"/><line x1="6" y1="9" x2="6" y2="21"/></svg><span class="ttl">Sprint board</span></div>
+      <div class="sub">açık PR ve issue'lardan kendiliğinden dolar</div>
+    </div>
+    <div id="board"><div class="empty">yükleniyor…</div></div>
+    <div class="divider"></div>
+    <div class="head">
+      <div class="row"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg><span class="ttl">Kapsam bekçisi</span></div>
+      <div class="sub">PR'ı bir issue'ya bağlı olmayan branch'i işaretler</div>
+    </div>
+    <div id="scope"><div class="empty">yükleniyor…</div></div>
+  </section>
+</div>
+
+<section class="card ask-card">
+  <div class="head">
+    <div class="row">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+      <span class="ttl">Beyne sor</span>
+      <span class="pill" id="brainMode">kurallı</span>
+    </div>
+    <div class="sub">repo'nun o anki gerçek durumundan yanıtlar</div>
+  </div>
+
+  <div class="key-row">
+    <span class="lbl">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3"/></svg>
+      LLM anahtarı (opsiyonel):
+    </span>
+    <input id="apiKey" type="password" placeholder="sk-ant-… yapıştırırsan gerçek AI cevabı verir (koda gömülmez)" spellcheck="false" />
+  </div>
+
+  <div class="ans" id="answer"><p class="muted">Bir soru seç ya da yaz — panodaki gerçek veriden yanıtlarım.</p></div>
+
+  <div class="sugs" id="sugs">
+    <button class="sug" onclick="ask(this.textContent)">Sprint hedefine göre neredeyiz?</button>
+    <button class="sug" onclick="ask(this.textContent)">Hangi dosyalar çakışıyor?</button>
+    <button class="sug" onclick="ask(this.textContent)">Kim neye dokunuyor?</button>
+    <button class="sug" onclick="ask(this.textContent)">Kapsam dışına çıkan var mı?</button>
+  </div>
+
+  <div class="ask-row">
+    <input id="askInput" placeholder="Bir şey sor…" onkeydown="if(event.key==='Enter')ask(this.value)" />
+    <button onclick="ask(document.getElementById('askInput').value)">Sor</button>
+  </div>
+</section>
+
+<p class="rl" id="rateLimit"></p>
+
+<script>
+const API = "https://api.github.com";
+let STATE = null; // beyne sor için son çekilen gerçek veri
+const PALETTE = ["#f5b14c","#5cc8e8","#7ee0a0","#c89bf0","#f08fb0","#e8d05c","#8fb0f0","#f0a070"];
+const colorFor = (() => { const m={}; let i=0;
+  return (k)=>{ if(!m[k]) m[k]=PALETTE[i++%PALETTE.length]; return m[k]; }; })();
+
+const $ = (id)=>document.getElementById(id);
+const esc = (s)=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const ago = (iso)=>{ const s=(Date.now()-new Date(iso))/1000;
+  if(s<60)return"az önce"; if(s<3600)return Math.floor(s/60)+" dk önce";
+  if(s<86400)return Math.floor(s/3600)+" sa önce"; return Math.floor(s/86400)+" gün önce"; };
+
+function avatar(login, url, size=22){
+  const c=colorFor(login||"?");
+  const inner = url
+    ? `<img src="${esc(url)}&s=${size*2}" alt="${esc(login)}"/>`
+    : esc((login||"?").slice(0,2).toUpperCase());
+  return `<span class="av" title="${esc(login)}" style="width:${size}px;height:${size}px;
+    background:${c}22;color:${c};border:1px solid ${c}66;font-size:${size*0.4}px">${inner}</span>`;
+}
+
+async function gh(path){
+  const r = await fetch(API+path, {headers:{Accept:"application/vnd.github+json"}});
+  const rl = r.headers.get("x-ratelimit-remaining");
+  if(rl!==null) $("rateLimit").textContent =
+    `GitHub API kalan istek: ${rl}. (Token'sız saatlik 60 istek sınırı var; demo için yeterli.)`;
+  if(r.status===404) throw new Error("Repo bulunamadı. Adı 'kullanıcı/repo' biçiminde mi?");
+  if(r.status===403) throw new Error("API saatlik sınırına takıldı (token'sız 60/saat). Biraz sonra tekrar deneyin.");
+  if(!r.ok) throw new Error("GitHub API hatası: "+r.status);
+  return r.json();
+}
+
+function metricBar(d){
+  const m=[
+    {l:"aktif branch", v:d.branches.length},
+    {l:"açık çakışma", v:d.conflicts.length, t:d.conflicts.some(c=>c.hi)?"warn":(d.conflicts.length?"":"ok")},
+    {l:"kapsam dışı", v:d.scope.filter(s=>s.drift).length, t:d.scope.some(s=>s.drift)?"warn":"ok"},
+    {l:"açık PR", v:d.prs.length},
+  ];
+  $("stripe").innerHTML = m.map(x=>`
+    <div class="metric"><span class="l">${esc(x.l)}</span>
+    <span class="v ${x.t||""}">${x.v}</span></div>`).join("");
+}
+
+function renderTouches(branches){
+  if(!branches.length){ $("touches").innerHTML='<div class="empty">Branch bulunamadı.</div>'; return; }
+  $("touches").innerHTML = branches.map(b=>{
+    const a=b.author;
+    return `<div class="trow">${avatar(a?.login, a?.avatar_url,22)}
+      <div style="flex:1;min-width:0">
+        <code class="path">${esc(b.name)}</code>
+        <div class="meta"><span style="color:${colorFor(a?.login||b.name)}">${esc(a?.login||"?")}</span>
+        <span>·</span><span>${esc(b.lastMsg).slice(0,46)}</span>
+        ${b.date?`<span>·</span><span>${ago(b.date)}</span>`:""}</div>
+      </div></div>`;
+  }).join("");
+}
+
+function renderConflicts(conflicts){
+  if(!conflicts.length){
+    $("conflicts").innerHTML='<div class="empty">Şu an çakışma yok — branch\'ler farklı dosyalara dokunuyor. ✓</div>';
+    return;
+  }
+  $("conflicts").innerHTML = conflicts.map(c=>`
+    <div class="conflict ${c.hi?"hi":""}">
+      <div class="top"><code class="path">${esc(c.path)}</code>
+        <span class="badge" style="color:${c.hi?"var(--amber)":"var(--mut2)"};
+          border-color:${c.hi?"#f5b14c55":"var(--line2)"}">${c.hi?"çakışıyor":"izlemede"}</span>
+      </div>
+      <div class="who">${c.parties.map((p,i)=>
+        `${avatar(p,c.avatars[p],22)}<span style="color:var(--ink);font-size:13px">${esc(p)}</span>
+         ${i<c.parties.length-1?'<span style="color:var(--mut);margin:0 2px">↔</span>':''}`).join("")}
+      </div>
+      <p class="note">${esc(c.note)}</p>
+    </div>`).join("");
+}
+
+function renderBoard(cols){
+  const order=["Backlog","Devam ediyor","İncelemede","Bitti"];
+  $("board").innerHTML = `<div class="board">${order.map(name=>{
+    const items=cols[name]||[];
+    return `<div class="col"><div class="ch"><span>${esc(name)}</span><span class="cnt">${items.length}</span></div>
+      ${items.map(it=>`<div class="kc"><div class="top">
+        <span class="id">${esc(it.id)}</span>
+        ${it.who?avatar(it.who,it.avatar,20):'<span style="color:var(--line2);font-size:16px">—</span>'}
+       </div><div class="tt">${esc(it.title).slice(0,70)}</div></div>`).join("")
+       || '<div class="empty" style="font-size:11.5px">—</div>'}
+    </div>`;
+  }).join("")}</div>`;
+}
+
+function renderScope(scope){
+  if(!scope.length){ $("scope").innerHTML='<div class="empty">Açık PR yok.</div>'; return; }
+  $("scope").innerHTML = scope.map(s=>`
+    <div class="scope"><span class="dot ${s.drift?"drift":""}"></span>
+      ${avatar(s.who,s.avatar,20)}
+      <div style="flex:1;min-width:0">
+        ${s.drift
+          ? `<span style="color:var(--amber);font-size:13px">PR #${s.pr} "${esc(s.title).slice(0,38)}" bir issue'ya bağlı değil</span>`
+          : `<span style="color:var(--ink);font-size:13px">PR #${s.pr} → ${esc(s.title).slice(0,44)}</span>`}
+      </div></div>`).join("");
+}
+
+// ── çakışma tespiti: aynı dosyaya dokunan birden fazla branch ──
+function detectConflicts(branchFiles){
+  const fileMap={}; // path -> {branch:author}
+  for(const b of branchFiles){
+    for(const f of b.files){
+      (fileMap[f] ||= {})[b.name] = b.author?.login || "?";
+    }
+  }
+  const out=[];
+  for(const [path,brs] of Object.entries(fileMap)){
+    const authors=[...new Set(Object.values(brs))];
+    if(Object.keys(brs).length>1){
+      const avatars={}; branchFiles.forEach(b=>{ if(b.author) avatars[b.author.login]=b.author.avatar_url; });
+      out.push({ path, hi:true, parties:authors,
+        avatars,
+        note:`${Object.keys(brs).length} branch (${Object.keys(brs).join(", ")}) aynı dosyayı değiştiriyor — merge öncesi koordine olun.` });
+    }
+  }
+  return out.sort((a,b)=>b.parties.length-a.parties.length).slice(0,6);
+}
+
+async function boot(){
+  const repo = $("repoInput").value.trim().replace(/^https?:\/\/github\.com\//,"").replace(/\/$/,"");
+  $("repoLabel").textContent = repo+" · proje beyni";
+  $("syncBadge").innerHTML='<span class="spin"></span> bağlanıyor';
+  $("reloadBtn").disabled=true;
+  ["conflicts","touches","board","scope"].forEach(id=>$(id).innerHTML='<div class="empty">yükleniyor…</div>');
+
+  try{
+    const def = await gh(`/repos/${repo}`);
+    const base = def.default_branch;
+    const branches = await gh(`/repos/${repo}/branches?per_page=100`);
+
+    // her branch'in default'a göre değiştirdiği dosyalar + son commit bilgisi
+    const branchData = await Promise.all(branches.map(async b=>{
+      let files=[], author=null, lastMsg="", date=null;
+      try{
+        const c = await gh(`/repos/${repo}/commits/${b.commit.sha}`);
+        author = c.author || (c.commit?.author ? {login:c.commit.author.name, avatar_url:""} : null);
+        lastMsg = c.commit?.message?.split("\n")[0] || "";
+        date = c.commit?.author?.date;
+      }catch(e){}
+      if(b.name!==base){
+        try{
+          const cmp = await gh(`/repos/${repo}/compare/${base}...${b.name}`);
+          files = (cmp.files||[]).map(f=>f.filename);
+        }catch(e){}
+      }
+      return {name:b.name, author, lastMsg, date, files};
+    }));
+
+    const branchesView = branchData
+      .filter(b=>b.name!==base)
+      .sort((a,b)=> new Date(b.date||0)-new Date(a.date||0));
+    renderTouches(branchesView.length?branchesView:branchData);
+
+    const conflicts = detectConflicts(branchData.filter(b=>b.name!==base));
+    renderConflicts(conflicts);
+
+    // PR & issue → board + scope
+    const prs = await gh(`/repos/${repo}/pulls?state=open&per_page=100`);
+    const issues = (await gh(`/repos/${repo}/issues?state=all&per_page=100`))
+                    .filter(i=>!i.pull_request);
+
+    const cols={ "Backlog":[], "Devam ediyor":[], "İncelemede":[], "Bitti":[] };
+    issues.forEach(i=>{
+      const card={ id:"#"+i.number, title:i.title, who:i.assignee?.login, avatar:i.assignee?.avatar_url };
+      if(i.state==="closed") cols["Bitti"].push(card);
+      else if(i.assignee) cols["Devam ediyor"].push(card);
+      else cols["Backlog"].push(card);
+    });
+    prs.forEach(p=>{
+      cols["İncelemede"].push({ id:"PR #"+p.number, title:p.title,
+        who:p.user?.login, avatar:p.user?.avatar_url });
+    });
+    renderBoard(cols);
+
+    // kapsam bekçisi: PR gövdesi/başlığı bir issue'ya referans veriyor mu?
+    const scope = prs.map(p=>{
+      const txt=(p.title+" "+(p.body||""));
+      const linked=/#\d+|close[sd]?\s+#\d+|fix(e[sd])?\s+#\d+/i.test(txt);
+      return { pr:p.number, title:p.title, who:p.user?.login, avatar:p.user?.avatar_url, drift:!linked };
+    });
+    renderScope(scope);
+
+    metricBar({branches:branchesView, conflicts, scope, prs});
+
+    // beyne sor için gerçek bağlamı sakla
+    STATE = { repo, base, branches:branchesView, conflicts, scope, prs,
+              cols, issues, touches:branchesView };
+
+    $("syncBadge").innerHTML='<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#7ee0a0" stroke-width="3" style="margin-right:2px"><path d="M20 6 9 17l-5-5"/></svg> senkron';
+    $("syncBadge").style.color="var(--green)";
+
+  }catch(e){
+    $("syncBadge").innerHTML='bağlanamadı';
+    $("syncBadge").style.color="var(--amber)";
+    $("conflicts").innerHTML=`<div class="err">${esc(e.message)}</div>`;
+    ["touches","board","scope"].forEach(id=>$(id).innerHTML="");
+    $("stripe").innerHTML="";
+  }finally{
+    $("reloadBtn").disabled=false;
+  }
+}
+
+$("repoInput").addEventListener("keydown",e=>{ if(e.key==="Enter") boot(); });
+
+// ── Beyne sor ──────────────────────────────────────────────
+// anahtar yoksa: gerçek veriden kurallı cevap
+// anahtar varsa: aynı gerçek veriyi bağlam verip LLM'e sorar
+
+$("apiKey").addEventListener("input",()=>{
+  const has=$("apiKey").value.trim().length>0;
+  $("brainMode").textContent = has ? "AI" : "kurallı";
+  $("brainMode").className = "pill"+(has?" live":"");
+});
+
+function summarizeState(){
+  if(!STATE) return "Veri henüz yüklenmedi.";
+  const s=STATE;
+  const done=(s.cols["Bitti"]||[]).length;
+  const wip=(s.cols["Devam ediyor"]||[]).length;
+  const review=(s.cols["İncelemede"]||[]).length;
+  const backlog=(s.cols["Backlog"]||[]).length;
+  const total=done+wip+review+backlog;
+  const pct= total? Math.round((done/total)*100):0;
+  const driftList=s.scope.filter(x=>x.drift);
+  const lines=[
+    `Repo: ${s.repo} (ana branch: ${s.base})`,
+    `Aktif branch: ${s.branches.length} → ${s.branches.map(b=>b.name).join(", ")||"yok"}`,
+    `Çakışan dosyalar: ${s.conflicts.length?s.conflicts.map(c=>c.path+" ("+c.parties.join(" ↔ ")+")").join("; "):"yok"}`,
+    `Açık PR: ${s.prs.length}`,
+    `Board: ${backlog} backlog, ${wip} devam ediyor, ${review} incelemede, ${done} bitti (≈%${pct} tamam)`,
+    `Kapsam dışı PR: ${driftList.length?driftList.map(d=>"#"+d.pr+" "+d.title).join("; "):"yok"}`,
+  ];
+  return lines.join("\n");
+}
+
+function ruleAnswer(qRaw){
+  const q=qRaw.toLowerCase();
+  const s=STATE;
+  if(!s) return {text:"Önce veri yüklensin — panonun üstündeki Yenile'ye basabilirsin."};
+
+  const done=(s.cols["Bitti"]||[]).length, wip=(s.cols["Devam ediyor"]||[]).length,
+        review=(s.cols["İncelemede"]||[]).length, backlog=(s.cols["Backlog"]||[]).length;
+  const total=done+wip+review+backlog, pct= total?Math.round(done/total*100):0;
+
+  if(/neredeyiz|hedef|sprint|durum|ilerleme|%/.test(q)){
+    return {text:`Toplam ${total} iş kaleminden ${done}'i bitti (≈%${pct}). `+
+      `${wip} devam ediyor, ${review} incelemede, ${backlog} backlog'ta. `+
+      (s.conflicts.length?`Dikkat: ${s.conflicts.length} dosya çakışması merge'i geciktirebilir.`:`Açık çakışma yok, akış temiz.`)};
+  }
+  if(/çakış|conflict|aynı dosya|çarpış/.test(q)){
+    if(!s.conflicts.length) return {text:"Şu an çakışma yok — branch'ler farklı dosyalara dokunuyor. ✓"};
+    return {text:s.conflicts.map(c=>`${c.path}: ${c.parties.join(" ↔ ")} aynı dosyayı değiştiriyor.`).join(" ")+
+      " Merge'den önce kimin önce gireceğine karar verin, diğeri rebase etsin."};
+  }
+  if(/kim|dokun|kimler|branch/.test(q)){
+    if(!s.branches.length) return {text:"main dışında aktif branch görünmüyor."};
+    return {text:s.branches.map(b=>`${b.author?.login||"?"} → ${b.name}${b.lastMsg?" ("+b.lastMsg.slice(0,40)+")":""}`).join("; ")};
+  }
+  if(/kapsam|drift|plan dışı|story|issue.*bağlı/.test(q)){
+    const d=s.scope.filter(x=>x.drift);
+    if(!d.length) return {text:"Tüm açık PR'lar bir issue'ya bağlı — kapsam dışına çıkan yok. ✓"};
+    return {text:d.map(x=>`PR #${x.pr} "${x.title.slice(0,40)}" bir issue'ya referans vermiyor.`).join(" ")+
+      " Açıklamaya 'Fixes #<issue>' eklerseniz kapsam içine girer."};
+  }
+  if(/pr|pull|inceleme|review/.test(q)){
+    if(!s.prs.length) return {text:"Şu an açık PR yok."};
+    return {text:`${s.prs.length} açık PR: `+s.prs.map(p=>`#${p.number} ${p.title.slice(0,32)} (${p.user?.login})`).join("; ")};
+  }
+  return {text:`Bunu kurallı modda tam karşılayamadım, ama özet şu:\n\n${summarizeState()}\n\nTam doğal dil için yukarıya LLM anahtarı girebilirsin.`};
+}
+
+async function llmAnswer(question, key){
+  const ctx=summarizeState();
+  const sys="Sen bir yazılım takımının 'proje beyni' asistanısın. Aşağıdaki GERÇEK repo durumuna dayanarak "+
+    "Türkçe, kısa ve net cevap ver. Veride olmayan şeyi uydurma. Sayıları verideki gibi kullan.";
+  const r=await fetch("https://api.anthropic.com/v1/messages",{
+    method:"POST",
+    headers:{ "content-type":"application/json",
+      "x-api-key":key, "anthropic-version":"2023-06-01",
+      "anthropic-dangerous-direct-browser-access":"true" },
+    body:JSON.stringify({
+      model:"claude-sonnet-4-6", max_tokens:400,
+      system:sys,
+      messages:[{role:"user",content:`REPO DURUMU:\n${ctx}\n\nSORU: ${question}`}]
+    })
+  });
+  if(!r.ok){ const t=await r.text();
+    throw new Error("LLM hatası ("+r.status+"). Anahtar geçerli mi? "+t.slice(0,120)); }
+  const d=await r.json();
+  return (d.content||[]).filter(b=>b.type==="text").map(b=>b.text).join("\n").trim();
+}
+
+async function ask(qRaw){
+  const q=(qRaw||"").trim();
+  if(!q) return;
+  $("askInput").value=q;
+  const key=$("apiKey").value.trim();
+  const box=$("answer");
+
+  if(!key){
+    const a=ruleAnswer(q);
+    box.innerHTML=`<p>${esc(a.text).replace(/\n/g,"<br>")}</p>
+      <div class="src"><span class="dot" style="display:inline-block"></span> gerçek repo verisinden (kurallı)</div>`;
+    return;
+  }
+  box.innerHTML='<p class="muted"><span class="spin"></span> AI düşünüyor… (gerçek repo verisiyle)</p>';
+  try{
+    const text=await llmAnswer(q,key);
+    box.innerHTML=`<p>${esc(text).replace(/\n/g,"<br>")}</p>
+      <div class="src"><span class="dot" style="display:inline-block;background:var(--green)"></span> Claude + gerçek repo verisi</div>`;
+  }catch(e){
+    const a=ruleAnswer(q);
+    box.innerHTML=`<p>${esc(a.text).replace(/\n/g,"<br>")}</p>
+      <div class="src" style="color:var(--amber)">⚠ ${esc(e.message)} — kurallı moda düşüldü.</div>`;
+  }
+}
+
+boot();
+</script>
+</body>
+</html>
