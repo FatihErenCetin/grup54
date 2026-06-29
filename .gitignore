@@ -1,0 +1,32 @@
+# === Sırlar (asla commit'lenmez) ===
+.env
+.env.local
+.env.*.local
+
+# === Özel ekip dokümanları — public repo'ya GİTMEZ ===
+# Strateji/planlama yalnızca ekip + AI içindir; manuel paylaşılır (bundle: internal/ + CLAUDE.local.md + OKU.md).
+internal/
+CLAUDE.local.md
+OKU.md
+
+# === Python ===
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+*.faiss
+*.sqlite3
+
+# === Node / frontend ===
+node_modules/
+dist/
+.vite/
+*.local
+
+# === OS / editör ===
+.DS_Store
+.idea/
+.vscode/
