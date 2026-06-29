@@ -62,6 +62,16 @@ Hedeflenen motor: **Python + FastAPI** (engine) · **Gemini** (embeddings + judg
 
 ---
 
+## 💼 İş Modeli
+
+Tam **Yalın Kanvas** (9 blok) — vizyon + rakip araştırmasından damıtıldı:
+
+[![Ensemble Yalın Kanvas](ProjectManagement/General/yalin-kanvas.png)](ProjectManagement/General/yalin-kanvas.md)
+
+> **Özet:** **Open-core** (local-first çekirdek OSS + hosted Team ≈ $8–12/geliştirici/ay) · hedef = AI-destekli küçük ekipler (öğrenci/bootcamp = dogfood köprübaşı) · **rekabet avantajı** = 4 koordinasyon parçasının (proaktif çakışma + canlı scope-drift + insan & ajan ortak farkındalık + git-yazılabilir `.harness/`) birleşimi — birebir rakip yok. Detay: [`yalin-kanvas.md`](ProjectManagement/General/yalin-kanvas.md).
+
+---
+
 ## 📋 Proje Yönetimi
 
 <!-- TAKIM: board kurulunca gerçek URL'yi yapıştır. GitHub Projects önerilir (issue/PR ile otomatik senkron — ürünün kendi "kendiliğinden dolan board" hikâyesini dogfood eder). -->
