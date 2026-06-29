@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family:-apple-system,"Segoe UI",Roboto,Inter,Arial,sans-serif; background:#fff; color:#2b2b2b; padding:34px 40px; width:1680px; }
+  h1 { font-size:46px; font-weight:800; color:#3a3a3a; margin-bottom:6px; letter-spacing:-1px; }
+  .sub { font-size:16px; color:#8a8a8a; margin-bottom:22px; }
+  .sub b { color:#5b5bd6; }
+  .grid { display:grid; grid-template-columns:repeat(5,1fr); grid-template-rows:240px 240px; gap:0; border:1px solid #e3e3e8; }
+  .bottom { display:grid; grid-template-columns:0.96fr 1.04fr; border:1px solid #e3e3e8; border-top:none; }
+  .box { border:1px solid #e3e3e8; padding:14px 16px; position:relative; overflow:hidden; }
+  .grid .box { margin:-0.5px; }
+  .num { position:absolute; right:14px; top:6px; font-size:64px; font-weight:800; color:#f0f0f4; line-height:1; z-index:0; }
+  .h { font-size:13px; font-weight:800; letter-spacing:0.6px; color:#33333a; text-transform:uppercase; position:relative; z-index:1; display:flex; align-items:center; gap:6px; }
+  .h .i { color:#5b5bd6; font-size:12px; }
+  ul { list-style:none; margin-top:9px; position:relative; z-index:1; }
+  li { font-size:12.5px; line-height:1.5; color:#3d3d44; margin-bottom:4px; padding-left:12px; position:relative; }
+  li:before { content:"·"; position:absolute; left:2px; color:#5b5bd6; font-weight:700; }
+  .uvp { font-size:13.5px; line-height:1.55; color:#2b2b30; font-weight:600; position:relative; z-index:1; margin-top:9px; }
+  .concept { font-size:11.5px; color:#7a7a85; margin-top:8px; font-style:italic; position:relative; z-index:1; }
+  .sec { margin-top:11px; position:relative; z-index:1; }
+  .sec .lbl { font-size:11px; font-weight:800; color:#5b5bd6; text-transform:uppercase; letter-spacing:0.4px; margin-bottom:3px; }
+  .tier { font-size:12px; line-height:1.5; margin-bottom:3px; position:relative; z-index:1; padding-left:12px; }
+  .tier:before { content:"▸"; position:absolute; left:0; color:#5b5bd6; font-size:10px; }
+  .tier b { color:#2b2b30; }
+  .warn { font-size:11px; color:#9a7b1f; margin-top:7px; position:relative; z-index:1; }
+  .stack-cell { display:flex; flex-direction:column; }
+  .span2 { grid-row:span 2; }
+</style>
+</head>
+<body>
+  <h1>Yalın Kanvas</h1>
+  <div class="sub"><b>Ensemble</b> — paylaşılan proje beyni · AI çağı ekipleri için koordinasyon aracı · YZTA Bootcamp 2026 · grup54</div>
+
+  <div class="grid">
+    <!-- PROBLEM (col1, span2) -->
+    <div class="box span2">
+      <span class="num">1</span>
+      <div class="h">PROBLEM <span class="i">ⓘ</span></div>
+      <ul>
+        <li><b>Çakışma:</b> kişi ya da AI ajanı aynı yere dokunur → merge çakışması / tekrarlı iş, önceden görülmez</li>
+        <li><b>Scope-drift:</b> iş story'ler dışına taşar; geç (PR sonrası) ya da hiç fark edilmez</li>
+        <li><b>Dağınık bağlam:</b> her üyenin AI aracı izole; ortak yazılabilir "kim ne yapıyor" yok</li>
+      </ul>
+      <div class="sec">
+        <div class="lbl">Varolan Alternatifler</div>
+        <ul>
+          <li>Jira/Linear (durumu gösterir) · GitKraken/GitLive (dosya-düzeyi, ajan yok)</li>
+          <li>CodeRabbit (scope ama PR-sonrası) · AGENTS.md (salt-okuma) — hiçbiri 4'ünü birleştirmez</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- ÇÖZÜM (col2, row1) -->
+    <div class="box">
+      <span class="num">4</span>
+      <div class="h">ÇÖZÜM <span class="i">ⓘ</span></div>
+      <ul>
+        <li><b>Proaktif çakışma radarı</b> — merge öncesi uyarı; ajanı ayrı aktör sayar</li>
+        <li><b>Canlı scope-drift bekçisi</b> — story'lere karşı, PR-öncesi</li>
+        <li><b>.harness/ + MCP</b> — git-senkron ortak bağlam; kendiliğinden board + "projeye sor"</li>
+      </ul>
+    </div>
+
+    <!-- BENZERSİZ DEĞER (col3, span2) -->
+    <div class="box span2">
+      <span class="num">3</span>
+      <div class="h">BENZERSİZ DEĞER <span class="i">ⓘ</span></div>
+      <div class="uvp">Çalışma anında, hem insanların hem onların AI araçlarının <b>çakışmasını ve kapsam kaymasını</b> — olmadan <b>ÖNCE</b> — repo içi <b>.harness/</b> ortak bağlamı üzerinden söyler.</div>
+      <div class="concept">Üst kavram: AI çağı ekipleri için çarpışma-önleyici radar + AI araçları için ortak hafıza.</div>
+      <div class="sec">
+        <div class="lbl">Konumlandırma</div>
+        <ul>
+          <li>Jira durumu gösterir · GitKraken dosya-düzeyi sezer · CodeRabbit PR-sonrası bakar</li>
+          <li>→ biz hepsini birleştirip <b>çalışma anında, önceden</b> söyleriz</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- REKABET AVANTAJI (col4, row1) -->
+    <div class="box">
+      <span class="num">8</span>
+      <div class="h">REKABET AVANTAJI <span class="i">ⓘ</span></div>
+      <ul>
+        <li><b>4 parça kombinasyonu</b> — birebir rakip yok</li>
+        <li>git-<b>yazılabilir</b> .harness/ (insan+ajan)</li>
+        <li>kalibrasyon know-how (düşük false-positive)</li>
+        <li>otantik <b>dogfood</b> — kendi acımızı çözüyoruz</li>
+      </ul>
+    </div>
+
+    <!-- HEDEF KİTLE (col5, span2) -->
+    <div class="box span2">
+      <span class="num">2</span>
+      <div class="h">HEDEF KİTLE <span class="i">ⓘ</span></div>
+      <ul>
+        <li><b>Birincil:</b> küçük (2–8) AI-destekli yazılım ekipleri — herkes kendi AI aracıyla paralel çalışan</li>
+        <li><b>İkincil pazar:</b> çok kişi + AI aracı aynı repoda çalışan her takım</li>
+      </ul>
+      <div class="sec">
+        <div class="lbl">Erken benimseyenler</div>
+        <ul>
+          <li>AI-forward indie / startup ekipleri · açık kaynak çekirdek ekipleri</li>
+          <li>hackathon / bootcamp grupları → <b>dogfood</b> (ödeyen değil, doğrulama köprübaşı)</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- KİLİT METRİKLER (col2, row2) -->
+    <div class="box">
+      <span class="num">7</span>
+      <div class="h">KİLİT METRİKLER <span class="i">ⓘ</span></div>
+      <ul>
+        <li><b>Önlenen çakışma</b> sayısı (asıl değer kanıtı)</li>
+        <li>Yakalanan scope-drift + ⚠️ <b>false-positive oranı</b> (en kritik kalibrasyon)</li>
+        <li>Aktif takım · takım başına MCP bağlantısı · board oto-doldurma doğruluğu</li>
+      </ul>
+    </div>
+
+    <!-- KANALLAR (col4, row2) -->
+    <div class="box">
+      <span class="num">9</span>
+      <div class="h">KANALLAR <span class="i">ⓘ</span></div>
+      <ul>
+        <li>GitHub App / <b>Marketplace</b> (dağıtım + faturalama)</li>
+        <li>Açık kaynak + local-first (pip/npx) — sıfır kurulum</li>
+        <li>Dev toplulukları · <b>build-in-public</b> · MCP ekosistemi</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="bottom">
+    <!-- MALİYET YAPISI -->
+    <div class="box">
+      <span class="num">6</span>
+      <div class="h">MALİYET YAPISI <span class="i">ⓘ</span></div>
+      <ul>
+        <li><b>Değişken (en büyük):</b> LLM çıkarım — Gemini embeddings + "judge" (karar başına) · hosting</li>
+        <li><b>Sabit:</b> GitHub App altyapısı · geliştirme · alan adı</li>
+        <li><b>↓ Düşürücüler:</b> local-first (kullanıcı token'ı/Ollama) · ucuz-geçit (dosya kesişimi → az LLM çağrısı)</li>
+      </ul>
+    </div>
+
+    <!-- GELİR KAYNAKLARI -->
+    <div class="box">
+      <span class="num">5</span>
+      <div class="h">GELİR KAYNAKLARI <span class="i">ⓘ</span></div>
+      <div class="concept" style="margin-top:6px;">Open-core / freemium · GitHub Marketplace faturalama · değer metriği = hosted koltuk (seat)</div>
+      <div style="margin-top:8px;">
+        <div class="tier"><b>Free</b> — local-first çekirdek (OSS), kendi makinende, BYO LLM/Ollama · <b>$0</b></div>
+        <div class="tier"><b>Team</b> (hosted) — yönetilen hosting, real-time presence, paylaşılan pano · <b>≈ $8–12/geliştirici/ay</b></div>
+        <div class="tier"><b>Org</b> — SSO · gizlilik modu (Ollama/on-prem) · destek · audit · <b>özel</b></div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
