@@ -12,11 +12,13 @@ Bu repoda **insanlar ve AI araçları** aynı git akışını izler. Bu rehber, 
 
 Her iş bir **GitHub Issue**'dan başlar — **`<id>` = issue numarası**.
 
-- **Story** (`story` label · 🔵): kullanıcı değeri. Format: **"Bir `<rol>` olarak `<istek>` istiyorum, böylece `<fayda>`."** + **kabul kriteri** (ne zaman "Done") + **puan** (1-2-3-5-8) + `sprint-N` label.
+- **Story** (`story` label · 🔵): varsayılan bir **user story** = kullanıcı değeri. Format: **"Bir `<rol>` olarak `<istek>` istiyorum, böylece `<fayda>`."** + **kabul kriteri** (ne zaman "Done") + **puan** (1-2-3-5-8) + `sprint-N` label.
 - **Task** (`task` label · 🔴): teknik adım. Küçük task'ler story issue'sunun **içinde checklist** (`- [ ]`); büyük/ayrı izlenen task → ayrı `task` issue.
 - **Kim:** PO backlog'u oluşturur/önceliklendirir (AI taslak çıkarabilir); ekip Sprint Planning'de puanlar.
 - **Board:** issue'lar **GitHub Projects**'te otomatik akar: `Backlog → To Do → In Progress → In Review → Done / Rejected`.
 - Yeni story: **New Issue → "📘 Story" şablonu**.
+
+> **Terimler:** "story" = varsayılan **user story** (rol + istek + **fayda** cümlesi — jüri bunu puanlar). Saf-teknik/altyapı işi fayda cümlesine sığmıyorsa **enabler story** (yine `story` label) ya da **task** yaz — formata zorlama. *(Ürünün kullanıcısı geliştirici olduğu için "Bir geliştirici olarak…" story'leri tam birer user story'dir.)* Hiyerarşi: **Epic > Story > Task** (proje küçük → epic'e gerek yok). Kısaca: **user story ⊂ story.**
 
 ## 2. Branch
 
