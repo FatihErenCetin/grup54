@@ -22,8 +22,9 @@ Ensemble *(çalışma adı)* — AI çağı yazılım ekipleri için **paylaşı
 ## Çalışma konvansiyonları  🟢 *(şimdi geçerli)*
 
 - **Branch:** `T-<id>-kisa-aciklama` (board eşleşmesi için). **PR açıklaması:** `Closes T-<id>`.
-- **Commit'ler küçük ve anlamlı.** main'e doğrudan push / tek-commit toplu yükleme **YOK** → her üyenin katkısı git geçmişinde **ayrı görünür** (değerlendirme kriteri).
+- **Commit'ler küçük ve anlamlı.** main'e doğrudan push / tek-commit toplu yükleme **YOK** → her üyenin katkısı git geçmişinde **ayrı görünür** (değerlendirme kriteri). **Yazar = işi yapan kişi** (kendi GitHub-bağlı email'i); **AI yazar/co-author olarak EKLENMEZ.**
 - **Her PR**, merge'den önce **en az 1 takım arkadaşı review onayı** alır.
+- **Commit formatı = Conventional-lite** (`feat:/fix:/docs:/chore:` + Türkçe açıklama) · **merge = merge commit** (commit'ler korunur) · merge sonrası branch **sil** · PR'ı **açan kişi merge'ler**. Tam akış → [`CONTRIBUTING.md`](CONTRIBUTING.md).
 - **Sırlar `.env`'de**, asla commit'lenmez (`.gitignore`'da); anahtar/secret koda gömülmez.
 - **Doküman dili Türkçe; dosya/klasör adları ASCII** (Türkçe karakter/boşluk yok) — cross-OS güvenli.
 
