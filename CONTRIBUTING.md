@@ -23,7 +23,13 @@ Bu repoda **insanlar ve AI araçları** aynı git akışını izler. Bu rehber, 
   - Tipler: `feat:` (yeni özellik) · `fix:` (hata) · `docs:` (doküman) · `chore:` (bakım/config) · `refactor:` · `test:` · `style:`
   - Örnek: `feat: çakışma radarı dosya kesişimi` · `fix: webhook imza doğrulaması` · `docs: README takım tablosu`
 - **Dil:** açıklama **Türkçe**; tip önekleri + teknik token'lar İngilizce.
-- **Yazar = işi yapan kişi** (kendi git kimliği). **Co-Authored-By EKLENMEZ** — commit'ler insan katkısını yansıtmalı (değerlendirme kriteri).
+- **Yazar = işi yapan kişi** (kendi git kimliği). **Co-Authored-By EKLENMEZ** — commit'ler insan katkısını yansıtmalı (değerlendirme kriteri). AI-destekli commit'lerde bile yazar = işi yönlendiren insan; AI **yazar/co-author olarak eklenmez.**
+- **⚠️ Git kimliği kurulumu (graded — KRİTİK):** her üye **kendi makinesinde**, **kendi GitHub'ına bağlı email**'iyle commit'ler:
+  ```bash
+  git config user.name "Ad Soyad"
+  git config user.email "github-hesabina-bagli@email"   # GitHub > Settings > Emails
+  ```
+  Email GitHub hesabına bağlı değilse commit, **GitHub katkı grafiğinde görünmez** → katkın *sayılmaz*. Başkasının makinesinden/hesabından commit'leme; kendi işini kendin commit'le.
 - **Sırlar/anahtarlar asla commit'lenmez** (`.env`, `.gitignore`).
 
 ## 3. Pull Request (PR)
