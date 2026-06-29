@@ -65,6 +65,7 @@ Henüz kod yok. Mimariye göre beklenen (kesinleşince burada güncelle):
 - Belirsizlikte makul varsay, **varsayımı açıkça belirt.**
 - Çekirdek (çakışma/scope-drift) gibi **kalibrasyona duyarlı** yerlerde: bir değişiklik, eval/backtest kabul edilebilir false-positive oranı gösterene dek "bitti" sayılmaz.
 - Mevcut kod ve desenleri izle; bir dosya büyüdüyse bu çoğu zaman "çok iş yapıyor" sinyalidir.
+- **Sprint dokümanı (cadence):** AI, `ProjectManagement/SprintN/README.md`'nin 6 başlığını sürekli taslaklar (daily log + board + görsellerden); **finalize + commit = SM (insan rakam/katılımcı doğrular).** Ajan README'yi tek başına commit'lemez — girdileri derler. Detay süreç: ekip-içi süreç dokümanı.
 
 ---
 
