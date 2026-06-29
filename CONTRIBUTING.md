@@ -4,63 +4,71 @@ Bu repoda **insanlar ve AI araçları** aynı git akışını izler. Bu rehber, 
 
 ## Akış (özet)
 
-`main`'den branch aç → küçük commit'ler → PR aç (`Closes T-<id>`) → **≥1 review** → **merge commit** → branch silinir.
+**Issue (story/task)** → `main`'den branch aç (`T-<id>`) → küçük commit'ler → PR aç (`Closes #<id>`) → **≥1 review** → **merge commit** → branch silinir.
 
 ---
 
-## 1. Branch
+## 1. Story / Issue (işin kaynağı)
 
-- **`main` korunur:** doğrudan push **YOK**; her şey branch + PR ile gelir.
-- **İsim:** `T-<id>-kisa-aciklama` (kebab-case, ASCII). Örn: `T-12-auth-formu`, `T-7-cakisma-radari`.
-- **`<id>`** = görev/story numarası. *(İleride GitHub Issue numarası → `Closes T-<id>` issue'yu otomatik kapatır; şimdilik manuel sıra.)*
-- **Bir branch = bir görev/story.** Küçük ve odaklı tut.
+Her iş bir **GitHub Issue**'dan başlar — **`<id>` = issue numarası**.
+
+- **Story** (`story` label · 🔵): kullanıcı değeri. Format: **"Bir `<rol>` olarak `<istek>` istiyorum, böylece `<fayda>`."** + **kabul kriteri** (ne zaman "Done") + **puan** (1-2-3-5-8) + `sprint-N` label.
+- **Task** (`task` label · 🔴): teknik adım. Küçük task'ler story issue'sunun **içinde checklist** (`- [ ]`); büyük/ayrı izlenen task → ayrı `task` issue.
+- **Kim:** PO backlog'u oluşturur/önceliklendirir (AI taslak çıkarabilir); ekip Sprint Planning'de puanlar.
+- **Board:** issue'lar **GitHub Projects**'te otomatik akar: `Backlog → To Do → In Progress → In Review → Done / Rejected`.
+- Yeni story: **New Issue → "📘 Story" şablonu**.
+
+## 2. Branch
+
+- **`main` korunur:** doğrudan push **YOK**; her şey branch + PR.
+- **İsim:** `T-<id>-kisa-aciklama` (kebab-case, ASCII), `<id>` = issue no. Örn: issue **#6** → `T-6-cakisma-radari`.
+- **Bir branch = bir issue.** Küçük ve odaklı tut.
 - Çalışmadan önce `main`'i çek (`git checkout main && git pull`), sonra branch aç.
 
-## 2. Commit
+## 3. Commit
 
 - **Küçük ve anlamlı:** bir mantıksal değişiklik = bir commit. "WIP / her şeyi yaptım" toplu commit'lerinden kaçın.
 - **Format — Conventional-lite (güçlü öneri):** `<tip>: Türkçe açıklama`
-  - Tipler: `feat:` (yeni özellik) · `fix:` (hata) · `docs:` (doküman) · `chore:` (bakım/config) · `refactor:` · `test:` · `style:`
-  - Örnek: `feat: çakışma radarı dosya kesişimi` · `fix: webhook imza doğrulaması` · `docs: README takım tablosu`
+  - Tipler: `feat:` · `fix:` · `docs:` · `chore:` · `refactor:` · `test:` · `style:`
+  - Örnek: `feat: çakışma radarı dosya kesişimi` · `fix: webhook imza doğrulaması`
 - **Dil:** açıklama **Türkçe**; tip önekleri + teknik token'lar İngilizce.
-- **Yazar = işi yapan kişi** (kendi git kimliği). **Co-Authored-By EKLENMEZ** — commit'ler insan katkısını yansıtmalı (değerlendirme kriteri). AI-destekli commit'lerde bile yazar = işi yönlendiren insan; AI **yazar/co-author olarak eklenmez.**
-- **⚠️ Git kimliği kurulumu (graded — KRİTİK):** her üye **kendi makinesinde**, **kendi GitHub'ına bağlı email**'iyle commit'ler:
+- **Yazar = işi yapan kişi** (kendi git kimliği). **Co-Authored-By EKLENMEZ** — commit'ler insan katkısını yansıtmalı (değerlendirme kriteri). AI-destekli olsa bile yazar = işi yönlendiren insan; AI yazar/co-author eklenmez.
+- **⚠️ Git kimliği (graded — KRİTİK):** her üye **kendi makinesinde**, **kendi GitHub'ına bağlı email**'iyle commit'ler:
   ```bash
   git config user.name "Ad Soyad"
   git config user.email "github-hesabina-bagli@email"   # GitHub > Settings > Emails
   ```
-  Email GitHub hesabına bağlı değilse commit, **GitHub katkı grafiğinde görünmez** → katkın *sayılmaz*. Başkasının makinesinden/hesabından commit'leme; kendi işini kendin commit'le.
+  Email GitHub hesabına bağlı değilse commit, **katkı grafiğinde görünmez** → katkın *sayılmaz*. Kendi işini kendin commit'le.
 - **Sırlar/anahtarlar asla commit'lenmez** (`.env`, `.gitignore`).
 
-## 3. Pull Request (PR)
+## 4. Pull Request (PR)
 
-- **Ne zaman:** görev review'a hazır olunca. Erken görünürlük istersen **draft PR** aç.
+- **Ne zaman:** görev review'a hazır olunca (erken görünürlük → **draft PR**).
 - **Başlık:** `T-<id>: kısa açıklama`.
-- **Açıklama:** `Closes T-<id>` + *ne / neden* + (UI değişikliğiyse) ekran görüntüsü.
-- **Review:** merge'den önce **≥1 takım arkadaşı onayı**. **SLA:** en geç ertesi **22:00 daily**'ye kadar review (blocker PR'lar daha hızlı).
-- **Merge yöntemi: Merge commit** — her commit main'de korunur → herkesin katkısı görünür. *(Squash/rebase kullanma.)*
-- **Kim merge'ler:** PR'ı **açan kişi**, ≥1 onaydan sonra kendi PR'ını merge eder.
-- **Merge sonrası branch silinir** (GitHub otomatik siler).
+- **Açıklama:** **`Closes #<id>`** (issue'yu **otomatik kapatır**) + *ne / neden* + (UI değişikliğiyse) ekran görüntüsü.
+- **Review:** merge'den önce **≥1 takım arkadaşı onayı**. **SLA:** en geç ertesi **22:00 daily**'ye kadar (blocker'lar daha hızlı).
+- **Merge yöntemi: Merge commit** (commit'ler korunur → katkı görünür). **Kim merge'ler:** PR'ı **açan kişi** (≥1 onaydan sonra). **Merge sonrası branch otomatik silinir.**
 - **Çakışma:** PR'dan önce `main`'i branch'e çekip çakışmayı çöz.
 
 ## Manuel vs Otomatik
 
 | Manuel (insan/ajan) | Otomatik |
 |---|---|
-| branch açma · commit · PR açma · review · merge | board kartı (GitHub Projects, PR/issue durumundan) · merge sonrası branch silme · *(ileride)* CI |
+| issue açma · branch · commit · PR açma · review · merge | board kartı (GitHub Projects, issue/PR durumundan) · `Closes #<id>` ile issue kapanışı · merge sonrası branch silme · *(ileride)* CI |
 
 ## Hızlı referans
 
 ```bash
+# 0) GitHub'da issue aç (örn. #6) — "📘 Story" şablonu
 git checkout main && git pull
-git checkout -b T-12-auth-formu
+git checkout -b T-6-cakisma-radari
 # ... değişiklik ...
-git add -p && git commit -m "feat: auth formu doğrulaması"
-git push -u origin T-12-auth-formu
-gh pr create --title "T-12: auth formu" --body "Closes T-12 — ..."
-# ≥1 onay → "Merge commit" ile merge → branch otomatik silinir
+git add -p && git commit -m "feat: çakışma radarı dosya kesişimi"
+git push -u origin T-6-cakisma-radari
+gh pr create --title "T-6: çakışma radarı" --body "Closes #6 — ..."
+# ≥1 onay → "Merge commit" ile merge → issue #6 kapanır, branch otomatik silinir
 ```
 
 ---
 
-> Tam ajan sözleşmesi: [`AGENTS.md`](AGENTS.md). Ekip ritmi (cadence: daily 22:00, sprint doldurma) → ekip-içi süreç dokümanı.
+> Tam ajan sözleşmesi: [`AGENTS.md`](AGENTS.md). Ekip ritmi (cadence: daily 22:00) + backlog dağıtımı → ekip-içi süreç dokümanı.
