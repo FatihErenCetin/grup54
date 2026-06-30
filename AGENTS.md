@@ -21,6 +21,8 @@ Ensemble *(çalışma adı)* — AI çağı yazılım ekipleri için **paylaşı
 
 ## Çalışma konvansiyonları  🟢 *(şimdi geçerli)*
 
+> **Atanmış bir issue'yu bitiriyorsan → tek akış: [`docs/gelistirme-dongusu.md`](docs/gelistirme-dongusu.md)** (issue→done + DONE kapısı). Aşağısı kural özeti:
+
 - **Branch:** `T-<id>-kisa-aciklama` (`<id>` = GitHub Issue no). **PR açıklaması:** `Closes #<id>` (issue'yu otomatik kapatır).
 - **Commit'ler küçük ve anlamlı.** main'e doğrudan push / tek-commit toplu yükleme **YOK** → her üyenin katkısı git geçmişinde **ayrı görünür** (değerlendirme kriteri). **Yazar = işi yapan kişi** (kendi GitHub-bağlı email'i); **AI yazar/co-author olarak EKLENMEZ.**
 - **Her PR**, merge'den önce **en az 1 takım arkadaşı review onayı** alır.
@@ -47,10 +49,14 @@ Ensemble *(çalışma adı)* — AI çağı yazılım ekipleri için **paylaşı
 
 ## Ne nereye (repo haritası)
 
+- **`docs/gelistirme-dongusu.md`** — 🟢 **atanmış issue → done TEK rehberi (+ DONE kapısı). İşe başlamadan OKU.**
+- **`docs/sprint2-kontratlar.md`** — 🟢 bileşen girdi/çıktı (port/endpoint imzaları; paralel çalışma — **imzayı değiştirme**).
+- **`docs/kapsam-sinirlari.md`** — 🟢 local-first kapsam + **YAPMA listesi** (kapsam-dışı = tasarım gereği yok; ⚠️ user-login/OAuth tuzağı).
+- `CONTRIBUTING.md` — git akışı detayı (issue→branch→commit→PR→merge; §0 işe-başla).
+- `ProjectManagement/` — sprint kanıtı + **daily nasıl kaydedilir** → `ProjectManagement/README.md` · `SprintN/{DailyScrum·Meetings·Board·Burndown·Screenshots}`.
 - `README.md` — public ürün açıklaması + takım tablosu.
-- `AGENTS.md` — bu dosya (ajan sözleşmesi). `CLAUDE.md` → Claude Code'u buraya yönlendirir.
+- `AGENTS.md` — bu dosya (kanonik sözleşme). `CLAUDE.md` / `GEMINI.md` / `.kiro/steering/` → araçları buraya yönlendirir.
 - `src/` — kod (backend/engine · mcp · frontend · shared)  🟡 *henüz yok*
-- `ProjectManagement/SprintN/` — sprint kanıtı (DailyScrum · Board · Burndown · Screenshots)  🟡 *henüz yok*
 - `.harness/` — kanonik ortak bağlam (scope · tasks · active · locks · decisions)  🟡 *henüz yok*
 
 ## Build / test / çalıştırma  🟡 *(scaffold edilince doldurulacak)*
