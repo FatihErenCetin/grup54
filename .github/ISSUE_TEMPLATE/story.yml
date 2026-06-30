@@ -1,0 +1,45 @@
+name: 📘 Story
+description: Bir user story (kullanıcı değeri) oluştur
+title: "[Story] "
+labels: ["story"]
+body:
+  - type: textarea
+    id: story
+    attributes:
+      label: User Story
+      description: "Bir <rol> olarak <istek> istiyorum, böylece <fayda>."
+      placeholder: "Bir geliştirici olarak çakışma radarını görmek istiyorum, böylece merge çakışmasından önce uyarılırım."
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Kabul Kriteri (Definition of Done)
+      description: Bu story ne zaman "Done" sayılır?
+      value: |
+        - [ ]
+        - [ ]
+    validations:
+      required: true
+  - type: textarea
+    id: tasks
+    attributes:
+      label: Task'ler
+      description: "Story'yi parçalara böl. Büyük/ayrı izlenen task için ayrı `task` issue aç."
+      value: |
+        - [ ]
+        - [ ]
+  - type: input
+    id: points
+    attributes:
+      label: Puan (tahmin)
+      placeholder: "1 / 2 / 3 / 5 / 8"
+  - type: dropdown
+    id: sprint
+    attributes:
+      label: Sprint
+      options:
+        - Backlog
+        - Sprint 1
+        - Sprint 2
+        - Sprint 3
