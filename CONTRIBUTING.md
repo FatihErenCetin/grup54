@@ -8,6 +8,17 @@ Bu repoda **insanlar ve AI araçları** aynı git akışını izler. Bu rehber, 
 
 ---
 
+## 0. İşe başla (atanmış issue'yu devral)
+
+Yeni issue *açmıyorsan* (genelde açmazsın — backlog hazır), sana **atanmış** olanı al:
+
+1. **Bul:** `gh issue list --assignee "@me"` (veya board'da sana atalı kart).
+2. **Sahiplen:** atanmamışsa kendine ata + board'da kartı **In Progress**'e taşı.
+3. **Beyan et:** WhatsApp daily'ye *"`T-<id>`'ye başlıyorum (modül X)"* yaz **ve önce başkası aynı modüle/dosyaya dokunuyor mu bak** → **çift-branch yarışını önle.** *(`.harness` gelince bu `declare_work` olur — çakışma-radarı yaparken çakışma yaşamayalım.)*
+4. **Güncel main:** `git checkout main && git fetch origin && git merge origin/main` → sonra branch (§2).
+
+> Bitirme akışının tamamı + DONE kapısı: [`docs/gelistirme-dongusu.md`](docs/gelistirme-dongusu.md). Sıfırdan story oluşturuyorsan → §1.
+
 ## 1. Story / Issue (işin kaynağı)
 
 Her iş bir **GitHub Issue**'dan başlar — **`<id>` = issue numarası**.
