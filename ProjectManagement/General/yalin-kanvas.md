@@ -12,8 +12,8 @@
 | **HEDEF KİTLE** | Küçük, AI-destekli yazılım ekipleri; erken benimseyen: AI-forward indie/startup/hackathon |
 | **BENZERSİZ DEĞER** | Çakışmayı + kapsam kaymasını — insan & ajan için, olmadan **önce**, `.harness/` üzerinden söyler |
 | **ÇÖZÜM** | Proaktif çakışma radarı · canlı scope-drift · `.harness/` + MCP ortak bağlam |
-| **KANALLAR** | GitHub Marketplace · açık kaynak local-first · dev toplulukları · MCP ekosistemi |
-| **GELİR KAYNAKLARI** 💡 | Open-core: çekirdek ücretsiz/OSS · hosted **Team** (koltuk başı) · **Org** |
+| **KANALLAR** | GitHub Marketplace · source-available local-first · dev toplulukları · MCP ekosistemi |
+| **GELİR KAYNAKLARI** 💡 | Source-available: çekirdek noncommercial $0; open-core = gelecek opsiyonu 💡 · hosted **Team** (koltuk başı) · **Org** |
 | **MALİYET YAPISI** | LLM çıkarım (Gemini) · hosting · geliştirme — local-first maliyeti kullanıcıya kaydırır |
 | **KİLİT METRİKLER** | Önlenen çakışma · yakalanan scope-drift · **false-positive oranı** · aktif takım |
 | **REKABET AVANTAJI** | 4 parçanın kombinasyonu + git-yazılabilir `.harness/` + kalibrasyon know-how + dogfood |
@@ -53,18 +53,18 @@ AI ile herkes kendi asistanıyla (Cursor / Claude Code / Codex) kod yazınca eki
 ## KANALLAR
 
 - **GitHub App / Marketplace** — repoya tek tık dağıtım + faturalama.
-- **Açık kaynak + local-first** (`pip`/`npx`) — sıfır-kurulum deneme.
+- **Source-available + local-first** (`pip`/`npx`) — sıfır-kurulum deneme.
 - **Dev toplulukları** — HN · Reddit · X/dev · Discord/Slack; **build-in-public** (dogfood hikâyesi).
 - **AI-araç ekosistemi** — MCP server dizinleri · Cursor/Claude Code toplulukları.
 - **Bootcamp / hackathon ağları** — erken benimseyen kanalı.
 
 ## GELİR KAYNAKLARI  💡 *(hipotez — doğrulanacak)*
 
-**Model: open-core / freemium**, GitHub Marketplace üzerinden faturalama. **Değer metriği = hosted katmanda geliştirici koltuğu (seat).**
+**Model: source-available + freemium** (open-core = gelecek opsiyonu 💡), GitHub Marketplace üzerinden faturalama. **Değer metriği = hosted katmanda geliştirici koltuğu (seat).**
 
 | Katman | Ne | Fiyat (hipotez) |
 |---|---|---|
-| **Free** | local-first çekirdek (radar/scope/board), kendi makinende; BYO LLM anahtarı / yerel Ollama. OSS. | $0 (süresiz) |
+| **Free** | local-first çekirdek (radar/scope/board), kendi makinende; BYO LLM anahtarı / yerel Ollama. Source-available (noncommercial). | $0 (noncommercial) |
 | **Team** (hosted) | yönetilen hosting · gerçek-zamanlı presence/webhook · paylaşılan web pano · yönetilen çıkarım · sıfır kurulum | ≈ **$8–12 / geliştirici / ay** |
 | **Org** | SSO · gizlilik modu (Ollama/on-prem) · öncelikli destek · audit | özel |
 
