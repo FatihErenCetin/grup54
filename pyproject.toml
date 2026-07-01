@@ -1,0 +1,23 @@
+[project]
+name = "ensemble"
+version = "0.0.1"
+requires-python = ">=3.12"
+dependencies = ["ensemble-backend", "ensemble-shared", "ensemble-mcp"]
+
+[tool.uv]
+package = false
+
+[tool.uv.workspace]
+members = ["src/backend", "src/shared", "src/mcp"]
+
+[dependency-groups]
+dev = ["pytest>=8.0", "ruff>=0.6"]
+
+[tool.uv.sources]
+ensemble-backend = { workspace = true }
+ensemble-shared = { workspace = true }
+ensemble-mcp = { workspace = true }
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
