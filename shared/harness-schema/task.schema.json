@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "task.schema.json",
+  "title": "Harness task front-matter",
+  "type": "object",
+  "required": ["type", "task_id", "title", "status"],
+  "properties": {
+    "type": { "const": "task" },
+    "task_id": { "type": "string", "pattern": "^T-[0-9]+$" },
+    "title": { "type": "string", "minLength": 1 },
+    "status": { "enum": ["backlog", "todo", "in_progress", "in_review", "done"] },
+    "assignee": { "type": ["string", "null"] },
+    "branch": { "type": ["string", "null"] },
+    "paths": { "type": "array", "items": { "type": "string" } }
+  },
+  "additionalProperties": true
+}
