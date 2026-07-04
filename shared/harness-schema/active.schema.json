@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "active.schema.json",
+  "title": "Harness active declaration front-matter",
+  "type": "object",
+  "required": ["type", "handle", "task_id", "branch", "paths", "updated_at"],
+  "properties": {
+    "type": { "const": "active" },
+    "handle": { "type": "string", "pattern": "^[A-Za-z0-9_.-]+$" },
+    "task_id": { "type": "string", "pattern": "^T-[0-9]+$" },
+    "branch": { "type": "string", "minLength": 1 },
+    "module": { "type": "string" },
+    "intent": { "type": "string" },
+    "paths": { "type": "array", "items": { "type": "string" } },
+    "updated_at": { "type": "string", "minLength": 1 }
+  },
+  "additionalProperties": true
+}

@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "scope.schema.json",
+  "title": "Harness scope front-matter",
+  "type": "object",
+  "required": ["type", "sprint", "title"],
+  "properties": {
+    "type": { "const": "scope" },
+    "sprint": { "type": "string", "minLength": 1 },
+    "title": { "type": "string", "minLength": 1 },
+    "status": { "type": "string" },
+    "owner": { "type": "string" },
+    "goals": { "type": "array", "items": { "type": "string" } },
+    "non_goals": { "type": "array", "items": { "type": "string" } }
+  },
+  "additionalProperties": true
+}

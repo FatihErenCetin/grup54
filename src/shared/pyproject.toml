@@ -2,7 +2,10 @@
 name = "ensemble-shared"
 version = "0.0.1"
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "jsonschema>=4.0",
+    "PyYAML>=6.0",
+]
 
 [build-system]
 requires = ["hatchling"]

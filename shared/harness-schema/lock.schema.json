@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "lock.schema.json",
+  "title": "Harness lock front-matter",
+  "type": "object",
+  "required": ["type", "id", "owner", "paths"],
+  "properties": {
+    "type": { "const": "lock" },
+    "id": { "type": "string", "minLength": 1 },
+    "owner": { "type": "string", "minLength": 1 },
+    "paths": { "type": "array", "items": { "type": "string" } },
+    "expires_at": { "type": "string" }
+  },
+  "additionalProperties": true
+}
