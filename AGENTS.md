@@ -50,6 +50,7 @@ Ensemble *(çalışma adı)* — AI çağı yazılım ekipleri için **paylaşı
 ## Ne nereye (repo haritası)
 
 - **`docs/gelistirme-dongusu.md`** — 🟢 **atanmış issue → done TEK rehberi (+ DONE kapısı). İşe başlamadan OKU.**
+- **`docs/review-rehberi.md`** — 🟢 **PR review'ının TEK rehberi (insan + AI). Her review'dan önce OKU** (Claude Code: `/takim-review <PR no>`).
 - **`docs/sprint2-kontratlar.md`** — 🟢 bileşen girdi/çıktı (port/endpoint imzaları; paralel çalışma — **imzayı değiştirme**).
 - **`docs/kapsam-sinirlari.md`** — 🟢 local-first kapsam + **YAPMA listesi** (kapsam-dışı = tasarım gereği yok; ⚠️ user-login/OAuth tuzağı).
 - `CONTRIBUTING.md` — git akışı detayı (issue→branch→commit→PR→merge; §0 işe-başla).
