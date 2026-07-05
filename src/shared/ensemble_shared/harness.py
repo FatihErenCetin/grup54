@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import json
 import os
 import re
 import tempfile
 from dataclasses import dataclass
 from datetime import date, datetime
+from importlib import resources
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -71,7 +73,9 @@ class FileHarnessPort:
     def __init__(self, root: Path | str = ".", schema_dir: Path | str | None = None) -> None:
         self.root = Path(root)
         self.harness_dir = self.root / ".harness"
-        self.schema_dir = Path(schema_dir) if schema_dir else self.root / "shared" / "harness-schema"
+        # None = semalar PAKET verisinden yuklenir (ensemble_shared/schemas). Semalar URUNUN
+        # parcasidir, izlenen reponun degil — Ensemble baska repolari izler (bkz. #83).
+        self.schema_dir = Path(schema_dir) if schema_dir else None
         self._validators: dict[str, Draft202012Validator] = {}
 
     def read_scope(self, sprint: str) -> dict[str, Any]:
@@ -175,9 +179,16 @@ class FileHarnessPort:
 
     def _validator(self, doc_type: str) -> Draft202012Validator:
         if doc_type not in self._validators:
-            schema_path = self.schema_dir / f"{doc_type}.schema.json"
-            schema = yaml.safe_load(schema_path.read_text(encoding="utf-8"))
-            self._validators[doc_type] = Draft202012Validator(schema)
+            name = f"{doc_type}.schema.json"
+            try:
+                if self.schema_dir is not None:
+                    raw = (self.schema_dir / name).read_text(encoding="utf-8")
+                else:
+                    schemas = resources.files("ensemble_shared").joinpath("schemas")
+                    raw = schemas.joinpath(name).read_text(encoding="utf-8")
+            except FileNotFoundError as exc:
+                raise HarnessError(f"Harness schema not found: {name}") from exc
+            self._validators[doc_type] = Draft202012Validator(json.loads(raw))
         return self._validators[doc_type]
 
     def _to_markdown(self, frontmatter: dict[str, Any], body: str) -> str:
