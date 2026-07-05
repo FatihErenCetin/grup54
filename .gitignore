@@ -2,6 +2,8 @@
 .env
 .env.local
 .env.*.local
+*.pem
+*.key
 
 # === Özel ekip dokümanları — public repo'ya GİTMEZ ===
 # Strateji/planlama yalnızca ekip + AI içindir; manuel paylaşılır (bundle: internal/ + CLAUDE.local.md + OKU.md).
