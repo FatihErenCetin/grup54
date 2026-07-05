@@ -10,7 +10,7 @@
 4. **GELİŞTİR.** Kontrat imzasını **DEĞİŞTİRME** (başkasının stub'ını kırarsın; gerekiyorsa önce `docs/`'a PR + daily'de duyur). Kapsam-dışına **çıkma**. Çekirdekse (çakışma/scope-drift) eval'siz "done" deme.
 5. **COMMIT.** Conventional-lite (`feat:/fix:/docs:`), küçük, **kendi git kimliğin** (Co-Authored-By YOK). → [CONTRIBUTING §3](../CONTRIBUTING.md)
 6. **DAILY.** Günün sonunda WhatsApp daily (dün/bugün/blocker) + kanıt → [`ProjectManagement/README.md`](../ProjectManagement/README.md).
-7. **PR.** `Closes #<id>` + ne/neden + (UI ise) görsel. **≥1 review** → **merge commit** → branch otomatik silinir. → [CONTRIBUTING §4](../CONTRIBUTING.md)
+7. **PR.** `Closes #<id>` + ne/neden + (UI ise) görsel. **≥1 review** ([`review-rehberi.md`](review-rehberi.md)'ne göre) → **merge commit** → branch otomatik silinir. → [CONTRIBUTING §4](../CONTRIBUTING.md)
 
 ## ✅ DONE kapısı — hepsi sağlanmadan "bitti" deme
 
