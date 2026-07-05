@@ -84,6 +84,7 @@ class JudgePort(Protocol):              # impl: #17/#24 (Gemini) · fake: kural-
 
 class HarnessPort(Protocol):            # impl: #13 (GATE 1)
     def read_scope(self, sprint: str) -> dict: ...
+    def read_tasks(self) -> list[dict]: ...      # board'ın tek kaynağı (#13 ile eklendi)
     def read_active(self) -> list[dict]: ...
     def write_active(self, handle: str, decl: dict) -> None: ...   # yazar başına 1 dosya
 ```
