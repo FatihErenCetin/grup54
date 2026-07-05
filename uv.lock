@@ -105,6 +105,7 @@ name = "ensemble-backend"
 version = "0.0.1"
 source = { editable = "src/backend" }
 dependencies = [
+    { name = "ensemble-shared" },
     { name = "fastapi" },
     { name = "pydantic" },
     { name = "pydantic-settings" },
@@ -113,6 +114,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
+    { name = "ensemble-shared", editable = "src/shared" },
     { name = "fastapi", specifier = ">=0.115" },
     { name = "pydantic", specifier = ">=2.7" },
     { name = "pydantic-settings", specifier = ">=2.4" },
