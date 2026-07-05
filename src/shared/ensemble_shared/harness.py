@@ -4,6 +4,7 @@ import os
 import re
 import tempfile
 from dataclasses import dataclass
+from datetime import date, datetime
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -35,6 +36,17 @@ class HarnessValidationError(HarnessError, ValueError):
 _SAFE_HANDLE = re.compile(r"^[A-Za-z0-9_.-]+$")
 
 
+def _coerce_dates(value: Any) -> Any:
+    """YAML'in tirnaksiz ISO tarihleri datetime'a cevirmesini geri al (semalar string bekler)."""
+    if isinstance(value, (datetime, date)):
+        return value.isoformat()
+    if isinstance(value, list):
+        return [_coerce_dates(item) for item in value]
+    if isinstance(value, dict):
+        return {key: _coerce_dates(item) for key, item in value.items()}
+    return value
+
+
 @dataclass(frozen=True)
 class HarnessMarkdown:
     path: Path
@@ -64,6 +76,8 @@ class FileHarnessPort:
 
     def read_scope(self, sprint: str) -> dict[str, Any]:
         """Read one scope document from .harness/scope/."""
+        if not _SAFE_HANDLE.fullmatch(sprint):
+            raise HarnessValidationError(f"Unsafe sprint id: {sprint!r}")
         path = self._scope_path(sprint)
         return self._read_markdown(path, "scope").as_dict(self.root)
 
@@ -115,7 +129,7 @@ class FileHarnessPort:
 
     def _read_markdown(self, path: Path, expected_type: str) -> HarnessMarkdown:
         try:
-            text = path.read_text(encoding="utf-8")
+            text = path.read_text(encoding="utf-8-sig")
         except FileNotFoundError as exc:
             raise HarnessError(f"Harness file not found: {path}") from exc
 
@@ -125,12 +139,12 @@ class FileHarnessPort:
 
     def _parse_frontmatter(self, text: str, path: Path) -> tuple[dict[str, Any], str]:
         lines = text.splitlines()
-        if not lines or lines[0].strip() != "---":
+        if not lines or lines[0] != "---":
             raise HarnessValidationError(f"Missing front-matter delimiter in {path}")
 
         end_index = None
         for index, line in enumerate(lines[1:], start=1):
-            if line.strip() == "---":
+            if line == "---":  # kolon-0 tam eslesme — block scalar icindeki girintili '---' kapanis sayilmaz
                 end_index = index
                 break
 
@@ -141,6 +155,7 @@ class FileHarnessPort:
         parsed = yaml.safe_load(raw_frontmatter) or {}
         if not isinstance(parsed, dict):
             raise HarnessValidationError(f"Front-matter must be an object in {path}")
+        parsed = _coerce_dates(parsed)
 
         body = "\n".join(lines[end_index + 1 :]).lstrip("\n")
         return parsed, body
