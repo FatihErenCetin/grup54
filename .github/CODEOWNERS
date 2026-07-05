@@ -1,0 +1,3 @@
+# Varsayılan review yönlendirme — PO otomatik reviewer olarak istenir.
+# (Task sahipliği self-select'tir; CODEOWNERS yalnızca default reviewer atar. PR'ı açan kişiden review istenmez.)
+* @FatihErenCetin
