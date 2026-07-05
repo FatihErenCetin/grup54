@@ -21,6 +21,7 @@ venv/
 .mypy_cache/
 *.faiss
 *.sqlite3
+*.tmp
 
 # === Node / frontend ===
 node_modules/

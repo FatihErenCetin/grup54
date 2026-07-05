@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import json
 import os
 import re
 import tempfile
 from dataclasses import dataclass
+from datetime import date, datetime
+from importlib import resources
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -35,6 +38,17 @@ class HarnessValidationError(HarnessError, ValueError):
 _SAFE_HANDLE = re.compile(r"^[A-Za-z0-9_.-]+$")
 
 
+def _coerce_dates(value: Any) -> Any:
+    """YAML'in tirnaksiz ISO tarihleri datetime'a cevirmesini geri al (semalar string bekler)."""
+    if isinstance(value, (datetime, date)):
+        return value.isoformat()
+    if isinstance(value, list):
+        return [_coerce_dates(item) for item in value]
+    if isinstance(value, dict):
+        return {key: _coerce_dates(item) for key, item in value.items()}
+    return value
+
+
 @dataclass(frozen=True)
 class HarnessMarkdown:
     path: Path
@@ -59,11 +73,15 @@ class FileHarnessPort:
     def __init__(self, root: Path | str = ".", schema_dir: Path | str | None = None) -> None:
         self.root = Path(root)
         self.harness_dir = self.root / ".harness"
-        self.schema_dir = Path(schema_dir) if schema_dir else self.root / "shared" / "harness-schema"
+        # None = semalar PAKET verisinden yuklenir (ensemble_shared/schemas). Semalar URUNUN
+        # parcasidir, izlenen reponun degil — Ensemble baska repolari izler (bkz. #83).
+        self.schema_dir = Path(schema_dir) if schema_dir else None
         self._validators: dict[str, Draft202012Validator] = {}
 
     def read_scope(self, sprint: str) -> dict[str, Any]:
         """Read one scope document from .harness/scope/."""
+        if not _SAFE_HANDLE.fullmatch(sprint):
+            raise HarnessValidationError(f"Unsafe sprint id: {sprint!r}")
         path = self._scope_path(sprint)
         return self._read_markdown(path, "scope").as_dict(self.root)
 
@@ -115,7 +133,7 @@ class FileHarnessPort:
 
     def _read_markdown(self, path: Path, expected_type: str) -> HarnessMarkdown:
         try:
-            text = path.read_text(encoding="utf-8")
+            text = path.read_text(encoding="utf-8-sig")
         except FileNotFoundError as exc:
             raise HarnessError(f"Harness file not found: {path}") from exc
 
@@ -125,12 +143,12 @@ class FileHarnessPort:
 
     def _parse_frontmatter(self, text: str, path: Path) -> tuple[dict[str, Any], str]:
         lines = text.splitlines()
-        if not lines or lines[0].strip() != "---":
+        if not lines or lines[0] != "---":
             raise HarnessValidationError(f"Missing front-matter delimiter in {path}")
 
         end_index = None
         for index, line in enumerate(lines[1:], start=1):
-            if line.strip() == "---":
+            if line == "---":  # kolon-0 tam eslesme — block scalar icindeki girintili '---' kapanis sayilmaz
                 end_index = index
                 break
 
@@ -141,6 +159,7 @@ class FileHarnessPort:
         parsed = yaml.safe_load(raw_frontmatter) or {}
         if not isinstance(parsed, dict):
             raise HarnessValidationError(f"Front-matter must be an object in {path}")
+        parsed = _coerce_dates(parsed)
 
         body = "\n".join(lines[end_index + 1 :]).lstrip("\n")
         return parsed, body
@@ -160,9 +179,16 @@ class FileHarnessPort:
 
     def _validator(self, doc_type: str) -> Draft202012Validator:
         if doc_type not in self._validators:
-            schema_path = self.schema_dir / f"{doc_type}.schema.json"
-            schema = yaml.safe_load(schema_path.read_text(encoding="utf-8"))
-            self._validators[doc_type] = Draft202012Validator(schema)
+            name = f"{doc_type}.schema.json"
+            try:
+                if self.schema_dir is not None:
+                    raw = (self.schema_dir / name).read_text(encoding="utf-8")
+                else:
+                    schemas = resources.files("ensemble_shared").joinpath("schemas")
+                    raw = schemas.joinpath(name).read_text(encoding="utf-8")
+            except FileNotFoundError as exc:
+                raise HarnessError(f"Harness schema not found: {name}") from exc
+            self._validators[doc_type] = Draft202012Validator(json.loads(raw))
         return self._validators[doc_type]
 
     def _to_markdown(self, frontmatter: dict[str, Any], body: str) -> str:

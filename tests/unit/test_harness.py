@@ -1,12 +1,12 @@
+import json
+from importlib import resources
 from pathlib import Path
 from textwrap import dedent
 
 import pytest
+from jsonschema import Draft202012Validator
 
 from ensemble_shared.harness import FileHarnessPort, HarnessError, HarnessValidationError
-
-
-SCHEMA_DIR = Path(__file__).parents[2] / "shared" / "harness-schema"
 
 
 def write_md(path: Path, frontmatter: str, body: str = "") -> None:
@@ -25,9 +25,7 @@ def test_read_scope_validates_frontmatter(tmp_path: Path):
         "Only harness IO is in scope.\n",
     )
 
-    port = FileHarnessPort(tmp_path, schema_dir=SCHEMA_DIR)
-
-    scope = port.read_scope("2")
+    scope = FileHarnessPort(tmp_path).read_scope("2")
     assert scope["title"] == "Sprint 2 scope"
     assert scope["body"] == "Only harness IO is in scope."
     assert scope["path"] == ".harness/scope/sprint-2.md"
@@ -47,9 +45,7 @@ def test_read_tasks_validates_task_frontmatter(tmp_path: Path):
         """,
     )
 
-    port = FileHarnessPort(tmp_path, schema_dir=SCHEMA_DIR)
-
-    tasks = port.read_tasks()
+    tasks = FileHarnessPort(tmp_path).read_tasks()
     assert len(tasks) == 1
     assert tasks[0]["task_id"] == "T-13"
     assert tasks[0]["paths"] == ["src/shared/ensemble_shared/harness.py"]
@@ -69,9 +65,7 @@ def test_read_active_validates_active_frontmatter(tmp_path: Path):
         """,
     )
 
-    port = FileHarnessPort(tmp_path, schema_dir=SCHEMA_DIR)
-
-    active = port.read_active()
+    active = FileHarnessPort(tmp_path).read_active()
     assert len(active) == 1
     assert active[0]["handle"] == "asmarufoglu"
     assert active[0]["task_id"] == "T-13"
@@ -89,14 +83,12 @@ def test_invalid_frontmatter_raises_validation_error(tmp_path: Path):
         """,
     )
 
-    port = FileHarnessPort(tmp_path, schema_dir=SCHEMA_DIR)
-
     with pytest.raises(HarnessValidationError, match="task_id"):
-        port.read_active()
+        FileHarnessPort(tmp_path).read_active()
 
 
 def test_write_active_creates_one_atomic_file_per_handle(tmp_path: Path):
-    port = FileHarnessPort(tmp_path, schema_dir=SCHEMA_DIR)
+    port = FileHarnessPort(tmp_path)
 
     port.write_active(
         "asmarufoglu",
@@ -115,7 +107,7 @@ def test_write_active_creates_one_atomic_file_per_handle(tmp_path: Path):
             "branch": "T-13-harness-port-v2",
             "paths": [
                 "src/shared/ensemble_shared/harness.py",
-                "shared/harness-schema/active.schema.json",
+                "src/shared/ensemble_shared/schemas/active.schema.json",
             ],
             "updated_at": "2026-07-03T12:05:00+03:00",
         },
@@ -130,14 +122,79 @@ def test_write_active_creates_one_atomic_file_per_handle(tmp_path: Path):
 
 
 def test_rejects_unsafe_active_handle(tmp_path: Path):
-    port = FileHarnessPort(tmp_path, schema_dir=SCHEMA_DIR)
-
     with pytest.raises(HarnessValidationError, match="Unsafe active handle"):
-        port.write_active("../enes", {})
+        FileHarnessPort(tmp_path).write_active("../enes", {})
 
 
 def test_read_scope_missing_file_raises_harness_error(tmp_path: Path):
-    port = FileHarnessPort(tmp_path, schema_dir=SCHEMA_DIR)
-
     with pytest.raises(HarnessError, match="Harness file not found"):
-        port.read_scope("2")
+        FileHarnessPort(tmp_path).read_scope("2")
+
+
+# --- #83 sertleştirme testleri ---
+
+
+def test_read_scope_rejects_unsafe_sprint(tmp_path: Path):
+    with pytest.raises(HarnessValidationError, match="Unsafe sprint id"):
+        FileHarnessPort(tmp_path).read_scope("../../etc/passwd")
+
+
+def test_frontmatter_block_scalar_with_dashes_is_parsed(tmp_path: Path):
+    write_md(
+        tmp_path / ".harness/active/fatih.md",
+        """
+        type: active
+        handle: fatih
+        task_id: T-83
+        branch: T-83-harness-io-sertlestirme
+        paths: []
+        updated_at: "2026-07-05T12:00:00+03:00"
+        intent: |
+          plan:
+          ---
+          devam ediyor
+        """,
+    )
+
+    active = FileHarnessPort(tmp_path).read_active()
+    assert "---" in active[0]["intent"]
+
+
+def test_unquoted_iso_datetime_is_coerced_to_string(tmp_path: Path):
+    write_md(
+        tmp_path / ".harness/active/fatih.md",
+        """
+        type: active
+        handle: fatih
+        task_id: T-83
+        branch: T-83-harness-io-sertlestirme
+        paths: []
+        updated_at: 2026-07-05T12:00:00
+        """,
+    )
+
+    active = FileHarnessPort(tmp_path).read_active()
+    assert active[0]["updated_at"] == "2026-07-05T12:00:00"
+
+
+def test_utf8_bom_file_is_accepted(tmp_path: Path):
+    path = tmp_path / ".harness/tasks/T-1.md"
+    path.parent.mkdir(parents=True)
+    content = "---\ntype: task\ntask_id: T-1\ntitle: x\nstatus: todo\n---\n"
+    path.write_bytes(b"\xef\xbb\xbf" + content.encode("utf-8"))
+
+    assert FileHarnessPort(tmp_path).read_tasks()[0]["task_id"] == "T-1"
+
+
+def test_all_packaged_schemas_are_valid_jsonschema():
+    schemas = resources.files("ensemble_shared").joinpath("schemas")
+    names = sorted(p.name for p in schemas.iterdir() if p.name.endswith(".schema.json"))
+    assert names == [
+        "active.schema.json",
+        "decision.schema.json",
+        "lock.schema.json",
+        "scope.schema.json",
+        "task.schema.json",
+    ]
+    for name in names:
+        Draft202012Validator.check_schema(json.loads(schemas.joinpath(name).read_text(encoding="utf-8")))
