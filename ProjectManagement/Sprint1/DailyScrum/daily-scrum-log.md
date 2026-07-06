@@ -1,7 +1,7 @@
 # Daily Scrum Log — Sprint 1 (19 Haziran – 5 Temmuz 2026)
 
 > Bootcamp: takımlar **12 Haziran**'da açıklandı; **Sprint 1, 19 Haziran**'da başladı. Bu log sprint penceresinin tamamını kapsar.
-> **Platform:** ilk hafta **Slack** (danışman dahil grup), sonrasında ekip-içi **WhatsApp** (22:00 async — D-15 kararı). Görsel kanıtlar bu klasörde (`daily-*.png`) ve `../Meetings/` klasöründedir.
+> **Platform:** **Slack** (danışman dahil grup) + ekip-içi **WhatsApp** — ikisi birden, **yazılı async, sabit saat yok**. Görsel kanıtlar bu klasörde (`daily-*.png`) ve `../Meetings/` klasöründedir.
 > AI bu tabloyu mesaj/toplantı/PR kayıtlarından taslakladı; **SM doğrular** (D-14). `[SM doğrula]` işaretli hücreler teyit bekler.
 
 | Tarih | Öne çıkanlar (dün/bugün) | Blocker/Karar | Kanıt |
