@@ -179,30 +179,17 @@ Story bazında tahmini puan **sprint hedefinin yarısını geçmeyecek** şekild
 
 - **Daily Scrum**:
 
-> 📁 Günlük kanıt görselleri + tam kronik tablo: [`ProjectManagement/Sprint1/DailyScrum/`](ProjectManagement/Sprint1/DailyScrum/) — [`daily-scrum-log.md`](ProjectManagement/Sprint1/DailyScrum/daily-scrum-log.md) (19 Haz → 5 Tem, kanıt sütunuyla).
-
 Daily scrum'lar **WhatsApp ve Slack** üzerinden **yazılı (async)** yürütülür — **sabit bir saat yoktur**; geliştirme yapılan gün her üye *dün / bugün / blocker* paylaşır.
-
-- Dün ne yaptım?
-- Bugün ne yapacağım?
-- Önümde engel (blocker) var mı?
 
 **Cadence:** yazılı async — WhatsApp + Slack; yalnızca geliştirme yapılan günlerde.
 
 > **Not:** Ritim iki platformda birden sürer (danışman-dahil Slack + ekip-içi WhatsApp) — ikisi de kanıt olarak toplanır.
 
-**Kanıt:** Daily scrum ekran görüntüleri ve günlük loglar → `ProjectManagement/Sprint1/DailyScrum/`
-
-| Tarih | Öne çıkan başlık | Engel/Karar | Kanıt |
-|---|---|---|---|
-| <!-- SM: tarih --> | <!-- SM: günün özeti --> | <!-- SM: blocker/karar --> | `DailyScrum/daily-YYYY-MM-DD.png` [SM doğrula] |
-
-<!-- SM: Yukarıdaki tabloyu geliştirme yapılan her gün için doldur. Her satır bir güne karşılık gelir; kanıt dosya adlarını ASCII + ISO tarihli tut (örn. daily-2026-06-24.png). -->
+**Kanıt:** Daily scrum ekran görüntüleri ve günlük loglar → [`daily-scrum-log.md`](ProjectManagement/Sprint1/DailyScrum/daily-scrum-log.md) *(19 Haz → 5 Tem tam kronik, kanıt sütunuyla)* · görüntüler: [22–23 Haz — Slack](ProjectManagement/Sprint1/DailyScrum/daily-2026-06-22-slack.png) · [23 Haz](ProjectManagement/Sprint1/DailyScrum/daily-2026-06-23.png) · [28 Haz](ProjectManagement/Sprint1/DailyScrum/daily-2026-06-28.png) · [3 Tem](ProjectManagement/Sprint1/DailyScrum/daily-2026-07-03.png) · [📁 tüm klasör](ProjectManagement/Sprint1/DailyScrum/)
 
 **Doğrulanacaklar [SM doğrula]:**
 - Geliştirme yapılan günlerin tam listesi ve her birinin ekran görüntüsü `DailyScrum/` altına commit'lendi mi?
 - Görüntülerdeki saat damgaları async (sabit saat yok) ritmiyle tutarlı mı?
-- Sprint 1 içinde WhatsApp'tan Slack'e geçiş gerçekleşti mi, yoksa tümüyle WhatsApp'ta mı kaldı? (Üstteki not buna göre netleştirilecek.)
 
 ---
 
