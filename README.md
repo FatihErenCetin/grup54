@@ -64,16 +64,28 @@ Bir ekip hızlandıkça — özellikle herkes kendi AI asistanıyla kod yazarken
 
 ## 🧠 Mimari & Yapay Zeka
 
-Ensemble, **insanların** (web pano) ve **her üyenin AI aracının** aynı paylaşılan bağlamı görmesi için tasarlandı. Yapay zekâ, bir süs değil ürünün karar katmanı:
+Ensemble, **insanların** (web pano) ve **her üyenin AI aracının** aynı paylaşılan bağlamı görmesi için tasarlandı. Yapay zekâ bir süs değil, ürünün karar katmanı. İki katman var — karıştırmamak için ayrı tablolar:
+
+**1) İlk prototip — [`harness-dashboard/`](harness-dashboard/)** *(tek-dosya HTML; canlı GitHub verisiyle bugün çalışıyor — vizyonun kanıtı)*
 
 | Yetenek | Durum |
 |---|---|
-| **Beyne sor** — kurallı mod (anahtarsız, gerçek repo verisinden) | 🟢 çalışıyor |
-| **Beyne sor** — AI modu (LLM ile serbest doğal dil yanıtı) | 🟢 çalışıyor (opsiyonel anahtar) |
-| Çakışma radarı — dosya-kesişimi tespiti | 🟢 çalışıyor |
-| **Semantik çakışma + scope-drift** — embeddings + Gemini **"judge"** karar katmanı + eşik kalibrasyonu | 🟡 tasarlandı (sonraki sürüm) |
-| **MCP arayüzü** — AI araçları (Cursor/Claude Code) ortak bağlamı okur/yazar | 🟡 tasarlandı |
-| **`.harness/`** — git-senkron, kanonik ortak bağlam (repoya yazma) | 🟡 tasarlandı |
+| Çakışma radarı — **dosya-kesişimi** tespiti | 🟢 prototipte çalışıyor |
+| Kendiliğinden dolan board + kapsam bekçisi | 🟢 prototipte çalışıyor |
+| Beyne sor — kurallı mod (anahtarsız) | 🟢 prototipte çalışıyor |
+| Beyne sor — AI modu (opsiyonel anahtar) | 🟢 prototipte çalışıyor |
+
+**2) Ensemble motoru — hedef mimari** *(Sprint 1'de iskelet kuruldu; zekâ Sprint 2'de doluyor)*
+
+| Bileşen | Durum |
+|---|---|
+| FastAPI engine iskeleti — `/health` · `/radar` · `/scope` · `/board` · `/query` endpoint'leri + port/adapter katmanı | 🟢 iskelet çalışıyor (22 test, CI) — **iş mantığı henüz yok, S2'de** |
+| `.harness/` IO — `HarnessPort` (şema doğrulamalı okuma/yazma) | 🟢 çalışıyor |
+| **Semantik çakışma + scope-drift** — embeddings + Gemini **"judge"** + eşik kalibrasyonu/eval | 🔨 Sprint 2 (geliştiriliyor — ürünün kalbi) |
+| GitHub ingest — App auth + polling | 🔨 Sprint 2 |
+| React web pano (Radar · Board · Ask) | 🔨 Sprint 2 |
+| **MCP arayüzü** — AI araçları ortak bağlamı okur/yazar | 🟡 Sprint 3 |
+| Hosted demo (+ long-reach: üyelik) | 🟡 Sprint 3 |
 
 Hedeflenen motor: **Python + FastAPI** (engine) · **Gemini** (embeddings + judge) · **MCP server** · **GitHub App** (webhook). Çalışma modu local-first; demo için tek hosted örnek.
 
