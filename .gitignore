@@ -34,3 +34,6 @@ dist/
 .idea/
 .vscode/
 .gstack/
+
+# Frontend build artıkları (#19)
+*.tsbuildinfo

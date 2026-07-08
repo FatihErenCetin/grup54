@@ -1,0 +1,76 @@
+@import "tailwindcss";
+
+/* ─────────────────────────────────────────────────────────────
+   Ensemble design token'ları — TEK DOĞRULUK KAYNAĞI (D-34).
+   Kural: bileşenlere hex YAZILMAZ; yalnız bu adlar kullanılır.
+   Pencil tasarım dosyasındaki değişken adları bu adlarla birebir
+   aynıdır (tasarım ↔ kod drift'i sıfır).
+   Varsayılan tema: DARK (:root) · light: <html class="light">.
+   ───────────────────────────────────────────────────────────── */
+
+:root {
+  /* zemin/yüzeyler — saf siyah değil (Linear tarzı tonlu nötr) */
+  --background: oklch(0.16 0.005 260);
+  --foreground: oklch(0.93 0.005 260);
+  --card: oklch(0.2 0.006 260);
+  --card-foreground: var(--foreground);
+  --muted: oklch(0.25 0.006 260);
+  --muted-foreground: oklch(0.68 0.008 260);
+  --border: oklch(0.29 0.008 260);
+
+  /* marka aksanı — indigo ("orkestrasyon" kimliği, D-34) */
+  --primary: oklch(0.62 0.19 275);
+  --primary-foreground: oklch(0.98 0.005 275);
+
+  /* severity — low GRİ (yeşil yalnız done'a saklanır) */
+  --severity-high: oklch(0.58 0.21 25);
+  --severity-med: oklch(0.75 0.15 75);
+  --severity-low: oklch(0.6 0.01 260);
+
+  /* board status — 5 durum (şekil+renk çift kanal; renk tek başına anlam taşımaz) */
+  --status-backlog: oklch(0.55 0.01 260);
+  --status-todo: oklch(0.68 0.008 260);
+  --status-in-progress: oklch(0.75 0.15 75);
+  --status-in-review: oklch(0.62 0.19 275);
+  --status-done: oklch(0.64 0.14 150);
+}
+
+.light {
+  --background: oklch(0.985 0.002 260);
+  --foreground: oklch(0.2 0.006 260);
+  --card: oklch(1 0 0);
+  --muted: oklch(0.94 0.004 260);
+  --muted-foreground: oklch(0.45 0.01 260);
+  --border: oklch(0.88 0.005 260);
+  --primary: oklch(0.55 0.19 275);
+  --severity-low: oklch(0.5 0.01 260);
+  --status-backlog: oklch(0.6 0.01 260);
+  --status-todo: oklch(0.5 0.008 260);
+}
+
+/* token'ları Tailwind utility'lerine köprüle (bg-background, text-severity-high …) */
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-border: var(--border);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-severity-high: var(--severity-high);
+  --color-severity-med: var(--severity-med);
+  --color-severity-low: var(--severity-low);
+  --color-status-backlog: var(--status-backlog);
+  --color-status-todo: var(--status-todo);
+  --color-status-in-progress: var(--status-in-progress);
+  --color-status-in-review: var(--status-in-review);
+  --color-status-done: var(--status-done);
+}
+
+body {
+  background-color: var(--background);
+  color: var(--foreground);
+  font-feature-settings: "tnum"; /* sayılar hizalı (feed/tablo yoğunluğu) */
+}
