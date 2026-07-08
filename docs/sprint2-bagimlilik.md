@@ -1,6 +1,6 @@
 # Sprint 2 — Bağımlılık Haritası & Yürütme Sırası
 
-> **Amaç:** Kim neyi **şimdi** başlatabilir, ne neyi bekler — tek bakışta. Kaynak: issue gövdeleri + `docs/sprint2-kontratlar.md`. Kanonik durum GitHub'dadır; bu doküman *sıralama rehberi*dir (8 Tem 2026).
+> **Amaç:** Kim neyi **şimdi** başlatabilir, ne neyi bekler — tek bakışta. Kaynak: issue gövdeleri + `docs/sprint2-kontratlar.md`. Kanonik durum GitHub'dadır; bu doküman *sıralama rehberi*dir (8 Tem 2026 — tüm issue'lar atanmış hâliyle).
 > **Okuma:** düz ok `A --> B` = *B, A bitmeden canlıya çıkamaz* · kesik ok `A -.-> B` = *yumuşak bağımlılık: B mock/fixture ile beklemeden başlar, canlı için A gerekir* (kontrat-önce ilkesi, D-22).
 
 ## 1. Görsel harita (GitHub bu diyagramı render eder)
@@ -11,13 +11,11 @@ graph LR
   classDef esma fill:#9d5bde,color:#fff,stroke:#6b2fb7
   classDef enes fill:#2e9e6b,color:#fff,stroke:#1d6b47
   classDef fatih fill:#de8f3c,color:#fff,stroke:#a8641d
-  classDef sahipsiz fill:#c0392b,color:#fff,stroke:#7d2318,stroke-dasharray: 5 4
-  classDef done fill:#57606a,color:#fff
 
-  subgraph GUN1["🔴 GÜN-1 (sahipsiz — bugün sahip bulmalı)"]
-    I46["#46 🔑 App kaydı ~30dk"]:::sahipsiz
-    I45["#45 ⚠️ CORS"]:::sahipsiz
-    I50["#50 Gemini adapter + FAKE"]:::sahipsiz
+  subgraph GUN1["🔴 GÜN-1 blocker'ları (bugün yapılmalı)"]
+    I46["#46 🔑 App kaydı ~30dk"]:::esma
+    I45["#45 ⚠️ CORS"]:::fatih
+    I50["#50 Gemini adapter + FAKE"]:::esma
   end
 
   subgraph AI["🧠 AI çekirdek"]
@@ -39,9 +37,9 @@ graph LR
 
   subgraph VERI["🔌 Veri"]
     I16["#16 GitHub ingest"]:::esma
-    I49["#49 Backfill"]:::sahipsiz
+    I49["#49 Backfill"]:::semih
     I41["#41 Projeksiyon DB"]:::enes
-    I47["#47 Projeksiyon yazıcı"]:::sahipsiz
+    I47["#47 Projeksiyon yazıcı"]:::enes
   end
 
   subgraph WEB["🖥️ Web"]
@@ -52,7 +50,7 @@ graph LR
   end
 
   subgraph DIGER["🛡️ Diğer"]
-    I54["#54 Error envelope"]:::sahipsiz
+    I54["#54 Error envelope"]:::fatih
     I106["#106 Ek A docs — PR #107 REVIEW BEKLİYOR"]:::enes
   end
 
@@ -82,37 +80,34 @@ graph LR
   I45 -.->|tarayıcıdan canlı| I21
 ```
 
-Renk = sahip: 🔵 Semih · 🟣 Esma · 🟢 Enes · 🟠 Fatih · 🔴 **SAHİPSİZ** (kesikli çerçeve)
+Renk = sahip: 🔵 Semih · 🟣 Esma · 🟢 Enes · 🟠 Fatih
 
 ## 2. Dalgalar — ne zaman ne başlar
 
 | Dalga | Issue'lar | Not |
 |---|---|---|
-| **D0 — ŞİMDİ, tamamen paralel** | #46🔑 #45⚠️ #50 (sahipsiz!) · #19 #20 (Fatih) · #22 #15 (Semih) · #16* #26 #25-stub (Esma) · #41 #106→PR107 (Enes) · #27-iskelet (Fatih) · #54 | *#16 fixture'la şimdi başlar; **canlı** auth için #46 şart. #25 router stub'ı kontrattan şimdi yazılır → #21 buna karşı geliştirir |
-| **D1 — D0 çıktılarıyla** | #23 (←15+22) · #24 (←50) · #21 (←19+20, mock) · #49 (←16) · #47 (←41+16) | #24, #50 sahiplenilmezse BAŞLAYAMAZ — zincirleme gecikme |
-| **D2 — hafta-1 sonu hedefi** | #17⭐ (←22+23+24) · #28 (←26+27+17) | #17 = yürüyen iskeletin kalbi; buraya D8-D9'da varmalıyız |
-| **D3 — hafta-2** | #29 (←28) · #25-canlı (←17) · #21-canlı (←25+45) · #30 (←28) | |
-| **D4 — sprint kapanış** | #18⭐ (←26..29) | DoD kapısı: eval yeşil değilse "kusursuz radar" iddiası yok |
+| **D0 — ŞİMDİ, tamamen paralel** | Esma: **#46🔑 → #50** → #16* + #26 · Fatih: **#45⚠️** + #19 + #20 (+#54 ara işi) · Semih: #22 + #15 · Enes: #106→PR107 merge + #41 · Fatih: #27-iskelet · Esma: #25-stub | *#16 fixture'la şimdi başlar; **canlı** auth için #46 şart. #25 router stub'ı kontrattan şimdi yazılır → #21 buna karşı geliştirir |
+| **D1 — D0 çıktılarıyla** | #23 (←15+22, Semih) · #24 (←50, Esma) · #21 (←19+20, mock, Fatih) · #49 (←16, Semih) · #47 (←41+16, Enes) | #24'ün önü Esma'nın kendi #50'sine bağlı → #50'yi öne alması kendi kuyruğunu açar |
+| **D2 — hafta-1 sonu hedefi** | #17⭐ (←22+23+24, Semih) · #28 (←26+27+17, Enes) | #17 = yürüyen iskeletin kalbi; buraya D8-D9'da varmalıyız |
+| **D3 — hafta-2** | #29 (←28, Enes) · #25-canlı (←17, Esma) · #21-canlı (←25+45, Fatih) · #30 (←28, Enes) | |
+| **D4 — sprint kapanış** | #18⭐ (←26..29, Esma) | DoD kapısı: eval yeşil değilse "kusursuz radar" iddiası yok |
 
 ## 3. Kişi bazlı sıra (herkesin kendi kuyruğu)
 
 | Kişi | Sıra (→ = sonra) | Bekleme notu |
 |---|---|---|
-| **Semih** | #22 → #15 → #23 → **#17⭐** | Hepsi zincir — Semih kritik yolun sahibi. #15'te gerçek Gemini çağrısı için #50'yi bekleme: fixture'la ilerle |
-| **Esma** | #16 + #26 (paralel) → #25-stub → #24 → **#18⭐** | #16 canlı için #46'ya, #24 için #50'ye muhtaç — ikisi de sahipsiz! 5 issue = en yüklü kuyruk; #25-stub'ı öne al ki Fatih beklemesin |
-| **Enes** | #106 (PR #107 bugün merge) → #41 → #28 → #29 → #30 | #28'e kadar boşluk olabilir → sahipsiz #50 veya #46 için en uygun aday (kendi seçimi) |
-| **Fatih** | #19 → #20 → #21 (mock) → #27 | #21 canlı görüntü için #45+#25 gerek; mock'la sonuna kadar gidilir |
+| **Semih** | #22 → #15 → #23 → #49 (kısa, #16 inince) → **#17⭐** | Kritik yolun sahibi — hiç boş kalmaz. #15'te gerçek Gemini çağrısı için #50'yi bekleme: fixture'la ilerle. #49, #23→#17 arasındaki doğal boşluğa oturur |
+| **Esma** | **#46 (BUGÜN, ~30 dk)** → **#50** → #16 + #26 (paralel) → #25-stub → #24 → **#18⭐** | ⚠️ **En yüklü kuyruk (7 issue)** ve sprint'in iki ucunda kritik iş (#46 gün-1, #18 kapanış). #46+#50'yi ilk iki günde bitirmek hem kendi #24'ünü hem Semih/Enes'in eval determinizmini açar. Yük ağırlaşırsa #25-stub veya #26 devredilebilir (ekip kararı) |
+| **Enes** | #106 (PR #107 bugün merge) → #41 → #47 (←41+16) → #28 → #29 → #30 | #47 araya girince #28'e kadar boşluk kalmadı — akış tam |
+| **Fatih** | **#45 (BUGÜN, küçük)** → #19 → #20 → #21 (mock) → #27 → #54 (ara işi) | #21 canlı görüntü için #25+#45 gerek; mock'la sonuna kadar gidilir. #54 küçük — boşluğa gelir |
 
-## 4. 🔴 Sahipsiz 6 issue — bugün çözülmeli
+## 4. 🔴 Gün-1 blocker'ları — sahipli, ama saat işliyor
 
-| Issue | Aciliyet | Neden |
-|---|---|---|
-| **#46** 🔑 App kaydı | **BUGÜN** (~30 dk, tarayıcı işi) | #16'nın canlı auth'u ölü; ilk gün yapılmazsa veri şeridi kayar |
-| **#45** ⚠️ CORS | **BUGÜN** (küçük) | Yapılmazsa tarayıcı TÜM API çağrılarını bloklar; Fatih hafta-2'de duvara toslar |
-| **#50** Gemini adapter+fake | **Bu hafta erken** | #24 judge başlayamaz; #26-30 eval fake'siz flaky = DoD kanıtı çürük |
-| #49 Backfill | #16 sonrası | Fresh clone'da radar boş — demo riski |
-| #47 Projeksiyon yazıcı | #41+#16 sonrası | Board/presence'ı kimse yazmıyor; UI okuyacak veri yok |
-| #54 Error envelope | Ara işi | Küçük; boşluğa gelen alır |
+| Issue | Sahip | Aciliyet | Neden |
+|---|---|---|---|
+| **#46** 🔑 App kaydı | Esma | **BUGÜN** (~30 dk, tarayıcı işi) | Yapılmadan #16'nın canlı auth'u ölü; ilk gün kayarsa veri şeridi kayar |
+| **#45** ⚠️ CORS | Fatih | **BUGÜN** (küçük) | Yapılmazsa tarayıcı TÜM API çağrılarını bloklar; hafta-2 canlı bağlantısı duvara toslar |
+| **#50** Gemini adapter+fake | Esma | **Bu hafta erken** | #24 judge başlayamaz; #26-30 eval fake'siz flaky = DoD kanıtı çürük |
 
 ## 5. Düz liste (issue · sahip · bağımlı olduğu · kilitlediği)
 
@@ -135,12 +130,13 @@ Renk = sahip: 🔵 Semih · 🟣 Esma · 🟢 Enes · 🟠 Fatih · 🔴 **SAHİ
 | 29 | Enes | #28 | #18 |
 | 30 | Enes | #28 (kanıt: #18) | CI koruması |
 | 41 | Enes | — | #47 |
-| 45 | 🔴 — | — | #21-canlı |
-| 46 | 🔴 — | — | #16-canlı → tüm veri şeridi |
-| 47 | 🔴 — | #41 #16 | board/presence UI verisi |
-| 49 | 🔴 — | #16 | demo dolu-radar |
-| 50 | 🔴 — | — | #24 → #17 · eval determinizmi |
-| 54 | 🔴 — | — | hata deneyimi |
+| 45 | Fatih | — | #21-canlı |
+| 46 | Esma | — | #16-canlı → tüm veri şeridi |
+| 47 | Enes | #41 #16 | board/presence UI verisi |
+| 49 | Semih | #16 | demo dolu-radar |
+| 50 | Esma | — | #24 → #17 · eval determinizmi |
+| 54 | Fatih | — | hata deneyimi |
 | 106 | Enes | PR #107 açık | Ek A kontratının resmileşmesi (#104/#105 çekme adayları) |
+| 108 | Fatih | — | bu doküman (PR #109) |
 
-> Güncelleme kuralı: sıra/bağımlılık değişirse bu dosyaya PR — kanonik issue durumu her zaman GitHub'dadır (TDK).
+> Güncelleme kuralı: sıra/bağımlılık değişirse bu dosyaya PR — kanonik issue durumu (atama dahil) her zaman GitHub'dadır (TDK).
