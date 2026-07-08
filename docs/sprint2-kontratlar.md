@@ -100,6 +100,7 @@ class HarnessPort(Protocol):            # impl: #13 (GATE 1)
 | `GET /scope/check?ref=<pr>` | query | `ScopeVerdict` | #31 (S3) |
 | `GET /board` | — | `{cards: BoardCard[]}` | S3 |
 | `GET /query?q=<nl>` | query | `{answer: str, citations: str[]}` | S3 |
+| `GET /graph?window_days=14` | query (varsayılan 14) | `TouchGraph` | #104 *(Ek A — S2 çekme adayı)* |
 
 Frontend (#20) bu şemayı `openapi.json`'dan üretir → `apiClient.GET("/radar")` tip-güvenli. Backend bitmeden **mock server** (aynı şema) ile çalışılır.
 
@@ -114,3 +115,31 @@ Frontend (#20) bu şemayı `openapi.json`'dan üretir → `apiClient.GET("/radar
 - **Entegrasyon:** herkes kendi fake'ini gerçek adapter'la değiştirir; imza aynı olduğu için kırılmaz.
 
 > **Kural:** kontrat değişikliği = bu dosyaya PR + daily'de duyuru. Sessizce imza değiştirme (birinin stub'ını kırarsın).
+
+---
+
+## Ek A (7 Tem) — `GET /graph`: aktör×modül dokunma grafı (#104, S2 çekme adayı)
+
+> **Yalnız EKLEME** — yukarıdaki donmuş imzalara dokunulmadı. #104/#105 **S2 taahhüdünde değil, çekme adayı** (kural issue'larda): kim ne zaman çekerse çeksin kontrat şimdiden donuk olsun diye buraya işlendi (D-33). Sıfır LLM — saf `NormalizedEvent` + `active/` aggregation.
+
+```python
+class GraphNode(BaseModel):             # GET /graph düğümü (#104)
+    id: str                             # "enes" | "backend"
+    type: Literal["actor", "module"]
+    weight: int                         # toplam dokunuş sayısı
+
+class GraphEdge(BaseModel):             # aktör→modül kenarı
+    actor: str                          # github handle
+    module: str                         # path'in ilk 2 segmenti (HESAPLANIR, şemaya yazılmaz)
+    count: int                          # penceredeki event sayısı
+    last_ts: datetime
+    is_active_declared: bool            # .harness/active/ beyanı var mı
+
+class TouchGraph(BaseModel):            # GET /graph çıktısı
+    window_days: int
+    nodes: list[GraphNode]
+    edges: list[GraphEdge]
+```
+
+- **Frontend (#105):** bu şemadan üretilen client ile ısı matrisi — mock `TouchGraph` ile backend'i beklemeden başlanabilir (yukarıdaki reçetenin aynısı).
+- **Format notu:** node-link JSON + `weight`'li kenar = D3 uyumlu konvansiyon.
