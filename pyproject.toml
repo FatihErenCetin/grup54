@@ -11,7 +11,11 @@ package = false
 members = ["src/backend", "src/shared", "src/mcp"]
 
 [dependency-groups]
-dev = ["pytest>=8.0", "ruff>=0.6"]
+dev = [
+    "httpx2>=2.5.0",
+    "pytest>=8.0",
+    "ruff>=0.6",
+]
 
 [tool.uv.sources]
 ensemble-backend = { workspace = true }
