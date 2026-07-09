@@ -13,7 +13,7 @@
 
 1. `cp .env.example .env` (yoksa).
 2. **Özel anahtarı al:** `ensemble-radar.*.private-key.pem` dosyası ekip-içi ÖZEL kanaldan paylaşılır (Drive özel klasörü — **asla** commit/DM-grup kanalı değil). Repo köküne koy (`*.pem` gitignored) + `chmod 600`.
-3. `.env` alanları: `GITHUB_APP_ID=4257285` · `GITHUB_APP_PRIVATE_KEY_PATH=<pem dosya adı>` · `GITHUB_APP_INSTALLATION_ID=145474476` · `GITHUB_WEBHOOK_SECRET=<özel kanaldan>`.
+3. `.env` alanları: `GITHUB_APP_ID=4257285` · `GITHUB_APP_PRIVATE_KEY_PATH=<pem dosya adı>` · `GITHUB_APP_INSTALLATION_ID=145474476`. (`GITHUB_WEBHOOK_SECRET` **boş bırak** — bkz. aşağıda.)
 4. **Doğrula:**
    ```bash
    uv run --with pyjwt --with cryptography --with requests python scripts/verify_github_app.py
@@ -27,6 +27,15 @@
                                                         └─▶ 1 saatlik token ──▶ REST/GraphQL okuma
 ```
 Kalıcı token YOK — her istek zinciri anlık token üretir (D-23/D-28 ilkesi). Token süreleri değişebilir; koda sabitleme, yanıttaki `expires_at`/`expires_in`'i oku.
+
+## Sır paylaşım ilkesi: need-to-know
+
+| Sır | Kim alır |
+|---|---|
+| `.pem` özel anahtarı | Yalnız canlı ingest geliştiren (bugün: #16 sahibi) — özel kanaldan, tek tek |
+| `GITHUB_WEBHOOK_SECRET` | **Şimdilik hiç kimse** — webhook'u yalnız alıcı sunucu doğrular (S3 #62); o gün secret **rotate edilir** ve yalnız deploy ortamına konur |
+| `GEMINI_API_KEY` | Paylaşılmaz — **herkes kendi anahtarını alır** (kota + sızıntı izi kişisel) |
+| App ID / installation ID | Sır değil (pem'siz işe yaramaz) — bu dokümanda açık |
 
 ## Sırlar hijyeni
 
