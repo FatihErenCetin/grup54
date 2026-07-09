@@ -1,0 +1,7 @@
+# gitleaks yapılandırması — varsayılan kurallar + dar kapsamlı allowlist
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Pencil .pen tasarım dosyaları: format, kök düzeyde 'fileToken' (UUID belge kimliği) içerir — credential değil. Doğrulama (9 Tem): UUID biçimli, yerel Pencil auth/session dosyalarında geçmiyor, GitHub'da 83 public repo aynı alanı commit'lemiş. Kapsam bilerek yalnız design/*.pen — başka hiçbir yol taranmadan geçmez."
+paths = ['''design/.*\.pen$''']
