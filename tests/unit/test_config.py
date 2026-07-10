@@ -28,3 +28,16 @@ def test_gemini_model_override(monkeypatch):
 def test_settings_ok_without_gemini_api_key(monkeypatch):
     monkeypatch.delenv("GEMINI_API_KEY", raising=False)
     assert Settings(_env_file=None).GEMINI_API_KEY is None
+
+
+def test_github_default_branch_default():
+    assert Settings(_env_file=None).GITHUB_DEFAULT_BRANCH == "main"
+
+
+def test_settings_ok_without_github_app_config(monkeypatch):
+    for var in ("GITHUB_APP_ID", "GITHUB_APP_PRIVATE_KEY_PATH", "GITHUB_APP_INSTALLATION_ID"):
+        monkeypatch.delenv(var, raising=False)
+    settings = Settings(_env_file=None)
+    assert settings.GITHUB_APP_ID is None
+    assert settings.GITHUB_APP_PRIVATE_KEY_PATH is None
+    assert settings.GITHUB_APP_INSTALLATION_ID is None
