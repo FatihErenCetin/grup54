@@ -15,6 +15,21 @@ def test_get_settings_cached():
     assert get_settings() is get_settings()
 
 
+def test_gemini_model_default(monkeypatch):
+    monkeypatch.delenv("GEMINI_MODEL", raising=False)
+    assert Settings(_env_file=None).GEMINI_MODEL == "gemini-2.5-flash"
+
+
+def test_gemini_model_override(monkeypatch):
+    monkeypatch.setenv("GEMINI_MODEL", "gemini-1.5-pro")
+    assert Settings(_env_file=None).GEMINI_MODEL == "gemini-1.5-pro"
+
+
+def test_settings_ok_without_gemini_api_key(monkeypatch):
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    assert Settings(_env_file=None).GEMINI_API_KEY is None
+
+
 def test_github_default_branch_default():
     assert Settings(_env_file=None).GITHUB_DEFAULT_BRANCH == "main"
 
