@@ -5,12 +5,16 @@ Kullanım: uv run --with pyjwt --with cryptography --with requests python script
 zincirini uçtan uca test eder. Yeni ekip üyesi .env kurulumunu bununla doğrular.
 """
 
+import io
 import re
+import sys
 import time
 from pathlib import Path
 
 import jwt
 import requests
+
+sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8")
 
 ROOT = Path(__file__).resolve().parents[1]
 
