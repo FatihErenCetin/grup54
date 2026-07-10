@@ -1,0 +1,13 @@
+[
+  {
+    "number": 50,
+    "user": {"login": "enes"},
+    "updated_at": "2026-07-10T08:00:00Z"
+  },
+  {
+    "number": 99,
+    "user": {"login": "fatih"},
+    "updated_at": "2026-07-10T10:00:00Z",
+    "pull_request": {"url": "https://api.github.com/repos/o/r/pulls/99"}
+  }
+]

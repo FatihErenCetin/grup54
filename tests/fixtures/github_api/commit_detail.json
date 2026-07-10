@@ -1,0 +1,10 @@
+{
+  "sha": "aaa1111",
+  "author": {"login": "esma"},
+  "commit": {
+    "author": {"name": "esma", "date": "2026-07-10T09:00:00Z"}
+  },
+  "files": [
+    {"filename": "src/backend/ensemble/integrations/gemini/judge.py"}
+  ]
+}
