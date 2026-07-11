@@ -29,6 +29,22 @@ body:
       value: |
         - [ ]
         - [ ]
+  - type: textarea
+    id: context
+    attributes:
+      label: Bağlam (projedeki yeri)
+      description: Bu story hangi ürün vaadini/puan kalemini taşıyor? Ne alır → ne verir? (Brifing bundan beslenir — docs/issue-brifing-rehberi.md)
+    validations:
+      required: true
+  - type: input
+    id: depends
+    attributes:
+      label: Ön-koşul issue'ları
+      description: Başlamadan bitmesi gerekenler (bağımlılık haritasını besler — virgüllü)
+      placeholder: "#16, #41 (yoksa boş bırak)"
+  - type: markdown
+    attributes:
+      value: "> Issue açıldıktan sonra board'da **Tema** alanını seç: AI çekirdek · Veri · Web · Emniyet · PM/Süreç."
   - type: input
     id: points
     attributes:
