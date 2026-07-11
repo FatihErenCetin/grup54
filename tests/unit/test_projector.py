@@ -23,10 +23,11 @@ def test_project_events():
     session.add(task)
     session.commit()
 
-    # Mock harness
+    # Mock harness — active.schema.json alan adlari: task_id, updated_at
+    # (task/since DEGIL; updated_at semada string zorunlu).
     mock_harness = MagicMock(spec=HarnessPort)
     mock_harness.read_active.return_value = [
-        {"handle": "enes", "task": "T-47", "since": datetime(2026, 7, 11, 10, 0)}
+        {"handle": "enes", "task_id": "T-47", "updated_at": "2026-07-11T10:00:00"}
     ]
 
     # Create dummy events
