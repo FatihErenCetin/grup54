@@ -43,8 +43,8 @@ def test_rebuild_projection():
         {"task_id": "T-2", "title": "B"}
     ]
     mock_harness.read_active.return_value = [
-        {"handle": "enes", "task": "T-41"},
-        {"handle": "esma", "task": "T-24"}
+        {"handle": "enes", "task_id": "T-41"},
+        {"handle": "esma", "task_id": "T-24"}
     ]
     
     # Başlangıçta boş

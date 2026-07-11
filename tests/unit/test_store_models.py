@@ -48,13 +48,16 @@ def test_task_projection_from_harness():
 
 
 def test_presence_row_from_harness():
+    # active.schema.json alan adlari: task_id, updated_at (task/since DEGIL) —
+    # updated_at semada string zorunlu (FileHarnessPort.read_active() ISO
+    # datetime'i string'e coerce eder, bkz. test_harness.py).
     data = {
         "handle": "EnesErdemT",
-        "task": "T-41",
+        "task_id": "T-41",
         "module": "store",
         "intent": "migrations",
         "branch": "T-41-projeksiyon-deposu",
-        "since": datetime(2026, 7, 11, 10, 0),
+        "updated_at": "2026-07-11T10:00:00",
     }
     row = PresenceRow.from_harness(data)
     assert row.handle == "EnesErdemT"

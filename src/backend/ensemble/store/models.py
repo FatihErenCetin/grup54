@@ -112,16 +112,19 @@ class PresenceRow(Base):
     def from_harness(cls, data: dict) -> "PresenceRow":
         """Harness active dict'inden DB satırına dönüştür.
 
-        data: HarnessPort.read_active() çıktısındaki tek bir active dict'i.
-        Beklenen alanlar: handle, task, module, intent, branch, since.
+        data: HarnessPort.read_active() çıktısındaki tek bir active dict'i
+        (active.schema.json alan adları: handle, task_id, module, intent,
+        branch, updated_at — updated_at şemada string olarak zorunlu, bu
+        yüzden DateTime kolonuna yazmadan önce parse ediyoruz).
         """
+        updated_at = data.get("updated_at")
         return cls(
             handle=data.get("handle", ""),
-            task=data.get("task"),
+            task=data.get("task_id"),
             module=data.get("module"),
             intent=data.get("intent"),
             branch=data.get("branch"),
-            since=data.get("since"),
+            since=datetime.fromisoformat(updated_at) if updated_at else None,
         )
 
 
