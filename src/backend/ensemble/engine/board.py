@@ -1,11 +1,16 @@
+from typing import Callable
+
+from sqlalchemy.orm import Session
+
 from ensemble.models import BoardCard
-from ensemble_shared.harness import HarnessPort
+from ensemble.store.models import TaskProjectionRow
 
 
 class BoardService:
-    def __init__(self, harness_port: HarnessPort):
-        self.harness_port = harness_port
+    def __init__(self, session_factory: Callable[[], Session]):
+        self.session_factory = session_factory
 
     def get_cards(self) -> list[BoardCard]:
-        # TODO: Implement board state projector
-        return []
+        with self.session_factory() as session:
+            rows = session.query(TaskProjectionRow).all()
+            return [row.to_board_card() for row in rows]

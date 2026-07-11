@@ -15,6 +15,23 @@ body:
       description: Ne yapılacak?
     validations:
       required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Bağlam (projedeki yeri)
+      description: Bu iş hangi ürün vaadini/puan kalemini taşıyor? Ne alır → ne verir? (Brifing bundan beslenir — docs/issue-brifing-rehberi.md)
+      placeholder: "Radar'ın anlam katmanı; YZ 35p. Girdi: aday çiftler (#22) → Çıktı: benzerlik skoru (#17 tüketir)."
+    validations:
+      required: true
+  - type: input
+    id: depends
+    attributes:
+      label: Ön-koşul issue'ları
+      description: Bu iş başlamadan bitmesi gerekenler (bağımlılık haritasını besler — virgüllü)
+      placeholder: "#16, #41 (yoksa boş bırak)"
+  - type: markdown
+    attributes:
+      value: "> Issue açıldıktan sonra board'da **Tema** alanını seç: AI çekirdek · Veri · Web · Emniyet · PM/Süreç."
   - type: dropdown
     id: sprint
     attributes:
