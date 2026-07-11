@@ -5,6 +5,11 @@ from ensemble.engine.embeddings import CachedEmbeddings, HashEmbeddings, content
 from ensemble.engine.vectorstore import InMemoryVectorIndex, cosine_similarity
 
 
+class ShortEmbeddings:
+    def embed(self, texts: list[str], task_type: str) -> list[list[float]]:
+        return [[1.0] for _text in texts[:-1]]
+
+
 def test_hash_embeddings_are_deterministic_and_768_dimensional():
     embeddings = HashEmbeddings()
 
@@ -39,6 +44,13 @@ def test_cached_embeddings_batches_only_misses():
         (("a", "b"), "SEMANTIC_SIMILARITY"),
         (("c",), "SEMANTIC_SIMILARITY"),
     ]
+
+
+def test_cached_embeddings_rejects_short_inner_batch():
+    cached = CachedEmbeddings(ShortEmbeddings())
+
+    with pytest.raises(ValueError, match="same number of vectors"):
+        cached.embed(["a", "b", "c"], task_type="SEMANTIC_SIMILARITY")
 
 
 def test_markdown_chunker_splits_on_headings_and_adds_metadata():
@@ -78,6 +90,13 @@ def test_plain_chunker_rejects_invalid_size():
         chunk_text("text", path="README.md", max_chars=0)
 
 
+def test_plain_chunker_splits_single_oversized_paragraph():
+    chunks = chunk_text("x" * 5000, path="README.md", max_chars=2000)
+
+    assert len(chunks) == 3
+    assert [len(chunk.text) for chunk in chunks] == [2000, 2000, 1000]
+
+
 def vector_index_contract(index: InMemoryVectorIndex) -> None:
     index.upsert("near", [1.0, 0.0], {"path": "a.py"})
     index.upsert("far", [0.0, 1.0], {"path": "b.py"})
@@ -99,6 +118,15 @@ def test_in_memory_vector_index_upsert_replaces_existing_id():
 
     assert index.query([1.0, 0.0], k=1) == [("doc", 1.0)]
     assert index.meta("doc") == {"version": 2}
+
+
+def test_in_memory_vector_index_rejects_mixed_dimensions_at_query_time():
+    index = InMemoryVectorIndex()
+    index.upsert("one", [1.0, 0.0], {})
+    index.upsert("bad", [1.0], {})
+
+    with pytest.raises(ValueError, match="same dimensions"):
+        index.query([1.0, 0.0], k=2)
 
 
 def test_cosine_similarity_handles_zero_vector_and_dimension_mismatch():

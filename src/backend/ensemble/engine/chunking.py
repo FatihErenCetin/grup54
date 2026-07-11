@@ -152,6 +152,13 @@ def _split_by_size(text: str, max_chars: int) -> list[str]:
     parts: list[str] = []
     current = ""
     for paragraph in text.split("\n\n"):
+        if len(paragraph) > max_chars:
+            if current:
+                parts.append(current)
+                current = ""
+            parts.extend(_split_oversized(paragraph, max_chars=max_chars))
+            continue
+
         candidate = f"{current}\n\n{paragraph}".strip() if current else paragraph
         if len(candidate) <= max_chars:
             current = candidate
@@ -163,6 +170,10 @@ def _split_by_size(text: str, max_chars: int) -> list[str]:
     if current:
         parts.append(current)
     return parts
+
+
+def _split_oversized(text: str, max_chars: int) -> list[str]:
+    return [text[index : index + max_chars] for index in range(0, len(text), max_chars)]
 
 
 def _extract_task_id(text: str) -> str | None:

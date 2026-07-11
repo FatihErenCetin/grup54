@@ -70,6 +70,10 @@ class CachedEmbeddings:
 
         if misses:
             embedded = self.inner.embed(misses, task_type)
+            if len(embedded) != len(misses):
+                raise ValueError(
+                    "inner embeddings must return the same number of vectors as texts"
+                )
             for position, key, vector in zip(miss_positions, miss_keys, embedded):
                 self._cache[key] = vector
                 result_by_position[position] = vector

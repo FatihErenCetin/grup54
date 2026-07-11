@@ -29,11 +29,9 @@ class InMemoryVectorIndex:
         if not vec:
             raise ValueError("vec must not be empty")
 
-        scored = [
-            (id, cosine_similarity(vec, record.vec))
-            for id, record in self._records.items()
-            if len(record.vec) == len(vec)
-        ]
+        scored: list[tuple[str, float]] = []
+        for id, record in self._records.items():
+            scored.append((id, cosine_similarity(vec, record.vec)))
         return sorted(scored, key=lambda item: (-item[1], item[0]))[:k]
 
     def meta(self, id: str) -> dict:
