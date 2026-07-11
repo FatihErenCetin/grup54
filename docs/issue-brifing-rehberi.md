@@ -7,7 +7,7 @@
 
 1. `gh issue view <N>` — gövde + kabul kriterleri + label/milestone
 2. `docs/sprint2-kontratlar.md` *(ya da güncel sprintin kontrat dosyası)* — bu işin girdi/çıktı sözleşmesi
-3. `docs/sprintN-bagimlilik.md` — haritadaki konumu (neye bağlı, neyi kilitliyor)
+3. `docs/<milestone-slug>-bagimlilik.md` (örnek: `docs/sprint2-bagimlilik.md` — #119 yayın konvansiyonu) — haritadaki konumu (neye bağlı, neyi kilitliyor)
 4. `README.md` "Mimari & Yapay Zeka" bölümü + `ROADMAP.md` — büyük resimdeki yeri
 5. Gerekirse: ilgili modülün mevcut kodu (`src/...`)
 
