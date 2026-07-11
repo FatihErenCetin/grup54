@@ -31,6 +31,10 @@ class Settings(BaseSettings):
     GITHUB_REPO_NAME: str | None = None
     GITHUB_DEFAULT_BRANCH: str = "main"
 
+    # Store — local: SQLite (repo kökünde, gitignored) · hosted: PostgreSQL DSN.
+    # Varsayılan SQLite yolu: ensemble.db (repo kökü, .gitignore'da).
+    DATABASE_URL: str = f"sqlite:///{_REPO_ROOT / 'ensemble.db'}"
+
 
 @lru_cache
 def get_settings() -> Settings:
