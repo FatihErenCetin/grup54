@@ -1,0 +1,14 @@
+[
+  {
+    "number": 99,
+    "user": {"login": "fatih"},
+    "head": {"ref": "T-99-ornek-ozellik"},
+    "updated_at": "2026-07-10T10:00:00Z"
+  },
+  {
+    "number": 88,
+    "user": {"login": "semih"},
+    "head": {"ref": "T-88-eski-pr"},
+    "updated_at": "2026-07-01T10:00:00Z"
+  }
+]

@@ -1,0 +1,8 @@
+# gitleaks yapılandırması — varsayılan kurallar + DAR allowlist
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Pencil .pen formatının kök düzeydeki 'fileToken' alanı (UUID belge kimliği) — credential değil. Doğrulama (9 Tem): UUID biçimli · yerel Pencil auth/session dosyalarında geçmiyor · GitHub'da 83 public repo aynı alanı commit'lemiş. Kapsam bilinçli DAR: yalnız bu JSON deseniyle eşleşen SATIR muaf — .pen dosyalarına yanlışlıkla girecek başka her tür sır taranmaya devam eder (#131 review bulgusu)."
+regexTarget = "line"
+regexes = ['''"fileToken":\s*"[0-9a-fA-F-]{36}"''']
