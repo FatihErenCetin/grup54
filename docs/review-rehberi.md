@@ -49,7 +49,7 @@
 - **Hüküm → GitHub mekaniği** *(boş/gövdesiz Approve YOK — özet gövdesi jürinin gördüğü kalıcı kanıttır)*:
   - ✅ approve → `gh pr review <N> --approve --body "<özet>"` *(UI: Files changed → Review changes → Approve + gövde)*
   - 🟡 değişiklik iste / 🔴 blocker → `gh pr review <N> --request-changes --body "<özet>"`
-- **Özet gövdesi:** kriter durumu + güçlü yönler + "**N bulgu, M çürütüldü**" istatistiği + bulgular→issue linki.
+- **Özet gövdesi:** kriter durumu + güçlü yönler + bulgular→issue linki. *("N bulgu, M çürütüldü" istatistiği: çürütme disiplinini UYGULA ama gövdeye yazmak opsiyonel — bkz. §6.5.)*
 - Bulgular merge'i bloklamıyorsa: **takip issue aç → approve'la.** Takip issue **board-hazır** açılır: label (`task`/`story` + `sprint-N`) + milestone + puan tahmini + `"Kaynak: PR #<N> review"` satırı — örn. `gh issue create --label task --milestone "Sprint N" --title "..." --body "Kaynak: PR #<N> review — reçete: ..."`
 - Konvansiyon: **≥1 onay → PR'ı açan merge'ler** (`CONTRIBUTING.md` §4).
 
@@ -57,6 +57,15 @@
 
 Önce **somut takdir** (iyi olan neyse adıyla) → sonra bulgular. Kod hakkında konuş, kişi hakkında değil. Reçete ver, ödev verme.
 **⚡ düzeltmeyi reviewer kendisi uygulayabilir** (yazarı bekletme) — **kanıt zorunlu:** author alanı aynen korunur (amend author'a dokunmaz) + `git rev-parse "HEAD^{tree}"` öncesi/sonrası **birebir aynı** (tree-hash değişmedi = içerik korundu, yalnızca mesaj/meta düzeltildi). Sonuç PR'a/yazara bildirilir.
+
+## 6.5 İnsan sesi (v2 — "AI kokusu" düzeltmesi)
+
+Review'un *yöntemi* (çürütme, kanıt, kapsam) değişmedi — *sesi* değişiyor. Tektip şablon herkesi aynı makine gibi konuşturuyordu:
+
+1. **Bulgu yoksa 2-3 cümle yeter.** Örnek: *"Diff'i okudum, lokalde \`make test\` koştum (27 ✓). strip'li split çözümü temiz — approve."* Uzun yapı (başlıklar, bölümler) YALNIZ blocker'lı/karmaşık review'larda.
+2. **Birinci-el iz ZORUNLU:** her review'da en az bir cümle, reviewer'ın **kendi yaptığı** şey — koştuğu komut, gördüğü çıktı, elle denediği senaryo. (Zaten §0 "kanıtlı" ilkesinin insan hâli; AI'ın senin yerine uyduramayacağı tek şey budur.)
+3. **"AI bulur, insan konuşur":** AI ile incelemek serbest ve teşvikli — ama AI çıktısı **taslaktır**. Göndermeden önce: yarıya kırp, kendi kelimelerinle yaz, kendi gözlemini ekle. Kopyala-yapıştır gövde = kokunun kendisi.
+4. **Biçim diyeti:** emoji ≤1 · istatistik satırı opsiyonel · madde işareti listesi yalnız 3+ bulguda.
 
 ## 7. AI aracıyla review tarifi (araç-bağımsız)
 
