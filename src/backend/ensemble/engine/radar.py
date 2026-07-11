@@ -39,6 +39,7 @@ def file_overlap_candidates(
         if score < min_jaccard:
             continue
 
+        a, b = _canonical_pair(a, b)
         candidates.append(
             FileOverlapCandidate(a=a, b=b, overlap=overlap, jaccard=score)
         )
@@ -52,6 +53,23 @@ def file_overlap_candidates(
             candidate.a.id,
             candidate.b.id,
         ),
+    )
+
+
+def _canonical_pair(
+    a: NormalizedEvent, b: NormalizedEvent
+) -> tuple[NormalizedEvent, NormalizedEvent]:
+    if _event_order_key(a) <= _event_order_key(b):
+        return a, b
+    return b, a
+
+
+def _event_order_key(event: NormalizedEvent) -> tuple[str, str, str, str]:
+    return (
+        event.id,
+        event.actor,
+        event.branch or "",
+        event.ref,
     )
 
 

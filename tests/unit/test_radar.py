@@ -61,6 +61,21 @@ def test_file_overlap_candidates_return_overlap_and_score():
     assert candidates[0].b.id == "b"
 
 
+def test_file_overlap_candidate_pair_identity_is_input_order_independent():
+    first = event("a", "semih", ["src/radar.py"])
+    second = event("b", "enes", ["src/radar.py"])
+
+    forward = file_overlap_candidates([first, second])
+    reverse = file_overlap_candidates([second, first])
+
+    assert [(candidate.a.id, candidate.b.id) for candidate in forward] == [
+        ("a", "b")
+    ]
+    assert [(candidate.a.id, candidate.b.id) for candidate in reverse] == [
+        ("a", "b")
+    ]
+
+
 def test_file_overlap_candidates_respect_min_jaccard():
     candidates = file_overlap_candidates(
         [
