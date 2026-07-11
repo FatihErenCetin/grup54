@@ -1,6 +1,7 @@
 from google import genai
 from google.genai import errors as genai_errors
-from google.genai.types import HttpOptions
+from google.genai.types import GenerateContentConfig, HttpOptions
+from pydantic import BaseModel
 from tenacity import (
     retry,
     retry_if_exception_type,
@@ -43,10 +44,22 @@ class ResilientGeminiClient:
             http_options=HttpOptions(timeout=int(settings.GEMINI_TIMEOUT_S * 1000)),
         )
 
-    def generate_content(self, prompt: str) -> str:
-        return self._call_with_retry(prompt)
+    def generate_content(
+        self, prompt: str, *, response_schema: type[BaseModel] | None = None
+    ) -> str:
+        return self._call_with_retry(prompt, response_schema=response_schema)
 
-    def _call_with_retry(self, prompt: str) -> str:
+    def _call_with_retry(
+        self, prompt: str, *, response_schema: type[BaseModel] | None
+    ) -> str:
+        config = None
+        if response_schema is not None:
+            config = GenerateContentConfig(
+                response_mime_type="application/json",
+                response_schema=response_schema,
+                temperature=0,
+            )
+
         @retry(
             retry=retry_if_exception_type(GeminiTransientError),
             stop=stop_after_attempt(self._settings.GEMINI_MAX_RETRIES),
@@ -58,6 +71,7 @@ class ResilientGeminiClient:
                 response = self._client.models.generate_content(
                     model=self._settings.GEMINI_MODEL,
                     contents=prompt,
+                    config=config,
                 )
             except genai_errors.APIError as exc:
                 raise _classify(exc) from exc

@@ -50,6 +50,28 @@ def test_fake_low_sim_low_overlap_gives_low_severity():
     assert d.severity == "low"
 
 
+def test_fake_same_actor_is_low_regardless_of_sim():
+    fake = FakeJudgeAdapter()
+    a, b = _event("1", "esma", ["x.py"]), _event("2", "esma", ["x.py"])
+    d = fake.judge_conflict(a, b, overlap=["x.py"], sim=0.95)
+    assert d.severity == "low"
+
+
+def test_fake_lockfile_only_overlap_is_low_regardless_of_sim():
+    fake = FakeJudgeAdapter()
+    a, b = _event("1", "esma", ["uv.lock"]), _event("2", "fatih", ["uv.lock"])
+    d = fake.judge_conflict(a, b, overlap=["uv.lock"], sim=0.9)
+    assert d.severity == "low"
+
+
+def test_fake_low_sim_with_overlap_is_low_not_med():
+    # #50'deki eski bug: "or n_overlap > 0" her overlap'i med sayiyordu.
+    fake = FakeJudgeAdapter()
+    a, b = _event("1", "esma", ["config.py"]), _event("2", "fatih", ["config.py"])
+    d = fake.judge_conflict(a, b, overlap=["config.py"], sim=0.15)
+    assert d.severity == "low"
+
+
 # ---------------------------------------------------------------------------
 # GeminiJudgeAdapter — enjekte edilmiş stub client ile (gerçek ağ yok)
 # ---------------------------------------------------------------------------
@@ -60,9 +82,11 @@ class _StubClient:
         self._response = response
         self._error = error
         self.calls = 0
+        self.last_response_schema = None
 
-    def generate_content(self, prompt: str) -> str:
+    def generate_content(self, prompt: str, *, response_schema=None) -> str:
         self.calls += 1
+        self.last_response_schema = response_schema
         if self._error:
             raise self._error
         return self._response
@@ -80,6 +104,23 @@ def test_judge_success_path_parses_response():
     assert d.severity == "med"
     assert d.confidence == 0.6
     assert stub.calls == 1
+
+
+def test_judge_passes_response_schema_to_client():
+    stub = _StubClient(response='{"severity": "low", "confidence": 0.2, "rationale": "x"}')
+    adapter = GeminiJudgeAdapter(_settings(), client=stub)
+    a, b = _event("1", "esma", ["x.py"]), _event("2", "fatih", ["x.py"])
+    adapter.judge_conflict(a, b, overlap=["x.py"], sim=0.5)
+    assert stub.last_response_schema is not None
+
+
+def test_judge_same_actor_skips_gemini_call_entirely():
+    stub = _StubClient(response='{"severity": "high", "confidence": 0.9, "rationale": "x"}')
+    adapter = GeminiJudgeAdapter(_settings(), client=stub)
+    a, b = _event("1", "esma", ["x.py"]), _event("2", "esma", ["x.py"])
+    d = adapter.judge_conflict(a, b, overlap=["x.py"], sim=0.95)
+    assert d.severity == "low"
+    assert stub.calls == 0
 
 
 def test_judge_permanent_error_falls_back():
@@ -130,7 +171,7 @@ class _FakeModels:
         self.fail_code = fail_code
         self.calls = 0
 
-    def generate_content(self, model: str, contents: str):
+    def generate_content(self, model: str, contents: str, config=None):
         self.calls += 1
         if self.calls <= self.fail_times:
             raise _FakeApiError(self.fail_code)

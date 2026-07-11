@@ -4,6 +4,7 @@ Ağ çağrısı yapmaz — offline/CI'da ve eval (#26-30) determinizmi için kul
 Aynı girdi her zaman aynı Detection'ı üretir.
 """
 
+from ensemble.integrations.gemini.gate import cheap_prejudge
 from ensemble.models import Detection, NormalizedEvent
 
 _HIGH_SIM = 0.8
@@ -17,12 +18,16 @@ class FakeJudgeAdapter:
     def judge_conflict(
         self, a: NormalizedEvent, b: NormalizedEvent, overlap: list[str], sim: float
     ) -> Detection:
+        pre = cheap_prejudge(a, b, overlap, sim)
+        if pre is not None:
+            return pre
+
         n_overlap = len(overlap)
 
         if sim >= _HIGH_SIM or n_overlap >= _HIGH_OVERLAP:
             severity = "high"
             confidence = min(1.0, 0.5 + sim / 2)
-        elif sim >= _MED_SIM or n_overlap > 0:
+        elif sim >= _MED_SIM:
             severity = "med"
             confidence = 0.4 + sim / 4
         else:
