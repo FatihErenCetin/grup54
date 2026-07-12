@@ -18,24 +18,36 @@ export const POLL_INTERVAL_MS = 10_000;
 
 type PollResult<T> = { data?: T; error?: unknown };
 
+/** Konvansiyonun kendisi — saf ve test edilebilir (biri interval'i silerse test kırılır). */
+export function pollingOptions<T>(
+  key: readonly unknown[],
+  fetcher: () => Promise<PollResult<T>>,
+  intervalMs: number = POLL_INTERVAL_MS,
+) {
+  return {
+    queryKey: key,
+    queryFn: async () => {
+      const { data, error } = await fetcher();
+      // openapi-fetch hata döndürür, fırlatmaz — react-query'nin retry/error
+      // makinesine girmesi için burada fırlatıyoruz. Boş-gövdeli non-ok cevapta
+      // (örn. 204/Content-Length:0) error da data da undefined kalabilir —
+      // sessizce "veri var" sayılmaz, o da hatadır.
+      if (error !== undefined) throw error;
+      if (data === undefined) throw new Error("Boş cevap: sunucu veri döndürmedi");
+      return data;
+    },
+    refetchInterval: intervalMs,
+    refetchOnWindowFocus: true,
+    refetchIntervalInBackground: false, // sekme arka plandayken polling durur (bilinçli)
+  } as const;
+}
+
 export function usePolling<T>(
   key: readonly unknown[],
   fetcher: () => Promise<PollResult<T>>,
   intervalMs: number = POLL_INTERVAL_MS,
 ) {
-  const query = useQuery({
-    queryKey: key,
-    queryFn: async () => {
-      const { data, error } = await fetcher();
-      // openapi-fetch hata döndürür, fırlatmaz — react-query'nin retry/error
-      // makinesine girmesi için burada fırlatıyoruz
-      if (error !== undefined) throw error;
-      return data as T;
-    },
-    refetchInterval: intervalMs,
-    refetchOnWindowFocus: true,
-    // refetchIntervalInBackground: false (varsayılan) — bilinçli bırakıldı
-  });
+  const query = useQuery(pollingOptions(key, fetcher, intervalMs));
 
   return {
     data: query.data,

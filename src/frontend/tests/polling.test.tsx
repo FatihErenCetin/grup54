@@ -4,13 +4,30 @@ import { render, renderHook, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { describe, expect, it } from "vitest";
 import { SonGuncelleme } from "../src/components/ui";
-import { usePolling } from "../src/lib/usePolling";
+import { POLL_INTERVAL_MS, pollingOptions, usePolling } from "../src/lib/usePolling";
 
 function wrapper({ children }: { children: ReactNode }) {
   // retry kapalı: hata yolu testi 3 deneme beklemesin
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
 }
+
+describe("pollingOptions — konvansiyonun kendisi", () => {
+  // Bu test konvansiyonu KİLİTLER: biri interval'i silerse/arka planı açarsa kırılır
+  // (adversarial doğrulama bulgusu: çekirdek davranış hiçbir yerde assert edilmiyordu)
+  it("10sn aralık + arka planda durur + odakta tazeler", () => {
+    const opts = pollingOptions(["k"], async () => ({ data: 1 }));
+    expect(opts.refetchInterval).toBe(POLL_INTERVAL_MS);
+    expect(POLL_INTERVAL_MS).toBe(10_000);
+    expect(opts.refetchIntervalInBackground).toBe(false);
+    expect(opts.refetchOnWindowFocus).toBe(true);
+  });
+
+  it("boş cevabı (error da data da yok) sessizce yutmaz, fırlatır", async () => {
+    const opts = pollingOptions(["k"], async () => ({}));
+    await expect(opts.queryFn()).rejects.toThrow("Boş cevap");
+  });
+});
 
 describe("usePolling", () => {
   it("başarılı fetch'te veriyi ve GERÇEK dataUpdatedAt'i verir", async () => {
