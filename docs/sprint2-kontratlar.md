@@ -143,3 +143,148 @@ class TouchGraph(BaseModel):            # GET /graph çıktısı
 
 - **Frontend (#105):** bu şemadan üretilen client ile ısı matrisi — mock `TouchGraph` ile backend'i beklemeden başlanabilir (yukarıdaki reçetenin aynısı).
 - **Format notu:** node-link JSON + `weight`'li kenar = D3 uyumlu konvansiyon.
+
+---
+
+## Ek B (9 Tem) — Tasarım turu kontrat ekleri (S3 build ön-koşulları)
+
+> **Kapsam beyanı:** Çoğu madde salt-ekleme; **B3 ve B4'te iki İMZA REVİZYONU** var (geriye-dönük union'la yumuşatılmış) — kural gereği bu PR + daily duyurusuyla geliyor. Bunlar **S2 taahhüdü DEĞİL**: 14 yüzeylik tasarım turunun (design/ensemble.pen) çıkardığı, ilgili S3 build'i başlamadan donması gereken şekiller. 🔴 = o ekranın bloklayıcısı. Taslak 6-denetçili adversarial doğrulamadan geçti.
+
+### B1 · Radar ekleri (#21/#25 — 🟠 S2'de mock, S3'te canlı)
+
+```python
+class Detection(BaseModel):
+    ...                                     # mevcut alanlar AYNEN
+    first_seen_at: datetime | None = None   # yaş; None ise frontend ilk-poll zamanı kullanır
+    status: Literal["active", "resolved"] = "active"   # "Çözüldü" sekmesi + regressed rozeti
+    resolved_at: datetime | None = None
+
+class ActorRef(BaseModel):                  # handle-soneki sezgisi yerine açık tip (kaynak:
+    handle: str                             # .harness/active/* front-matter'ı zaten taşıyor)
+    type: Literal["human", "agent"]
+    responsible: str | None = None          # agent ise sorumlu insanın handle'ı (pair)
+
+class PresenceEntry(BaseModel):             # .harness/active/* projeksiyonu
+    actor: ActorRef
+    module: str
+    task: str | None                        # "T-12" — presence şeridinde gösterilir
+    branch: str | None
+    since: datetime                         # beyan zamanı (stale gösterimi + beyan yaşı)
+
+# GET /presence → {entries: PresenceEntry[], updated_at}
+```
+
+*Adlandırma notu:* donmuş modellerde `actor: str` (NormalizedEvent, GraphEdge) AYNEN kalır ve `ActorRef.handle`'a eşlenir — yeni tipler zengin biçimi kullanır. *Blob-link notu:* `files[]` düz path'tir; GitHub linkini frontend, workspace repo bağlamından kurar.
+
+### B2 · Board eki (S3 board build — 🔴)
+
+```python
+class BoardCard(BaseModel):
+    ...                                     # mevcut alanlar AYNEN
+    last_event: LastEvent | None = None     # provenance satırı + sıralama + varış vurgusu + yaş
+
+class LastEvent(BaseModel):
+    type: Literal["pr_merged", "pr_opened", "issue_opened", "issue_closed", "branch_push"]
+    actor: str
+    at: datetime
+```
+
+*Enum notu:* `NormalizedEvent.type` HAM olay tipidir (commit/pr/issue/branch); `LastEvent.type` olay+durum SEMANTİĞİdir (pr_merged = pr tipi + merged durumu) — bilinçli iki sözlük. *Polling:* öneri 10-15 sn; "N yeni" pili client-side diff ile.
+
+### B3 · Scope ekleri (S3 #31 — 🔴 iki endpoint de bloklayıcı) — ⚠️ evidence İMZA REVİZYONU
+
+```python
+class ScopeItemRef(BaseModel):
+    quote: str                              # birebir alıntı
+    item_id: str | None                     # "NG-1" / "IS-3" — dosyadaki açık ID
+    section: Literal["goal", "in_scope", "non_goals"] | None
+    line: int | None
+
+class ScopeVerdict(BaseModel):
+    ...                                     # diğer alanlar AYNEN
+    evidence: str | ScopeItemRef            # ⚠️ REVİZYON: düz str geriye-dönük kabul
+    match_none: bool = False                # drift'te kapsamda karşılık YOK beyanı
+    judged_at: datetime | None = None       # tekil yanıtta da zaman damgası
+    signals: Signals | None = None
+
+class Signals(BaseModel):                   # deterministik sinyaller kutusu + "kanıta git"
+    files: list[str]
+    matched_text: str | None
+
+# GET /scope/current  → {goal, in_scope[], non_goals[], version, frozen_at, ref, commit_sha}
+#   (commit_sha: donmuş dosyanın SHA'sı — #L14 evidence linki + v1→v2 kimlik kayması önlemi)
+# GET /scope/verdicts → {verdicts: ScopeVerdict[], counts, judged_at}
+```
+
+*Konvansiyon (harness-schema notu):* `scope/sprint-N.md` maddeleri açık ID taşır (`NG-1:`, `IS-2:`). *Drift semantiği:* `evidence` = en yakın in_scope maddesi + `match_none=true`; hiç eşleşme yoksa açık beyan, sessiz boşluk değil. *Sürüm geçmişi:* endpoint gerektirmez — git log'dan türetilir.
+
+### B4 · Ask ekleri (S3 #58 — 🔴 citations omurga) — ⚠️ citations İMZA REVİZYONU
+
+```python
+class Citation(BaseModel):
+    type: Literal["scope", "task", "decision", "event", "pr"]
+    ref: str                                # "T-31" / "D-07" / sha / "58" / "scope/sprint-2#L14"
+    quote: str                              # birebir alıntı (hover + grep-doğrulanabilirlik)
+    url: str | None = None                  # repo-içi tiplerde None olabilir (iç navigasyon)
+    range: LineRange | None = None          # side-sheet satır vurgusu
+    n: int | None = None                    # oturum-kararlı dipnot numarası
+
+class LineRange(BaseModel):
+    start: int
+    end: int
+
+# GET /query yanıtı (⚠️ citations REVİZYON — geriye-dönük union):
+#   {answer: str,                           # içinde [cite:T-31] placeholder'ları (streaming-dayanıklı)
+#    citations: list[str | Citation],
+#    as_of: datetime, last_commit: str,     # tazelik damgası
+#    window: str | None,                    # pencereli sorularda: "son 24 saat"
+#    confidence: Literal["low","medium","high"],
+#    status: Literal["answered","not_found"],
+#    searched: [{type, count}],             # dürüst-red kanıt fişi
+#    nearest: [{type, ref}]}                # onarım önerileri
+```
+
+### B5 · Events endpoint'i (S3 Activity — 🔴)
+
+```
+GET /events?since=<ISO>&before=<ISO|id>&limit=<n>&actor=<handle>&branch=<ad>
+  → {events: NormalizedEvent[], has_more: bool}
+```
+
+- `NormalizedEvent` AYNEN (değişiklik yok). `before` cursor olarak id de kabul eder (aynı-saniye tie-break: id).
+- `branch=` filtresi kart-başına hareket zincirini de karşılar (`?branch=T-42-...` → Board side-sheet zaman çizgisi).
+- `type=` filtresi v1'de YOK — client-side (İnsan/ajan filtresi actor tipiyle çözülür).
+- *Gün sınırı kuralı:* feed ayraçları ve daily penceresi = istemci YERELİNDE gece yarısı; `ts` UTC gelir, çeviri istemcide (tek yardımcı fonksiyon).
+
+### B6 · Bilinçli ertelemeler (karar İSTEMEZ — kayıt için)
+
+| Ertelenen | Not |
+|---|---|
+| `NormalizedEvent.parent_sha` | Git ağacının gerçek DAG hâli için; şerit-temelli görünüm bunsuz çalışır |
+| `POST /feedback` + citation-tık telemetrisi | Yanlış-alarm/👎 sinyalleri S2-S3'te localStorage'da; yazma ucu S3-sonrası |
+| `BoardCard.module` | v1 filtre assignee-only; modül filtresi S3-stretch |
+| 7-gün tespit şeridi (Radar temiz-boş durumu) | Tarihsel sayım; S3 cila diliminde karar |
+| `waiver{actor, reason, ref}` | "Muaf" rozeti S3 itiraz akışıyla birlikte |
+| `confidence.basis` (Ask) | Açıklama metni; opsiyonel iyileştirme |
+| SSE streaming (/query) | Tek-atım S3'te kalır; sahte-canlılık yasak |
+| Auth/session kontratı (login/profil ekranları) | **#79 gate'li — bu ekin kapsamı DIŞI** (D-28) |
+
+## Ek C (12 Tem) — Eval veri kontratı: `ConflictCase` (#26/#27 → #28/#29)
+
+> Eval hattının veri sözleşmesi şimdiye dek örtüktü (#26'nın Pydantic modeli). #27 backtest dataset'i aynı şemayı paylaştığı için burada dondurulur. Kanonik kod: `tests/fixtures/conflict_corpus.py`.
+
+```python
+class ConflictCase(BaseModel):
+    case_id: str
+    event_a: NormalizedEvent          # AYNEN (tip genelde "pr" ya da "commit")
+    event_b: NormalizedEvent
+    overlap: list[str]                # kesişen dosya yolları
+    sim: float | None                 # ⚠️ revizyon: float → float | None
+    label: Literal["conflict", "no_conflict"]
+    note: str                         # kaynak izi (PR #'ları, [ic-merge]/[ayni-yazar] etiketleri)
+```
+
+- **`sim` semantiği (tek revizyon):** `float` = kuratörlü fixture değeri — #26 korpusu embeddings olmadan geçit mantığını test edebilsin diye elle atanır ve runner geçite **girdi olarak verebilir**. `None` = backtest verisi (#27) — benzerliği **dedektör hesaplar**; dataset'e yazılmaz ki eval, ölçmesi gereken şeyi hazır cevap olarak taşımasın (veri sızıntısı). #26'nın mevcut satırları geriye dönük geçerli (hepsi float).
+- **İki dataset, tek şema:** `tests/fixtures/conflict_corpus.jsonl` (kuratörlü, bilinen kenar durumlar) + `eval/datasets/backtest-grup54.jsonl` (gerçek tarih, gerçekçi dağılım). #28 runner'ı ikisini de tek kod yoluyla koşar.
+- **Gri bölge dosyası** (`eval/datasets/backtest-grup54-gri.jsonl`) bu şemada DEĞİLDİR (`label` yerine `label_beklemede` taşır) ve **#28 v1 tarafından tüketilmez**. İnsan etiketi verilen vakalar ayrı `backtest-grup54-el-etiketli.jsonl` dosyasına (bu şemada) eklenir; otomatik üretilen dosyalara elle dokunulmaz (determinizm testi builder çıktısıyla bit-bit eşitlik arar).
+- Üretim/determinizm kuralları: `eval/backtest/build_dataset.py` docstring'i + `eval/README.md`.

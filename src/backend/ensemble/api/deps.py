@@ -27,7 +27,8 @@ def get_scope_service(request: Request) -> ScopeService:
 
 def get_board_service(request: Request) -> BoardService:
     # return request.app.state.board_service
-    return BoardService(harness_port=None)  # type: ignore
+    # Şimdilik stub, session_factory olarak dummy lambda döndürüyoruz
+    return BoardService(session_factory=lambda: None)  # type: ignore
 
 
 # Annotated dependencies

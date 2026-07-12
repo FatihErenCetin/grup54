@@ -21,6 +21,7 @@ venv/
 .mypy_cache/
 *.faiss
 *.sqlite3
+*.db
 *.tmp
 
 # === Node / frontend ===
@@ -34,3 +35,6 @@ dist/
 .idea/
 .vscode/
 .gstack/
+
+# Frontend build artıkları (#19)
+*.tsbuildinfo

@@ -30,6 +30,18 @@ Ensemble *(çalışma adı)* — AI çağı yazılım ekipleri için **paylaşı
 - **Sırlar `.env`'de**, asla commit'lenmez (`.gitignore`'da); anahtar/secret koda gömülmez.
 - **Doküman dili Türkçe; dosya/klasör adları ASCII** (Türkçe karakter/boşluk yok) — cross-OS güvenli.
 
+### Otomatik ritüeller — AI aracı için ZORUNLU (kullanıcı komutu hatırlamasa da)
+
+Bu repoda çalışan **her AI aracı**, aşağıdaki anlarda ilgili rehberi **kendiliğinden** uygular; rehberler `docs/`'ta tek kaynaktır (Claude Code kısayolları parantezde, diğer araçlar rehber dosyasını okur):
+
+| An | Zorunlu davranış |
+|---|---|
+| Atanmış bir issue'ya çalışmaya **başlarken** | Önce `docs/issue-brifing-rehberi.md` ile brifing sun (amaç · girdi→çıktı · haritadaki yer · plan · Sokratik sorular) — **kullanıcı onaylamadan koda başlama** (`/issue-brifing N`) |
+| Kullanıcı **"PR'ı review et"** dediğinde | `docs/review-rehberi.md`'yi uygula (`/takim-review N`); gövdeyi göndermeden önce `docs/review-koku-testi-rehberi.md` kontrolü — birinci-el iz insandan istenir, uydurulmaz |
+| **Sprint planlama** günü | `docs/bagimlilik-harita-rehberi.md` ile bağımlılık haritasını üret (`/bagimlilik-haritasi <milestone>`) |
+| Issue **eklendiğinde / ataması değiştiğinde** | Aktif sprintin `docs/sprintN-bagimlilik.md`'si bayatlamış olabilir — kullanıcıya söyle, tazelemeyi öner *(CI otomasyonu planlı — issue'lara bak)* |
+| **Haftalık** (SM ritmi) | `docs/tema-raporu-rehberi.md` ile tema fotoğrafı (`/tema-raporu`) — konu kaybına karşı |
+
 ## Kapsam disiplini
 
 - **ÇEKİRDEK (mükemmel olmalı):** semantik çakışma + scope-drift tespiti + "ne zaman uyar" kalibrasyonu.
@@ -55,17 +67,15 @@ Ensemble *(çalışma adı)* — AI çağı yazılım ekipleri için **paylaşı
 - **`docs/kapsam-sinirlari.md`** — 🟢 local-first kapsam + **YAPMA listesi** (kapsam-dışı = tasarım gereği yok; ⚠️ user-login/OAuth tuzağı).
 - `CONTRIBUTING.md` — git akışı detayı (issue→branch→commit→PR→merge; §0 işe-başla).
 - `ProjectManagement/` — sprint kanıtı + **daily nasıl kaydedilir** → `ProjectManagement/README.md` · `SprintN/{DailyScrum·Meetings·Board·Burndown·Screenshots}`.
+- **Süreç komutları (rehber+skill çiftleri):** `docs/issue-brifing-rehberi.md` · `docs/bagimlilik-harita-rehberi.md` · `docs/tema-raporu-rehberi.md` · `docs/sprint-akis-raporu-rehberi.md` · `docs/review-koku-testi-rehberi.md` — hepsi araç-bağımsız; Claude Code kısayolları `.claude/skills/`'te.
 - `README.md` — public ürün açıklaması + takım tablosu.
 - `AGENTS.md` — bu dosya (kanonik sözleşme). `CLAUDE.md` / `GEMINI.md` / `.kiro/steering/` → araçları buraya yönlendirir.
-- `src/` — kod (backend/engine · mcp · frontend · shared)  🟡 *henüz yok*
+- `src/` — kod 🟢: `backend/ensemble` (FastAPI engine iskeleti) · `shared/ensemble_shared` (harness-IO + şemalar, D-29) · `mcp` (S3)
 - `.harness/` — kanonik ortak bağlam (scope · tasks · active · locks · decisions)  🟡 *henüz yok*
 
-## Build / test / çalıştırma  🟡 *(scaffold edilince doldurulacak)*
+## Build / test / çalıştırma  🟢
 
-Henüz kod yok. Mimariye göre beklenen (kesinleşince burada güncelle):
-- **backend:** `uv run uvicorn ...` · **test:** `uv run pytest` (tek test: `uv run pytest path::test_x`)
-- **frontend:** `npm run dev` / `npm test` · **MCP:** lokal stdio
-- Çalışma modu local-first → arayüz `localhost:PORT`. Kanonik komut listesi: `Makefile` (geldiğinde).
+Kanonik komutlar `Makefile`'da: **`make dev`** (uvicorn app-factory) · **`make test`** (pytest; tek test: `uv run pytest tests/unit/test_x.py::test_y`) · **`make lint`** (ruff). Bağımlılık: `uv sync --all-packages --locked` (lock dosyasını elle düzenleme). Frontend (#19 sonrası): `npm run dev` → `localhost:5173`; backend `localhost:8000` (CORS allowlist hazır, #45).
 
 ## Ajan davranışı
 
