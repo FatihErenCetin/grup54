@@ -20,7 +20,10 @@ class ConflictCase(BaseModel):
     event_a: NormalizedEvent
     event_b: NormalizedEvent
     overlap: list[str]
-    sim: float
+    # float = kuratorlu fixture degeri (embeddings'siz geçit testleri icin stand-in);
+    # None  = backtest verisi — benzerligi DEDEKTOR hesaplar, dataset'e yazilmaz
+    # (veri sizintisi olmasin). Sozlesme: docs/sprint2-kontratlar.md Ek C.
+    sim: float | None
     label: Literal["conflict", "no_conflict"]
     note: str
 
