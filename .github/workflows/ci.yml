@@ -29,6 +29,12 @@ jobs:
       - name: Test
         run: make test
 
+      # Kontrat drift-check (#20): router'lar degisip openapi.json commit'lenmediyse kirmizi
+      - name: OpenAPI drift-check
+        run: |
+          make openapi
+          git diff --exit-code src/shared/openapi.json
+
   gitleaks:
     runs-on: ubuntu-latest
     steps:
@@ -63,3 +69,9 @@ jobs:
 
       - name: Test (vitest)
         run: npm test
+
+      # Uretilen TS tipleri spec'le senkron mu (#20): degilse kirmizi
+      - name: Client tip drift-check
+        run: |
+          npm run gen:api
+          git diff --exit-code -- src/frontend/src/api/schema.d.ts

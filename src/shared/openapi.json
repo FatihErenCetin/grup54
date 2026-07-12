@@ -19,9 +19,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
-                  "type": "object",
-                  "title": "Response Health Check Health Get"
+                  "$ref": "#/components/schemas/HealthResponse"
                 }
               }
             }
@@ -42,9 +40,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
-                  "type": "object",
-                  "title": "Response Get Radar Radar Get"
+                  "$ref": "#/components/schemas/RadarResponse"
                 }
               }
             }
@@ -107,9 +103,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
-                  "type": "object",
-                  "title": "Response Get Board Board Get"
+                  "$ref": "#/components/schemas/BoardResponse"
                 }
               }
             }
@@ -141,9 +135,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "additionalProperties": true,
-                  "title": "Response Ask Project Query Get"
+                  "$ref": "#/components/schemas/QueryResponse"
                 }
               }
             }
@@ -164,6 +156,139 @@
   },
   "components": {
     "schemas": {
+      "BoardCard": {
+        "properties": {
+          "task_id": {
+            "type": "string",
+            "title": "Task Id"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "backlog",
+              "todo",
+              "in_progress",
+              "in_review",
+              "done"
+            ],
+            "title": "Status"
+          },
+          "assignee": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assignee"
+          },
+          "ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ref"
+          }
+        },
+        "type": "object",
+        "required": [
+          "task_id",
+          "title",
+          "status",
+          "assignee",
+          "ref"
+        ],
+        "title": "BoardCard"
+      },
+      "BoardResponse": {
+        "properties": {
+          "cards": {
+            "items": {
+              "$ref": "#/components/schemas/BoardCard"
+            },
+            "type": "array",
+            "title": "Cards"
+          }
+        },
+        "type": "object",
+        "required": [
+          "cards"
+        ],
+        "title": "BoardResponse"
+      },
+      "Detection": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "kind": {
+            "type": "string",
+            "const": "conflict",
+            "title": "Kind",
+            "default": "conflict"
+          },
+          "actors": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Actors"
+          },
+          "branches": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Branches"
+          },
+          "files": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Files"
+          },
+          "severity": {
+            "type": "string",
+            "enum": [
+              "low",
+              "med",
+              "high"
+            ],
+            "title": "Severity"
+          },
+          "confidence": {
+            "type": "number",
+            "title": "Confidence"
+          },
+          "rationale": {
+            "type": "string",
+            "title": "Rationale"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "actors",
+          "branches",
+          "files",
+          "severity",
+          "confidence",
+          "rationale"
+        ],
+        "title": "Detection"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -176,6 +301,72 @@
         },
         "type": "object",
         "title": "HTTPValidationError"
+      },
+      "HealthResponse": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "const": "ok",
+            "title": "Status"
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "local",
+              "hosted"
+            ],
+            "title": "Mode"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "mode"
+        ],
+        "title": "HealthResponse"
+      },
+      "QueryResponse": {
+        "properties": {
+          "answer": {
+            "type": "string",
+            "title": "Answer"
+          },
+          "citations": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Citations"
+          }
+        },
+        "type": "object",
+        "required": [
+          "answer",
+          "citations"
+        ],
+        "title": "QueryResponse"
+      },
+      "RadarResponse": {
+        "properties": {
+          "detections": {
+            "items": {
+              "$ref": "#/components/schemas/Detection"
+            },
+            "type": "array",
+            "title": "Detections"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "detections",
+          "updated_at"
+        ],
+        "title": "RadarResponse"
       },
       "ScopeVerdict": {
         "properties": {
