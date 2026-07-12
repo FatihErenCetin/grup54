@@ -1,0 +1,25 @@
+# PR triyaj otomasyonu (#146) — arac-bagimsiz: PR'i hangi AI araciyla/elle
+# acarsan ac, assignee otomatik = acan kisi (board'da "kim uzerinde" gorunur;
+# "PR'i acan merge'ler" konvansiyonunun mekanik yansimasi).
+# Reviewer tarafi CODEOWNERS'ta (alt-agac bazli, istek atar — merge'i BLOKLAMAZ).
+name: PR triage
+
+on:
+  pull_request:
+    types: [opened]
+
+permissions:
+  pull-requests: write
+
+jobs:
+  assign-author:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.issues.addAssignees({
+              ...context.repo,
+              issue_number: context.payload.pull_request.number,
+              assignees: [context.payload.pull_request.user.login],
+            });

@@ -1,3 +1,20 @@
-# Varsayılan review yönlendirme — PO otomatik reviewer olarak istenir.
-# (Task sahipliği self-select'tir; CODEOWNERS yalnızca default reviewer atar. PR'ı açan kişiden review istenmez.)
-* @FatihErenCetin
+# Alt-agac bazli otomatik review yonlendirme (#146) — SON eslesen kural kazanir.
+# Yumusak kullanim: istek atar, merge'i BLOKLAMAZ (branch protection'da
+# code-owner zorunlulugu bilerek ACIK DEGIL — bus-factor). PR'i acan kisiden
+# review istenmez (GitHub davranisi); o durumda varsayilan (*) devreye girer.
+# Task sahipligi self-select'tir; bu dosya yalnizca reviewer ISTEGI atar.
+
+# Varsayilan — PO
+*                                   @FatihErenCetin
+
+# Backend alanlari (fiili sahiplik, S2)
+src/backend/ensemble/api/           @esma6
+src/backend/ensemble/integrations/  @esma6
+src/backend/ensemble/engine/        @asmarufoglu
+src/backend/ensemble/store/         @EnesErdemT
+
+# Eval hatti (dataset: Fatih · runner: Enes)
+eval/                               @EnesErdemT @FatihErenCetin
+
+# Frontend
+src/frontend/                       @FatihErenCetin
