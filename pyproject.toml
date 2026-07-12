@@ -11,6 +11,9 @@ package = false
 members = ["src/backend", "src/shared", "src/mcp"]
 
 [dependency-groups]
+# NOT: TestClient'in ihtiyaci olan httpx, ensemble-backend'in kendi bagimliligi
+# olarak gelir (github client) — dev grubuna ayrica eklenmez. "httpx2" (fork/
+# typosquat adayi) buradan bilinçli cikarildi.
 dev = ["pytest>=8.0", "ruff>=0.6"]
 
 [tool.uv.sources]
