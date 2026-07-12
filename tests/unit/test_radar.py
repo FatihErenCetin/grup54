@@ -2,12 +2,13 @@ from datetime import datetime, timezone
 
 from ensemble.engine.radar import (
     SEMANTIC_SIMILARITY_TASK,
+    RadarService,
     file_overlap_candidates,
     jaccard_similarity,
     semantic_hunk_candidates,
     semantic_hunk_similarity,
 )
-from ensemble.models import NormalizedEvent
+from ensemble.models import Detection, NormalizedEvent
 
 
 class KeywordEmbeddings:
@@ -25,6 +26,47 @@ class KeywordEmbeddings:
             else:
                 vectors.append([0.5, 0.5])
         return vectors
+
+
+class StaticGitHub:
+    def __init__(
+        self,
+        events: list[NormalizedEvent],
+        compare_files: dict[tuple[str, str], list[str]] | None = None,
+    ):
+        self.events = events
+        self.compare_files = compare_files or {}
+        self.since_calls: list[datetime] = []
+        self.compare_calls: list[tuple[str, str]] = []
+
+    def fetch_events(self, since: datetime) -> list[NormalizedEvent]:
+        self.since_calls.append(since)
+        return self.events
+
+    def compare(self, base: str, head: str) -> list[str]:
+        self.compare_calls.append((base, head))
+        return self.compare_files.get((base, head), [])
+
+
+class RecordingJudge:
+    def __init__(self, severity: str = "high", confidence: float = 0.9):
+        self.severity = severity
+        self.confidence = confidence
+        self.calls: list[tuple[NormalizedEvent, NormalizedEvent, list[str], float]] = []
+
+    def judge_conflict(
+        self, a: NormalizedEvent, b: NormalizedEvent, overlap: list[str], sim: float
+    ) -> Detection:
+        self.calls.append((a, b, overlap, sim))
+        return Detection(
+            id=f"{a.id}-{b.id}",
+            actors=sorted({a.actor, b.actor}),
+            branches=sorted({x for x in (a.branch, b.branch) if x}),
+            files=sorted(overlap),
+            severity=self.severity,
+            confidence=self.confidence,
+            rationale="recorded",
+        )
 
 
 def event(
@@ -220,3 +262,93 @@ def test_semantic_hunk_candidates_missing_hunks_score_zero():
 
     assert scored[0].similarity == 0.0
     assert scored[0].path_scores == {"src/radar.py": 0.0}
+
+
+def test_radar_service_judges_semantic_overlap_candidates():
+    first = event("a", "semih", ["src/radar.py"])
+    second = event("b", "enes", ["src/radar.py"])
+    judge = RecordingJudge(severity="high", confidence=0.95)
+    service = RadarService(
+        github_port=StaticGitHub([first, second]),
+        judge_port=judge,
+        embeddings_port=KeywordEmbeddings(),
+        diffs_by_event={
+            "a": {"src/radar.py": "@@ -1 +1 @@\n-old\n+same intent"},
+            "b": {"src/radar.py": "@@ -1 +1 @@\n-old\n+same intent"},
+        },
+        window_days=100_000,
+    )
+
+    detections = service.get_detections()
+
+    assert len(detections) == 1
+    assert detections[0].id == "a-b"
+    assert detections[0].files == ["src/radar.py"]
+    assert len(judge.calls) == 1
+    assert judge.calls[0][2] == ["src/radar.py"]
+    assert judge.calls[0][3] == 1.0
+
+
+def test_radar_service_filters_low_severity_by_default():
+    first = event("a", "semih", ["src/radar.py"])
+    second = event("b", "enes", ["src/radar.py"])
+    judge = RecordingJudge(severity="low", confidence=0.2)
+    service = RadarService(
+        github_port=StaticGitHub([first, second]),
+        judge_port=judge,
+        embeddings_port=KeywordEmbeddings(),
+        diffs_by_event={
+            "a": {"src/radar.py": "@@ -1 +1 @@\n-old\n+same intent"},
+            "b": {"src/radar.py": "@@ -1 +1 @@\n-old\n+same intent"},
+        },
+        window_days=100_000,
+    )
+
+    assert service.get_detections() == []
+    assert len(judge.calls) == 1
+
+
+def test_radar_service_respects_min_similarity_before_judge():
+    first = event("a", "semih", ["src/radar.py"])
+    second = event("b", "enes", ["src/radar.py"])
+    judge = RecordingJudge()
+    service = RadarService(
+        github_port=StaticGitHub([first, second]),
+        judge_port=judge,
+        embeddings_port=KeywordEmbeddings(),
+        diffs_by_event={
+            "a": {"src/radar.py": "@@ -1 +1 @@\n-old\n+same intent"},
+            "b": {"src/radar.py": "@@ -1 +1 @@\n-old\n+different intent"},
+        },
+        min_similarity=0.1,
+        window_days=100_000,
+    )
+
+    assert service.get_detections() == []
+    assert judge.calls == []
+
+
+def test_radar_service_uses_compare_for_branch_events_without_files():
+    first = event("a", "semih", [])
+    second = event("b", "enes", ["src/radar.py"])
+    github = StaticGitHub(
+        [first, second],
+        compare_files={("main", "T-a"): ["src/radar.py"]},
+    )
+    judge = RecordingJudge(severity="med", confidence=0.7)
+    service = RadarService(
+        github_port=github,
+        judge_port=judge,
+        embeddings_port=KeywordEmbeddings(),
+        diffs_by_event={
+            "a": {"src/radar.py": "@@ -1 +1 @@\n-old\n+same intent"},
+            "b": {"src/radar.py": "@@ -1 +1 @@\n-old\n+same intent"},
+        },
+        window_days=100_000,
+    )
+
+    detections = service.get_detections()
+
+    assert github.compare_calls == [("main", "T-a")]
+    assert len(detections) == 1
+    assert detections[0].files == ["src/radar.py"]

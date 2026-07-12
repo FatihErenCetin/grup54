@@ -4,6 +4,9 @@ from fastapi import Depends, Request
 
 from ensemble.config import Settings
 from ensemble.engine import BoardService, RadarService, ScopeService
+from ensemble.engine.embeddings import HashEmbeddings
+from ensemble.integrations.gemini.fake import FakeJudgeAdapter
+from ensemble.integrations.github.fake import FakeGitHubAdapter
 
 
 def get_settings(request: Request) -> Settings:
@@ -17,7 +20,11 @@ def get_settings(request: Request) -> Settings:
 def get_radar_service(request: Request) -> RadarService:
     # return request.app.state.radar_service
     # Şimdilik stub döndür
-    return RadarService(github_port=None, judge_port=None)  # type: ignore
+    return RadarService(
+        github_port=FakeGitHubAdapter(),
+        judge_port=FakeJudgeAdapter(),
+        embeddings_port=HashEmbeddings(),
+    )
 
 
 def get_scope_service(request: Request) -> ScopeService:

@@ -4,7 +4,7 @@ Diger moduller (radar/board/frontend) gercek GitHub App/.pem olmadan buna
 karsi yazar - docs/sprint2-kontratlar.md'nin "fake adapter" ilkesi.
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 
 from ensemble.models import NormalizedEvent
 
@@ -51,7 +51,14 @@ class FakeGitHubAdapter:
         self._compare_files = compare_files or {}
 
     def fetch_events(self, since: datetime) -> list[NormalizedEvent]:
-        return [e for e in self._events if e.ts >= since]
+        since_key = _datetime_key(since)
+        return [e for e in self._events if _datetime_key(e.ts) >= since_key]
 
     def compare(self, base: str, head: str) -> list[str]:
         return self._compare_files.get((base, head), [])
+
+
+def _datetime_key(value: datetime) -> datetime:
+    if value.tzinfo is None or value.utcoffset() is None:
+        return value
+    return value.astimezone(timezone.utc).replace(tzinfo=None)
