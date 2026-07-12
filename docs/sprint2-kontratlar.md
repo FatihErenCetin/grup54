@@ -268,3 +268,23 @@ GET /events?since=<ISO>&before=<ISO|id>&limit=<n>&actor=<handle>&branch=<ad>
 | `confidence.basis` (Ask) | Açıklama metni; opsiyonel iyileştirme |
 | SSE streaming (/query) | Tek-atım S3'te kalır; sahte-canlılık yasak |
 | Auth/session kontratı (login/profil ekranları) | **#79 gate'li — bu ekin kapsamı DIŞI** (D-28) |
+
+## Ek C (12 Tem) — Eval veri kontratı: `ConflictCase` (#26/#27 → #28/#29)
+
+> Eval hattının veri sözleşmesi şimdiye dek örtüktü (#26'nın Pydantic modeli). #27 backtest dataset'i aynı şemayı paylaştığı için burada dondurulur. Kanonik kod: `tests/fixtures/conflict_corpus.py`.
+
+```python
+class ConflictCase(BaseModel):
+    case_id: str
+    event_a: NormalizedEvent          # AYNEN (tip genelde "pr" ya da "commit")
+    event_b: NormalizedEvent
+    overlap: list[str]                # kesişen dosya yolları
+    sim: float | None                 # ⚠️ revizyon: float → float | None
+    label: Literal["conflict", "no_conflict"]
+    note: str                         # kaynak izi (PR #'ları, [ic-merge]/[ayni-yazar] etiketleri)
+```
+
+- **`sim` semantiği (tek revizyon):** `float` = kuratörlü fixture değeri — #26 korpusu embeddings olmadan geçit mantığını test edebilsin diye elle atanır ve runner geçite **girdi olarak verebilir**. `None` = backtest verisi (#27) — benzerliği **dedektör hesaplar**; dataset'e yazılmaz ki eval, ölçmesi gereken şeyi hazır cevap olarak taşımasın (veri sızıntısı). #26'nın mevcut satırları geriye dönük geçerli (hepsi float).
+- **İki dataset, tek şema:** `tests/fixtures/conflict_corpus.jsonl` (kuratörlü, bilinen kenar durumlar) + `eval/datasets/backtest-grup54.jsonl` (gerçek tarih, gerçekçi dağılım). #28 runner'ı ikisini de tek kod yoluyla koşar.
+- **Gri bölge dosyası** (`eval/datasets/backtest-grup54-gri.jsonl`) bu şemada DEĞİLDİR (`label` yerine `label_beklemede` taşır) ve **#28 v1 tarafından tüketilmez**. İnsan etiketi verilen vakalar ayrı `backtest-grup54-el-etiketli.jsonl` dosyasına (bu şemada) eklenir; otomatik üretilen dosyalara elle dokunulmaz (determinizm testi builder çıktısıyla bit-bit eşitlik arar).
+- Üretim/determinizm kuralları: `eval/backtest/build_dataset.py` docstring'i + `eval/README.md`.
