@@ -72,7 +72,8 @@ def test_bilinen_tarihsel_conflict_yakalanmis():
 
 
 def test_case_idler_tekil():
-    ids = [r["case_id"] for r in _load_rows(_DATASET)]
+    # tekillik ana + gri dosyalar BIRLIKTE aranir (ayni cift iki dosyada olamaz)
+    ids = [r["case_id"] for r in _load_rows(_DATASET) + _load_rows(_GRAY)]
     assert len(ids) == len(set(ids))
 
 
@@ -83,7 +84,9 @@ def test_iki_etiket_de_var():
 
 def test_gri_dosya_ana_semada_degil():
     # gri satirlar bilerek etiketsiz — #28 v1 bunlari TUKETMEZ (Ek C)
-    for row in _load_rows(_GRAY):
+    rows = _load_rows(_GRAY)
+    assert len(rows) >= 1, "gri dosya bos — vakumda gecen test istemiyoruz"
+    for row in rows:
         assert "label" not in row
         assert row["label_beklemede"] == "insan-etiketi-gerekli"
 

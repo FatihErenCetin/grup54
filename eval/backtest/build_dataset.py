@@ -17,6 +17,9 @@ Ground-truth mantigi (retrospektif simulasyon):
       (ayri dosyaya yazilir; #28 runner'i v1'de bunu TUKETMEZ).
   Bir uc digerinin atasiysa cift atlanir: sonraki is oncekini GORMUS demektir,
   "kor cakisma" sorusu anlamsizlasir.
+  BASE-SKEW korumasi: conflict etiketi ancak conflictli dosyaya iki tarafin
+  KENDI isi de dokunduysa gecerlidir — fork noktalari farkliysa aradaki main
+  commit'leri simulasyona sizar ve conflict ucuncu bir isin eseri olabilir.
 
 Cikti satirlari tests/fixtures/conflict_corpus.py'deki ConflictCase semasiyla
 uyumludur (kontrat: docs/sprint2-kontratlar.md Ek C). `sim` bilincli olarak
@@ -28,6 +31,7 @@ Kullanim:  python3 eval/backtest/build_dataset.py  (repo kokunden ya da her yerd
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 from datetime import datetime
 from itertools import combinations
@@ -42,13 +46,15 @@ _OUT_GRAY = _REPO_ROOT / "eval" / "datasets" / "backtest-grup54-gri.jsonl"
 
 def _git(*args: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
-        ["git", "-C", str(_REPO_ROOT), *args],
+        # quotePath=off: non-ASCII dosya adlari octal-escape'lenmesin (tutarli ham yol)
+        ["git", "-C", str(_REPO_ROOT), "-c", "core.quotePath=off", *args],
         capture_output=True,
         text=True,
         check=False,
         # determinizm: git mesajlari makine yereline gore cevriliyor (ör. "ÇAKIŞMA (içerik)");
-        # C locale sabitlemezsek ayni komut farkli makinede farkli metin dondurur
-        env={"LC_ALL": "C", "LANG": "C", "PATH": "/usr/bin:/bin:/usr/local/bin"},
+        # C locale sabitlemezsek ayni komut farkli makinede farkli metin dondurur.
+        # PATH vs. miras kalir (Windows/homebrew kurulumlarini kirmamak icin).
+        env={**os.environ, "LC_ALL": "C", "LANG": "C"},
     )
 
 
@@ -84,6 +90,10 @@ def _merge_tree_conflicts(head_a: str, head_b: str) -> tuple[bool, list[str]]:
     out = _git("merge-tree", "--write-tree", "--name-only", head_a, head_b)
     if out.returncode == 0:
         return False, []
+    if out.returncode != 1:
+        # git sozlesmesi: 0 = temiz, 1 = conflict, digeri = HATA (ör. cozulmeyen oid) —
+        # hatayi conflict sanmak dataset'i sessizce zehirler
+        raise RuntimeError(f"merge-tree hatasi ({out.returncode}): {out.stderr.strip()}")
     files: set[str] = set()
     for line in out.stdout.splitlines()[1:]:
         if not line.strip():
@@ -105,7 +115,7 @@ def _event(pr: dict, files: list[str], ts: str, ref: str | None = None) -> dict:
     }
 
 
-def _mine_internal_merges(enriched: list[dict]) -> tuple[list[dict], list[dict]]:
+def _mine_internal_merges(enriched: list[dict]) -> tuple[list[dict], list[dict], int]:
     """Cozulup gomulmus conflict'leri geri kazan (retrospektif kanit madenciligi).
 
     Bir branch calisirken main'i icine merge ettiyse (conflict cozumu dahil), branch
@@ -115,12 +125,15 @@ def _mine_internal_merges(enriched: list[dict]) -> tuple[list[dict], list[dict]]
     edilebilir. merge-tree(P1, P2) conflict veriyorsa, o an YASANMIS cakismayi
     aynen yeniden hesaplariz — cozum M'nin tree'sinde yasar, girdilerinde degil.
 
-    Atif: conflictli dosyalara dokunan ve P2'de olup P1'de olmayan (= branch'in
-    henuz gormedigi) PR'lar bulunur; her biri bir (PA, PB@P1) cifti uretir.
-    Temiz ic-merge + ortak dosya → gri (semantik suphe).
+    Atif CIFT-BAZLIDIR (adversarial dogrulama bulgusu): ic-merge yalniz KESIF
+    tetikleyicisidir; conflictli dosyaya "dokunmus olmak" suclamaya yetmez —
+    ayni dosyanin farkli hunk'lari temiz birlesebilir. Bu yuzden her aday PA
+    icin merge-tree(PA.head, P1) AYRICA kosulur: cift kendisi conflict veriyorsa
+    → conflict; temiz ama ortak dosya varsa → gri (ciftli asamayla ayni taksonomi).
     """
     conflict_rows: list[dict] = []
     gray_rows: list[dict] = []
+    skipped_base_skew = 0
     seen_pairs: set[tuple[int, int]] = set()  # ayni cift birden cok ic-merge'de gorunmesin
 
     for pb in sorted(enriched, key=lambda p: p["number"]):
@@ -132,7 +145,6 @@ def _mine_internal_merges(enriched: list[dict]) -> tuple[list[dict], list[dict]]
             p2 = _git("rev-parse", f"{m}^2").stdout.strip()
             if not p1 or not p2:
                 continue
-            has_conflict, conflict_files = _merge_tree_conflicts(p1, p2)
             # branch'in M anindaki KENDI degisiklikleri (P2'de olmayan taraf)
             files_b = sorted(
                 ln for ln in _git("diff", "--name-only", f"{p2}...{p1}").stdout.splitlines()
@@ -147,50 +159,65 @@ def _mine_internal_merges(enriched: list[dict]) -> tuple[list[dict], list[dict]]
                 # PA gelen tarafta var ama branch henuz gormemis olmali
                 if not _is_ancestor(pa["head_oid"], p2) or _is_ancestor(pa["head_oid"], p1):
                     continue
-                if has_conflict:
-                    owned = sorted(set(pa["files"]) & set(conflict_files))
-                    if not owned:
-                        continue
+                # KRITIK: etiket ciftin KENDI simulasyonundan gelir — M'nin toplu
+                # conflict'ine dokunan her PR suclanamaz (farkli hunk temiz birlesir)
+                pair_conflict, pair_files = _merge_tree_conflicts(pa["head_oid"], p1)
+                overlap = sorted(set(pa["files"]) & set(files_b))
+                # base-skew korumasi (ciftli asamayla ayni kural): conflict ancak
+                # dosyaya iki tarafin KENDI isi de dokunduysa gecerli
+                owned = [f for f in pair_files if f in set(pa["files"]) and f in set(files_b)]
+                actor_tag = " [ayni-yazar]" if pa["author"] == pb["author"] else ""
+                base_row = {
+                    "case_id": f"backtest-pr{pa['number']}-pr{pb['number']}-icmerge",
+                    "event_a": _event(pa, pa["files"], pa["ts_start"]),
+                    "event_b": _event(pb, files_b, ts_b, ref=p1),
+                    "overlap": overlap,
+                    "sim": None,
+                }
+                if pair_conflict and not owned:
+                    skipped_base_skew += 1
+                    if overlap:
+                        seen_pairs.add((pa["number"], pb["number"]))
+                        gray_rows.append(
+                            {
+                                **base_row,
+                                "label_beklemede": "insan-etiketi-gerekli",
+                                "note": (
+                                    f"PR #{pa['number']} + #{pb['number']}: simulasyon base "
+                                    f"kaymasiyla kirli ama {len(overlap)} ortak dosya var — "
+                                    f"elle incelenecek [ic-merge][base-skew]{actor_tag}"
+                                ),
+                            }
+                        )
+                    continue
+                if pair_conflict:
                     seen_pairs.add((pa["number"], pb["number"]))
-                    actor_tag = " [ayni-yazar]" if pa["author"] == pb["author"] else ""
                     conflict_rows.append(
                         {
-                            "case_id": f"backtest-pr{pa['number']}-pr{pb['number']}-icmerge",
-                            "event_a": _event(pa, pa["files"], pa["ts_start"]),
-                            "event_b": _event(pb, files_b, ts_b, ref=p1),
-                            "overlap": sorted(set(pa["files"]) & set(files_b)),
-                            "sim": None,
+                            **base_row,
                             "label": "conflict",
                             "note": (
-                                f"PR #{pa['number']} + #{pb['number']}: branch-ici merge "
-                                f"{m[:8]} yeniden simule edildi — conflict: {', '.join(owned)}"
-                                f" [ic-merge]{actor_tag}"
+                                f"PR #{pa['number']} + #{pb['number']}: cift dogrudan yeniden "
+                                f"simule edildi (kesif: ic-merge {m[:8]}) — conflict: "
+                                f"{', '.join(owned)} [ic-merge]{actor_tag}"
                             ),
                         }
                     )
-                else:
-                    overlap = sorted(set(pa["files"]) & set(files_b))
-                    if not overlap:
-                        continue
+                elif overlap:
                     seen_pairs.add((pa["number"], pb["number"]))
-                    actor_tag = " [ayni-yazar]" if pa["author"] == pb["author"] else ""
                     gray_rows.append(
                         {
-                            "case_id": f"backtest-pr{pa['number']}-pr{pb['number']}-icmerge",
-                            "event_a": _event(pa, pa["files"], pa["ts_start"]),
-                            "event_b": _event(pb, files_b, ts_b, ref=p1),
-                            "overlap": overlap,
-                            "sim": None,
+                            **base_row,
                             "label_beklemede": "insan-etiketi-gerekli",
                             "note": (
-                                f"PR #{pa['number']} + #{pb['number']}: branch-ici merge "
-                                f"{m[:8]} TEMIZ ama {len(overlap)} ortak dosya — potansiyel "
-                                f"semantik cakisma [ic-merge]{actor_tag}"
+                                f"PR #{pa['number']} + #{pb['number']}: cift temiz birlesiyor "
+                                f"AMA {len(overlap)} ortak dosya (kesif: ic-merge {m[:8]}) — "
+                                f"potansiyel semantik cakisma [ic-merge]{actor_tag}"
                             ),
                         }
                     )
 
-    return conflict_rows, gray_rows
+    return conflict_rows, gray_rows, skipped_base_skew
 
 
 def build() -> tuple[list[dict], list[dict], dict]:
@@ -214,6 +241,7 @@ def build() -> tuple[list[dict], list[dict], dict]:
     main_rows: list[dict] = []
     gray_rows: list[dict] = []
     skipped_ancestor = 0
+    skipped_base_skew = 0
 
     for a, b in combinations(sorted(enriched, key=lambda p: p["number"]), 2):
         # pencere ortusmesi — DIKKAT: git %aI yerel ofset (+03:00), GitHub ise UTC (Z)
@@ -240,11 +268,27 @@ def build() -> tuple[list[dict], list[dict], dict]:
             "sim": None,  # dedektor hesaplar — dataset'e yazilmaz (Ek C)
         }
 
+        # BASE-SKEW korumasi: farkli fork noktalari yuzunden merge-base kayarsa,
+        # aradaki main commit'leri simulasyona sizar ve conflict aslinda ucuncu
+        # bir isin eseridir. Etiket ancak conflictli dosyaya IKI TARAFIN KENDI
+        # isi de dokunduysa gecerlidir (adversarial dogrulama bulgusu).
+        owned = [f for f in conflict_files if f in set(a["files"]) and f in set(b["files"])]
+        if has_conflict and not owned:
+            skipped_base_skew += 1
+            if overlap:  # kendi isleri yine de ayni dosyalara dokunuyor → suphe kalir
+                row["label_beklemede"] = "insan-etiketi-gerekli"
+                row["note"] = (
+                    f"PR #{a['number']} + #{b['number']}: simulasyon base kaymasiyla kirli, "
+                    f"ama {len(overlap)} ortak dosya var — elle incelenecek "
+                    f"[base-skew]{actor_tag}"
+                )
+                gray_rows.append(row)
+            continue
         if has_conflict:
             row["label"] = "conflict"
             row["note"] = (
                 f"PR #{a['number']} + #{b['number']}: merge-tree conflict — "
-                f"{', '.join(conflict_files)}{actor_tag}"
+                f"{', '.join(owned)}{actor_tag}"
             )
             main_rows.append(row)
         elif not overlap:
@@ -264,9 +308,10 @@ def build() -> tuple[list[dict], list[dict], dict]:
             gray_rows.append(row)
 
     # ata-filtresine takilan ciftlerdeki gomulu kaniti geri kazan (docstring'e bak)
-    mined_conflicts, mined_gray = _mine_internal_merges(enriched)
+    mined_conflicts, mined_gray, mined_skew = _mine_internal_merges(enriched)
     main_rows.extend(mined_conflicts)
     gray_rows.extend(mined_gray)
+    skipped_base_skew += mined_skew
 
     stats = {
         "pr_sayisi": len(enriched),
@@ -280,6 +325,7 @@ def build() -> tuple[list[dict], list[dict], dict]:
             if r["event_a"]["actor"] == r["event_b"]["actor"]
         ),
         "atlanan_ata_cifti": skipped_ancestor,
+        "atlanan_base_skew": skipped_base_skew,
     }
     return main_rows, gray_rows, stats
 

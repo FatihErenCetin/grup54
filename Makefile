@@ -19,7 +19,7 @@ migrate:
 	cd src/backend && uv run alembic upgrade head
 
 eval-dataset:
-	python3 eval/backtest/build_dataset.py
+	uv run python eval/backtest/build_dataset.py
 
 rebuild:
 	uv run python -c "from ensemble.store.engine import get_engine, get_session_factory; from ensemble.store.rebuild import rebuild_projection; from ensemble.config import get_settings; from ensemble_shared.harness import FileHarnessPort; settings=get_settings(); engine=get_engine(settings); session=get_session_factory(engine)(); harness=FileHarnessPort(); print('Rebuilding projection...'); res=rebuild_projection(session, harness); print(f'Rebuilt: {res}')"

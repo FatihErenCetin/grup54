@@ -286,5 +286,5 @@ class ConflictCase(BaseModel):
 
 - **`sim` semantiği (tek revizyon):** `float` = kuratörlü fixture değeri — #26 korpusu embeddings olmadan geçit mantığını test edebilsin diye elle atanır ve runner geçite **girdi olarak verebilir**. `None` = backtest verisi (#27) — benzerliği **dedektör hesaplar**; dataset'e yazılmaz ki eval, ölçmesi gereken şeyi hazır cevap olarak taşımasın (veri sızıntısı). #26'nın mevcut satırları geriye dönük geçerli (hepsi float).
 - **İki dataset, tek şema:** `tests/fixtures/conflict_corpus.jsonl` (kuratörlü, bilinen kenar durumlar) + `eval/datasets/backtest-grup54.jsonl` (gerçek tarih, gerçekçi dağılım). #28 runner'ı ikisini de tek kod yoluyla koşar.
-- **Gri bölge dosyası** (`eval/datasets/backtest-grup54-gri.jsonl`) bu şemada DEĞİLDİR (`label` yerine `label_beklemede` taşır) ve **#28 v1 tarafından tüketilmez** — insan etiketi sonrası ana dosyaya taşınır.
+- **Gri bölge dosyası** (`eval/datasets/backtest-grup54-gri.jsonl`) bu şemada DEĞİLDİR (`label` yerine `label_beklemede` taşır) ve **#28 v1 tarafından tüketilmez**. İnsan etiketi verilen vakalar ayrı `backtest-grup54-el-etiketli.jsonl` dosyasına (bu şemada) eklenir; otomatik üretilen dosyalara elle dokunulmaz (determinizm testi builder çıktısıyla bit-bit eşitlik arar).
 - Üretim/determinizm kuralları: `eval/backtest/build_dataset.py` docstring'i + `eval/README.md`.
