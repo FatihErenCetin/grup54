@@ -1,9 +1,11 @@
 from fastapi import APIRouter
 
+from ensemble.api.schemas import QueryResponse
+
 router = APIRouter(prefix="/query", tags=["query"])
 
 
 @router.get("")
-def ask_project(q: str) -> dict:
+def ask_project(q: str) -> QueryResponse:
     # TODO: Implement NL query over project state
-    return {"answer": "Not implemented yet", "citations": []}
+    return QueryResponse(answer="Not implemented yet", citations=[])

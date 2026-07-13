@@ -58,3 +58,29 @@ export function EmptyState({
     </div>
   );
 }
+
+export function SonGuncelleme({
+  dataUpdatedAt,
+  isFetching = false,
+}: {
+  /** usePolling'den gelen GERÇEK zaman (ms epoch); 0 = henüz veri yok */
+  dataUpdatedAt: number;
+  isFetching?: boolean;
+}) {
+  // Sahte-canlılık yasak (D-34): saat uydurulmaz, son BAŞARILI verinin zamanı
+  // basılır. Sekme arka planda kaldıysa eski saat DÜRÜSTÇE görünür; odakta
+  // usePolling anında tazeler (isFetching o geçişi görünür kılar).
+  // ts UTC gelir, yerel saate çeviri istemcide (Ek B5).
+  return (
+    <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+      {isFetching && (
+        <span aria-hidden className="animate-pulse text-primary">
+          ●
+        </span>
+      )}
+      {dataUpdatedAt === 0
+        ? "Henüz veri yok"
+        : `Son güncelleme: ${new Date(dataUpdatedAt).toLocaleTimeString("tr-TR")}`}
+    </span>
+  );
+}
