@@ -1,4 +1,3 @@
-import { useState } from "react";
 import type { components } from "../api/schema.d.ts";
 import { ActorChip, ConfidenceMeter, SeverityBadge } from "./ui";
 
@@ -20,18 +19,28 @@ export function moduleOf(files: string[]): string {
 }
 
 /* Radar satır anatomisi (#21, tasarım paketi /radar):
-   [severity][rationale 1 cümle][aktörler][modül çipi][confidence] + expand.
-   Gate'li (bilinçli yok — Ek B1/B6): yaş göstergesi (first_seen_at, B1 S3) ·
-   aksiyon butonları (yazma ucu B6 ertelemesi) · side-sheet (S2 cila sınırı). */
-export function FeedItem({ detection }: { detection: Detection }) {
-  const [open, setOpen] = useState(false);
+   [severity][rationale 1 cümle][aktörler][modül çipi][confidence].
+   Tıklama = SEÇİM → sağdan DetailSheet (#156, Pencil MOGXv); accordion
+   kaldırıldı (tasarıma dönüş). Gate'li kalanlar: yaş (Ek B1 S3) · aksiyon
+   butonları (Ek B6). */
+export function FeedItem({
+  detection,
+  selected = false,
+  onSelect,
+}: {
+  detection: Detection;
+  selected?: boolean;
+  onSelect: (d: Detection) => void;
+}) {
   return (
     <li className="rounded-lg border border-border bg-card">
       <button
         type="button"
-        onClick={() => setOpen(!open)}
-        aria-expanded={open}
-        className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-muted/40"
+        onClick={() => onSelect(detection)}
+        aria-pressed={selected}
+        className={`flex w-full items-center gap-3 px-4 py-3 text-left ${
+          selected ? "bg-muted" : "hover:bg-muted/40"
+        }`}
       >
         <SeverityBadge level={detection.severity} />
         <span className="min-w-0 flex-1 truncate text-sm" title={detection.rationale}>
@@ -47,26 +56,6 @@ export function FeedItem({ detection }: { detection: Detection }) {
         </span>
         <ConfidenceMeter value={detection.confidence} />
       </button>
-      {open && (
-        <div className="space-y-2 border-t border-border px-4 py-3 text-sm">
-          <p className="text-muted-foreground">{detection.rationale}</p>
-          <div className="flex flex-wrap gap-x-6 gap-y-1 text-xs">
-            <span>
-              <span className="text-muted-foreground">Branch'ler: </span>
-              {detection.branches.map((b) => (
-                <code key={b} className="mr-2 rounded bg-muted px-1 py-0.5 font-mono">
-                  {b}
-                </code>
-              ))}
-            </span>
-          </div>
-          <ul className="space-y-0.5 font-mono text-xs text-muted-foreground">
-            {detection.files.map((f) => (
-              <li key={f}>{f}</li>
-            ))}
-          </ul>
-        </div>
-      )}
     </li>
   );
 }
