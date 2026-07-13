@@ -1,20 +1,22 @@
-# Alt-agac bazli otomatik review yonlendirme (#146) — SON eslesen kural kazanir.
-# Yumusak kullanim: istek atar, merge'i BLOKLAMAZ (branch protection'da
-# code-owner zorunlulugu bilerek ACIK DEGIL — bus-factor). PR'i acan kisiden
-# review istenmez (GitHub davranisi); o durumda varsayilan (*) devreye girer.
-# Task sahipligi self-select'tir; bu dosya yalnizca reviewer ISTEGI atar.
+# Alt-agac bazli otomatik review yonlendirme (#146) — SON eslesen kural kazanir
+# ve YALNIZ o kural uygulanir (kademeli fallback YOKTUR — Semih'in #147 review
+# bulgusu: alan sahibi KENDI alanina PR acarsa, GitHub yazardan istek atmadigi
+# ve ust satira geri DUSMEDIGI icin istek bos kalirdi). Cozum: her alanda CIFT
+# sahip — yazar hangisiyse digeri istegi alir, otomasyon her durumda calisir.
+# Yumusak kullanim: istek atar, merge'i BLOKLAMAZ (code-owner zorunlulugu
+# bilerek ACIK DEGIL — bus-factor). Task sahipligi self-select'tir.
 
-# Varsayilan — PO
-*                                   @FatihErenCetin
+# Varsayilan — PO + SM
+*                                   @FatihErenCetin @esma6
 
-# Backend alanlari (fiili sahiplik, S2)
-src/backend/ensemble/api/           @esma6
-src/backend/ensemble/integrations/  @esma6
-src/backend/ensemble/engine/        @asmarufoglu
-src/backend/ensemble/store/         @EnesErdemT
+# Backend alanlari (birinci isim = fiili sahip, ikinci = yedek reviewer)
+src/backend/ensemble/api/           @esma6 @FatihErenCetin
+src/backend/ensemble/integrations/  @esma6 @FatihErenCetin
+src/backend/ensemble/engine/        @asmarufoglu @EnesErdemT
+src/backend/ensemble/store/         @EnesErdemT @asmarufoglu
 
 # Eval hatti (dataset: Fatih · runner: Enes)
 eval/                               @EnesErdemT @FatihErenCetin
 
 # Frontend
-src/frontend/                       @FatihErenCetin
+src/frontend/                       @FatihErenCetin @esma6
