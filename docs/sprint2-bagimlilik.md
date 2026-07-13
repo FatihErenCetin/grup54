@@ -1,7 +1,8 @@
 # Sprint 2 — Bağımlılık Haritası & Yürütme Sırası
 
-> **Amaç:** Kim neyi **şimdi** başlatabilir, ne neyi bekler — tek bakışta. Kaynak: issue gövdeleri + `docs/sprint2-kontratlar.md`. Kanonik durum GitHub'dadır; bu doküman *sıralama rehberi*dir (8 Tem 2026 — tüm issue'lar atanmış hâliyle).
-> **Okuma:** düz ok `A --> B` = *B, A bitmeden canlıya çıkamaz* · kesik ok `A -.-> B` = *yumuşak bağımlılık: B mock/fixture ile beklemeden başlar, canlı için A gerekir* (kontrat-önce ilkesi, D-22).
+> **Amaç:** Kim neyi **şimdi** başlatabilir, ne neyi bekler — tek bakışta. Kaynak: issue gövdeleri + `docs/sprint2-kontratlar.md`. Kanonik durum GitHub'dadır; bu doküman *sıralama rehberi*dir.
+> **Revizyon: 13 Tem 2026 (sprint-ortası tazeleme, #153)** — 25/37 issue kapandı ✓; #151 (canlı kablolama) ve #146 (PR triyajı) eklendi; #17/#21/#146 PR aşamasında. İlk sürüm: 8 Tem (#108).
+> **Okuma:** düz ok `A --> B` = *B, A bitmeden canlıya çıkamaz* · kesik ok `A -.-> B` = *yumuşak bağımlılık: B mock/fixture ile beklemeden başlar, canlı için A gerekir* (kontrat-önce ilkesi, D-22). Gri düğüm = kapandı (yalnız açık işlere zemin olanlar grafikte; tam liste §5).
 
 ## 1. Görsel harita (GitHub bu diyagramı render eder)
 
@@ -11,132 +12,126 @@ graph LR
   classDef esma fill:#9d5bde,color:#fff,stroke:#6b2fb7
   classDef enes fill:#2e9e6b,color:#fff,stroke:#1d6b47
   classDef fatih fill:#de8f3c,color:#fff,stroke:#a8641d
+  classDef done fill:#3a3f45,color:#9aa3ad,stroke:#565e66
 
-  subgraph GUN1["🔴 GÜN-1 blocker'ları (bugün yapılmalı)"]
-    I46["#46 🔑 App kaydı ~30dk"]:::esma
-    I45["#45 ⚠️ CORS"]:::fatih
-    I50["#50 Gemini adapter + FAKE"]:::esma
-  end
-
-  subgraph AI["🧠 AI çekirdek"]
-    I15["#15 Embeddings+VectorStore"]:::semih
-    I22["#22 Dosya-kesişim geçidi"]:::semih
-    I23["#23 Semantik cosine"]:::semih
-    I24["#24 LLM judge"]:::esma
-    I17["#17 ⭐ Dedektör (radar)"]:::semih
+  subgraph SIMDI["🔴 BUGÜN kritik (13 Tem)"]
+    I17["#17 ⭐ Dedektör — PR #148 🟡 düzeltmede"]:::semih
+    I28["#28 Eval runner — kod lokalde, PR bekleniyor"]:::enes
   end
 
   subgraph EVAL["📏 Eval/kalibrasyon"]
-    I26["#26 Precision korpusu"]:::esma
-    I27["#27 Backtest dataset"]:::fatih
-    I28["#28 Eval runner"]:::enes
-    I29["#29 Threshold sweep"]:::enes
-    I18["#18 ⭐ Kalibrasyon (DoD)"]:::esma
+    I26["#26 ✓ Korpus"]:::done
+    I27["#27 ✓ Backtest dataset"]:::done
+    I29["#29 Threshold sweep (+aynı-yazar ekseni)"]:::enes
     I30["#30 CI precision-gate"]:::enes
+    I18["#18 ⭐ Kalibrasyon (sprint DoD)"]:::esma
   end
 
-  subgraph VERI["🔌 Veri"]
-    I16["#16 GitHub ingest"]:::esma
-    I49["#49 Backfill"]:::semih
-    I41["#41 Projeksiyon DB"]:::enes
-    I47["#47 Projeksiyon yazıcı"]:::enes
+  subgraph CANLI["🔌 Canlıya bağlama"]
+    I16["#16 ✓ GitHub ingest"]:::done
+    I50["#50 ✓ Gemini adapter"]:::done
+    I151["#151 Canlı kablolama: DI + eşikler config'ten"]:::esma
+    I49["#49 Backfill (ilk N PR/commit)"]:::semih
+  end
+
+  subgraph AIALT["🧠 AI aşamaları (hepsi ✓)"]
+    I22["#22 ✓ Jaccard"]:::done
+    I23["#23 ✓ Cosine"]:::done
+    I24["#24 ✓ Judge"]:::done
   end
 
   subgraph WEB["🖥️ Web"]
-    I19["#19 App shell"]:::fatih
-    I20["#20 TS client"]:::fatih
-    I21["#21 Radar sayfası"]:::fatih
-    I25["#25 Detection + /radar router"]:::esma
+    I19["#19 ✓ Shell"]:::done
+    I20["#20 ✓ TS client"]:::done
+    I21["#21 Radar sayfası — PR #150 review'da (Esma)"]:::fatih
+    I25["#25 ✓ /radar router"]:::done
+    I45["#45 ✓ CORS"]:::done
   end
 
   subgraph DIGER["🛡️ Diğer"]
-    I54["#54 Error envelope"]:::fatih
-    I106["#106 Ek A docs — PR #107 REVIEW BEKLİYOR"]:::enes
+    I54["#54 Error envelope (ara işi)"]:::fatih
+    I146["#146 PR triyajı — PR #147 re-review'da (Semih)"]:::fatih
+    I124["#124 ⚙️ Harita oto-güncelleme botu (stretch)"]:::enes
+    I15["#15 Embeddings — işi merge'li, issue AÇIK ❓"]:::semih
   end
 
-  I46 --> I16
-  I16 --> I49
-  I16 --> I47
-  I41 --> I47
-  I16 -.->|canlı veri| I27
-  I50 --> I24
-  I50 -.->|gerçek çağrı| I15
-  I15 --> I23
-  I22 --> I23
+  I22 --> I17
   I23 --> I17
   I24 --> I17
-  I22 --> I17
   I26 --> I28
   I27 --> I28
-  I17 --> I28
+  I17 -.->|dedektör entegrasyonu| I28
   I28 --> I29
-  I29 --> I18
   I28 --> I30
+  I29 --> I18
   I18 -.->|yeşil kanıt| I30
+  I16 --> I151
+  I50 --> I151
+  I17 --> I151
+  I16 --> I49
   I19 --> I21
   I20 --> I21
-  I17 --> I25
-  I25 -.->|stub şimdi· canlı sonra| I21
-  I45 -.->|tarayıcıdan canlı| I21
+  I25 -.->|mock şimdi| I21
+  I45 -.->|tarayıcıdan| I21
+  I151 -.->|VITE_MOCK=0 canlı radar| I21
 ```
 
-Renk = sahip: 🔵 Semih · 🟣 Esma · 🟢 Enes · 🟠 Fatih
+Renk = sahip: 🔵 Semih · 🟣 Esma · 🟢 Enes · 🟠 Fatih · ⬜ kapandı
 
-## 2. Dalgalar — ne zaman ne başlar
+**Kritik yol (kalan):** `#148 düzeltme (Semih) → #17 merge → #28 merge (Enes) → #29 → #18⭐ (Esma)` — sprint 19 Tem'de bitiyor, bu zincir **5 iş günü değil 6 takvim günü** içinde kapanmalı. Paralel demo şeridi: `#17 → #151 (Esma) → canlı radar` + `#150 merge → #21 kapanır`.
+
+## 2. Dalgalar — bugünden itibaren (13 Tem)
 
 | Dalga | Issue'lar | Not |
 |---|---|---|
-| **D0 — ŞİMDİ, tamamen paralel** | Esma: **#46🔑 → #50** → #16* + #26 · Fatih: **#45⚠️** + #19 + #20 (+#54 ara işi) · Semih: #22 + #15 · Enes: #106→PR107 merge + #41 · Fatih: #27-iskelet · Esma: #25-stub | *#16 fixture'la şimdi başlar; **canlı** auth için #46 şart. #25 router stub'ı kontrattan şimdi yazılır → #21 buna karşı geliştirir |
-| **D1 — D0 çıktılarıyla** | #23 (←15+22, Semih) · #24 (←50, Esma) · #21 (←19+20, mock, Fatih) · #49 (←16, Semih) · #47 (←41+16, Enes) | #24'ün önü Esma'nın kendi #50'sine bağlı → #50'yi öne alması kendi kuyruğunu açar |
-| **D2 — hafta-1 sonu hedefi** | #17⭐ (←22+23+24, Semih) · #28 (←26+27+17, Enes) | #17 = yürüyen iskeletin kalbi; buraya D8-D9'da varmalıyız |
-| **D3 — hafta-2** | #29 (←28, Enes) · #25-canlı (←17, Esma) · #21-canlı (←25+45, Fatih) · #30 (←28, Enes) | |
-| **D4 — sprint kapanış** | #18⭐ (←26..29, Esma) | DoD kapısı: eval yeşil değilse "kusursuz radar" iddiası yok |
+| **D0 — ŞİMDİ, paralel** | Semih: **#148 düzeltmeleri** (4 küçük istek — kritik yol!) · Enes: **#28 PR'ını aç** (kod hazır; main'i çek, `conflict_corpus.py`'de main'inkini al) · Esma: #149 atıf düzeltmesi+merge → #150 review · Fatih: #54 | #28 PR'ı #17'yi *beklemeden* açılabilir (dedektör entegrasyonu #17 merge'üyle tamamlanır — kesik ok) |
+| **D1 — #148 merge sonrası** | #17 kapanır → Enes #28'i finalize/merge · Esma #151 (canlı DI — eşikler Settings'e) | #151'in sert ön-koşulları (#16 ✓ #50 ✓) hazır; anlamlı canlı radar için #17 gerekir |
+| **D2** | Enes: #29 (aynı-yazar ekseni dahil — #29'daki veri notu) + #30 · Fatih: #150 merge → #21 kapanır · Semih: #49 (sığarsa — ❓) | |
+| **D3 — kapanış (18-19 Tem)** | Esma: **#18⭐** (eval yeşil = DoD) + sprint 6-başlık raporu | DoD kapısı: eval kabul edilebilir FP göstermeden "kusursuz radar" iddiası yok |
 
-## 3. Kişi bazlı sıra (herkesin kendi kuyruğu)
+## 3. Kişi bazlı sıra (kalan işler)
 
 | Kişi | Sıra (→ = sonra) | Bekleme notu |
 |---|---|---|
-| **Semih** | #22 → #15 → #23 → #49 (kısa, #16 inince) → **#17⭐** | Kritik yolun sahibi — hiç boş kalmaz. #15'te gerçek Gemini çağrısı için #50'yi bekleme: fixture'la ilerle. #49, #23→#17 arasındaki doğal boşluğa oturur |
-| **Esma** | **#46 (BUGÜN, ~30 dk)** → **#50** → #16 + #26 (paralel) → #25-stub → #24 → **#18⭐** | ⚠️ **En yüklü kuyruk (7 issue)** ve sprint'in iki ucunda kritik iş (#46 gün-1, #18 kapanış). #46+#50'yi ilk iki günde bitirmek hem kendi #24'ünü hem Semih/Enes'in eval determinizmini açar. Yük ağırlaşırsa #25-stub veya #26 devredilebilir (ekip kararı) |
-| **Enes** | #106 (PR #107 bugün merge) → #41 → #47 (←41+16) → #28 → #29 → #30 | #47 araya girince #28'e kadar boşluk kalmadı — akış tam |
-| **Fatih** | **#45 (BUGÜN, küçük)** → #19 → #20 → #21 (mock) → #27 → #54 (ara işi) | #21 canlı görüntü için #25+#45 gerek; mock'la sonuna kadar gidilir. #54 küçük — boşluğa gelir |
+| **Semih** | **#148 düzeltmeleri (BUGÜN)** → #17 merge → #49 (❓ sığarsa) → #147 re-review (küçük) | Kritik yol hâlâ onda; #148'in 4 isteği küçük (conflict tek dosya/import + 1 satır default + try/except + TODO). #15'in issue'su kapatılmalı ❓ |
+| **Esma** | #149 düzelt+merge → #150 review → **#151** → **#18⭐** | Sprint yine onun kapanışıyla bitiyor; #151 orta boy (DI + Settings eşikleri), #18 eval çıktısına bağlı |
+| **Enes** | **#28 PR'ını aç (BUGÜN)** → #17 entegrasyonu → #29 → #30 (+#124 stretch) | Kuyruk tamamen kendi elinde #28 PR'ıyla açılıyor; #124'e ancak #30 sonrası kapasite kalırsa |
+| **Fatih** | #54 → #150/#147 merge'leri (onaylar gelince) → sprint raporu girdileri | S2 ana kuyruğu bitti; #54 bağımsız ara işi |
 
-## 4. 🔴 Gün-1 blocker'ları — sahipli, ama saat işliyor
+## 4. 🔴 Bugünün blocker'ları
 
-| Issue | Sahip | Aciliyet | Neden |
+| İş | Sahip | Aciliyet | Neden |
 |---|---|---|---|
-| **#46** 🔑 App kaydı | Esma | **BUGÜN** (~30 dk, tarayıcı işi) | Yapılmadan #16'nın canlı auth'u ölü; ilk gün kayarsa veri şeridi kayar |
-| **#45** ⚠️ CORS | Fatih | **BUGÜN** (küçük) | Yapılmazsa tarayıcı TÜM API çağrılarını bloklar; hafta-2 canlı bağlantısı duvara toslar |
-| **#50** Gemini adapter+fake | Esma | **Bu hafta erken** | #24 judge başlayamaz; #26-30 eval fake'siz flaky = DoD kanıtı çürük |
+| **#148 düzeltmeleri** | Semih | **BUGÜN** | Kritik yolun tamamı bunun arkasında; her gün gecikme #28→#29→#18 zincirini sıkıştırıyor (sprint 19'da bitiyor) |
+| **#28 PR açılışı** | Enes | **BUGÜN** | Kod lokalde hazır — tek engel main merge + conflict_corpus çözümü; PR açılmazsa review/entegrasyon süresi kapanışa sıkışır |
+| **#149 düzelt+merge** | Esma | Bugün (5 dk) | Tek satır atıf düzeltmesi; daily kanıtı taze kalmalı |
 
 ## 5. Düz liste (issue · sahip · bağımlı olduğu · kilitlediği)
 
+**Açık işler:**
+
 | # | Sahip | Bağımlı olduğu | Kilitlediği (blocks) |
 |---|---|---|---|
-| 15 | Semih | — (soft: #50) | #23 |
-| 16 | Esma | **#46** (canlı) | #49 #47 (soft: #27) |
-| 17 ⭐ | Semih | #22 #23 #24 | #28 #25-canlı |
-| 18 ⭐ | Esma | #26 #27 #28 #29 | sprint DoD |
-| 19 | Fatih | — | #21 |
-| 20 | Fatih | — | #21 |
-| 21 | Fatih | #19 #20 (canlı: #25 #45) | demo |
-| 22 | Semih | — | #23 #17 |
-| 23 | Semih | #15 #22 | #17 |
-| 24 | Esma | **#50** | #17 |
-| 25 | Esma | — (stub) · #17 (canlı) | #21-canlı |
-| 26 | Esma | — | #28 #18 |
-| 27 | Fatih | — (soft: #16) | #28 #18 |
-| 28 | Enes | #26 #27 #17 | #29 #30 #18 |
-| 29 | Enes | #28 | #18 |
+| 15 ❓ | Semih | işi merge'li (PR #134) | — (issue kapanışı bekliyor) |
+| 17 ⭐ | Semih | #22✓ #23✓ #24✓ · PR #148 🟡 | #28-entegrasyon · #151 · sprint kalbi |
+| 18 ⭐ | Esma | #26✓ #27✓ #28 #29 | sprint DoD |
+| 21 | Fatih | #19✓ #20✓ · PR #150 review'da | demo (canlı: #151 sonrası bayrak) |
+| 28 | Enes | #26✓ #27✓ (soft: #17) | #29 #30 #18 |
+| 29 | Enes | #28 (+#29'daki aynı-yazar veri notu) | #18 |
 | 30 | Enes | #28 (kanıt: #18) | CI koruması |
-| 41 | Enes | — | #47 |
-| 45 | Fatih | — | #21-canlı |
-| 46 | Esma | — | #16-canlı → tüm veri şeridi |
-| 47 | Enes | #41 #16 | board/presence UI verisi |
-| 49 | Semih | #16 | demo dolu-radar |
-| 50 | Esma | — | #24 → #17 · eval determinizmi |
+| 49 | Semih | #16✓ | demo dolu-radar (❓ S3'e ertelenebilir) |
 | 54 | Fatih | — | hata deneyimi |
-| 106 | Enes | PR #107 açık | Ek A kontratının resmileşmesi (#104/#105 çekme adayları) |
-| 108 | Fatih | — | bu doküman (PR #109) |
+| 124 ⚙️ | Enes | — (stretch) | süreç otomasyonu |
+| 146 | Fatih | PR #147 re-review'da (Semih) | atama otomasyonu |
+| 151 | Esma | #16✓ #50✓ (anlamlı: #17) | canlı radar → #21-canlı · demo |
+| 153 | Fatih | — | bu doküman (revizyon PR'ı) |
 
-> Güncelleme kuralı: sıra/bağımlılık değişirse bu dosyaya PR — kanonik issue durumu (atama dahil) her zaman GitHub'dadır (TDK).
+**Kapananlar ✓ (25):** #14 #16 #19 #20 #22 #23 #24 #25 #26 #27 #41 #45 #46 #47 #50 (kod/veri şeridi) · #106 #108 #112 #114 #116 #118 #120 #122 #127 (docs/süreç) · #126 (tasarım)
+
+## ❓ PO'ya sorulacaklar
+
+1. **#15 kapanışı:** T-15 işi PR #134 ile merge'lendi ama issue açık (PR gövdesi `Closes` dememiş olmalı) — kalan alt-iş yoksa kapatılmalı.
+2. **#49 (backfill):** Semih'in kuyruğu #148+#17 ile dolu; #49 demo-dolu-radar için *nice-to-have* — sprint sonuna sığmazsa S3'e ertelensin mi?
+3. **#124 (harita botu):** stretch — #30 sonrası kapasite kalmazsa S3'e taşınmalı mı?
+
+> Güncelleme kuralı: sıra/bağımlılık değişirse bu dosyaya PR — kanonik issue durumu (atama dahil) her zaman GitHub'dadır (TDK). Sprint kapanışında bu haritadan "akış raporu" üretilecek (`/sprint-akis-raporu`).

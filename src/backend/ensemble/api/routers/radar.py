@@ -1,17 +1,17 @@
-from datetime import datetime
+from datetime import datetime, timezone
 
 from fastapi import APIRouter
 
 from ensemble.api.deps import RadarServiceDep
-from ensemble.models import Detection
+from ensemble.api.schemas import RadarResponse
 
 router = APIRouter(prefix="/radar", tags=["radar"])
 
 
 @router.get("")
-def get_radar(radar_service: RadarServiceDep) -> dict:
-    detections: list[Detection] = radar_service.get_detections()
-    return {
-        "detections": detections,
-        "updated_at": datetime.now().isoformat(),
-    }
+def get_radar(radar_service: RadarServiceDep) -> RadarResponse:
+    # ts UTC gider, cevirisi istemcide (Ek B5 konvansiyonu)
+    return RadarResponse(
+        detections=radar_service.get_detections(),
+        updated_at=datetime.now(timezone.utc),
+    )

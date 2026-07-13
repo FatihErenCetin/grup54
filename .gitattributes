@@ -1,0 +1,4 @@
+# Uretilen artefaktlar (#20) — commit'lenir (review-gorunur + build bagimsizligi),
+# GitHub diff'inde katlanir; drift'i CI zorlar (gen + git diff --exit-code)
+src/frontend/src/api/schema.d.ts linguist-generated=true
+src/shared/openapi.json linguist-generated=true

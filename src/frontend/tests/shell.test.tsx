@@ -1,4 +1,5 @@
 /** #19 duman testleri — kabuk render oluyor mu, 6 kalem yerinde mi, config sağlam mı. */
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { describe, expect, it } from "vitest";
@@ -7,14 +8,18 @@ import { RadarPage } from "../src/pages";
 import { config } from "../src/lib/config";
 
 function renderShell(path = "/") {
+  // #21'den beri RadarPage veri hook'u kullanıyor → gerçek uygulamadaki gibi provider şart
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
-    <MemoryRouter initialEntries={[path]}>
-      <Routes>
-        <Route element={<AppLayout />}>
-          <Route index element={<RadarPage />} />
-        </Route>
-      </Routes>
-    </MemoryRouter>,
+    <QueryClientProvider client={client}>
+      <MemoryRouter initialEntries={[path]}>
+        <Routes>
+          <Route element={<AppLayout />}>
+            <Route index element={<RadarPage />} />
+          </Route>
+        </Routes>
+      </MemoryRouter>
+    </QueryClientProvider>,
   );
 }
 
@@ -27,11 +32,10 @@ describe("app shell", () => {
     expect(screen.getByText("Ensemble")).toBeInTheDocument();
   });
 
-  it("açılış sayfası Radar boş-durumunu gösterir (ölü link yok)", () => {
+  it("açılış sayfası Radar'ı yükler (ölü link yok)", () => {
     renderShell();
-    expect(
-      screen.getByRole("heading", { name: /bağlantı bekliyor/i }),
-    ).toBeInTheDocument();
+    // jsdom'da backend yok → ilk kare loading iskeleti; sayfanın kendisi #21 testlerinde
+    expect(screen.getByLabelText("Radar yükleniyor")).toBeInTheDocument();
   });
 });
 

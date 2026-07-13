@@ -46,6 +46,13 @@ export default function AppLayout() {
         <header className="flex items-center justify-between border-b border-border px-4 py-2">
           <span className="text-sm text-muted-foreground">grup54/ensemble</span>
           <div className="flex items-center gap-3">
+            {config.mock && (
+              // Sahte-canlılık yasak (D-34): mock modunda TÜM veriler örnektir —
+              // tek şeride değil, globale işaret (yarım dürüstlük = dürüstsüzlük)
+              <span className="rounded border border-status-in-review/40 bg-status-in-review/10 px-1.5 py-0.5 text-xs font-medium text-status-in-review">
+                Örnek veri
+              </span>
+            )}
             <span className="rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">
               {config.mode}
             </span>

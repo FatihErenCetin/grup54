@@ -95,6 +95,9 @@ def semantic_hunk_candidates(
                 embeddings=embeddings,
             )
 
+        # TODO(#28/#29): 0.0 burada "diff hunk yok, sim bilinmiyor" anlamina da
+        # gelebiliyor. JudgePort sim: float | None kontrati gelince bilinmiyor'u
+        # dusuk benzerlikten ayir.
         similarity = max(path_scores.values(), default=0.0)
         if similarity < min_similarity:
             continue
@@ -176,7 +179,7 @@ class RadarService:
         window_days: int = DEFAULT_RADAR_WINDOW_DAYS,
         min_jaccard: float = 0.0,
         min_similarity: float = 0.0,
-        include_low_severity: bool = False,
+        include_low_severity: bool = True,
         default_base: str = "main",
     ):
         if window_days <= 0:
@@ -190,6 +193,7 @@ class RadarService:
         self.min_similarity = min_similarity
         self.include_low_severity = include_low_severity
         self.default_base = default_base
+        self._compare_cache: dict[tuple[str, str], list[str]] = {}
 
     def get_detections(self) -> list[Detection]:
         events = self._events_with_compare_files(self.github_port.fetch_events(self._since()))
@@ -238,7 +242,13 @@ class RadarService:
                 enriched.append(event)
                 continue
 
-            files = self.github_port.compare(self.default_base, event.branch)
+            key = (self.default_base, event.branch)
+            if key not in self._compare_cache:
+                try:
+                    self._compare_cache[key] = self.github_port.compare(*key)
+                except Exception:
+                    self._compare_cache[key] = []
+            files = self._compare_cache[key]
             enriched.append(event.model_copy(update={"files": files}))
         return enriched
 

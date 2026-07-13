@@ -58,3 +58,67 @@ export function EmptyState({
     </div>
   );
 }
+
+export function SonGuncelleme({
+  dataUpdatedAt,
+  isFetching = false,
+}: {
+  /** usePolling'den gelen GERÇEK zaman (ms epoch); 0 = henüz veri yok */
+  dataUpdatedAt: number;
+  isFetching?: boolean;
+}) {
+  // Sahte-canlılık yasak (D-34): saat uydurulmaz, son BAŞARILI verinin zamanı
+  // basılır. Sekme arka planda kaldıysa eski saat DÜRÜSTÇE görünür; odakta
+  // usePolling anında tazeler (isFetching o geçişi görünür kılar).
+  // ts UTC gelir, yerel saate çeviri istemcide (Ek B5).
+  return (
+    <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+      {isFetching && (
+        <span aria-hidden className="animate-pulse text-primary">
+          ●
+        </span>
+      )}
+      {dataUpdatedAt === 0
+        ? "Henüz veri yok"
+        : `Son güncelleme: ${new Date(dataUpdatedAt).toLocaleTimeString("tr-TR")}`}
+    </span>
+  );
+}
+
+export function ConfidenceMeter({ value }: { value: number }) {
+  // Judge güveni: mini-bar + sayı birlikte (renk/uzunluk tek başına anlam taşımaz — D-34)
+  const pct = Math.round(value * 100);
+  return (
+    <span className="inline-flex items-center gap-1.5" title={`Judge güveni: %${pct}`}>
+      <span className="h-1.5 w-12 overflow-hidden rounded-full bg-muted" aria-hidden>
+        <span
+          className="block h-full rounded-full bg-severity-med"
+          style={{ width: `${pct}%` }}
+        />
+      </span>
+      <span className="text-xs tabular-nums text-muted-foreground">%{pct}</span>
+    </span>
+  );
+}
+
+const AGENT_SUFFIX = /-(claude|gemini|codex|kiro|bot|ai)$/i;
+
+export function ActorChip({ handle }: { handle: string }) {
+  // Tasarım dili: insan = daire, AI ajanı = kare (D-34) — handle sonekinden sezilir;
+  // kesin tip Ek B1 (ActorRef) S3'te projeksiyonlara girince buradan okunacak
+  const isAgent = AGENT_SUFFIX.test(handle);
+  const initials = handle.slice(0, 2).toUpperCase();
+  return (
+    <span className="inline-flex items-center gap-1" title={isAgent ? `${handle} (AI ajanı)` : handle}>
+      <span
+        aria-hidden
+        className={`inline-flex size-5 items-center justify-center bg-muted text-[10px] font-medium ${
+          isAgent ? "rounded-sm" : "rounded-full"
+        }`}
+      >
+        {initials}
+      </span>
+      <span className="text-xs text-muted-foreground">{handle}</span>
+    </span>
+  );
+}

@@ -33,9 +33,11 @@ class StaticGitHub:
         self,
         events: list[NormalizedEvent],
         compare_files: dict[tuple[str, str], list[str]] | None = None,
+        failing_compare: set[tuple[str, str]] | None = None,
     ):
         self.events = events
         self.compare_files = compare_files or {}
+        self.failing_compare = failing_compare or set()
         self.since_calls: list[datetime] = []
         self.compare_calls: list[tuple[str, str]] = []
 
@@ -45,6 +47,8 @@ class StaticGitHub:
 
     def compare(self, base: str, head: str) -> list[str]:
         self.compare_calls.append((base, head))
+        if (base, head) in self.failing_compare:
+            raise RuntimeError("compare failed")
         return self.compare_files.get((base, head), [])
 
 
@@ -289,7 +293,7 @@ def test_radar_service_judges_semantic_overlap_candidates():
     assert judge.calls[0][3] == 1.0
 
 
-def test_radar_service_filters_low_severity_by_default():
+def test_radar_service_includes_low_severity_by_default():
     first = event("a", "semih", ["src/radar.py"])
     second = event("b", "enes", ["src/radar.py"])
     judge = RecordingJudge(severity="low", confidence=0.2)
@@ -301,6 +305,29 @@ def test_radar_service_filters_low_severity_by_default():
             "a": {"src/radar.py": "@@ -1 +1 @@\n-old\n+same intent"},
             "b": {"src/radar.py": "@@ -1 +1 @@\n-old\n+same intent"},
         },
+        window_days=100_000,
+    )
+
+    detections = service.get_detections()
+
+    assert len(detections) == 1
+    assert detections[0].severity == "low"
+    assert len(judge.calls) == 1
+
+
+def test_radar_service_can_filter_low_severity_when_requested():
+    first = event("a", "semih", ["src/radar.py"])
+    second = event("b", "enes", ["src/radar.py"])
+    judge = RecordingJudge(severity="low", confidence=0.2)
+    service = RadarService(
+        github_port=StaticGitHub([first, second]),
+        judge_port=judge,
+        embeddings_port=KeywordEmbeddings(),
+        diffs_by_event={
+            "a": {"src/radar.py": "@@ -1 +1 @@\n-old\n+same intent"},
+            "b": {"src/radar.py": "@@ -1 +1 @@\n-old\n+same intent"},
+        },
+        include_low_severity=False,
         window_days=100_000,
     )
 
@@ -352,3 +379,44 @@ def test_radar_service_uses_compare_for_branch_events_without_files():
     assert github.compare_calls == [("main", "T-a")]
     assert len(detections) == 1
     assert detections[0].files == ["src/radar.py"]
+
+
+def test_radar_service_memoizes_compare_for_same_branch():
+    first = event("a", "semih", [])
+    second = event("b", "enes", ["src/radar.py"])
+    third = event("c", "fatih", [])
+    third = third.model_copy(update={"branch": "T-a"})
+    github = StaticGitHub(
+        [first, second, third],
+        compare_files={("main", "T-a"): ["src/radar.py"]},
+    )
+    service = RadarService(
+        github_port=github,
+        judge_port=RecordingJudge(),
+        embeddings_port=KeywordEmbeddings(),
+        window_days=100_000,
+    )
+
+    service.get_detections()
+
+    assert github.compare_calls == [("main", "T-a")]
+
+
+def test_radar_service_keeps_radar_up_when_compare_fails():
+    first = event("a", "semih", [])
+    second = event("b", "enes", ["src/radar.py"])
+    github = StaticGitHub(
+        [first, second],
+        failing_compare={("main", "T-a")},
+    )
+    judge = RecordingJudge()
+    service = RadarService(
+        github_port=github,
+        judge_port=judge,
+        embeddings_port=KeywordEmbeddings(),
+        window_days=100_000,
+    )
+
+    assert service.get_detections() == []
+    assert github.compare_calls == [("main", "T-a")]
+    assert judge.calls == []
