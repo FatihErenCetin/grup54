@@ -18,7 +18,7 @@ export const mockDetections: Detection[] = [
   {
     id: "det-config-py",
     kind: "conflict",
-    actors: ["esma6", "esma6"],
+    actors: ["esma6"], // iki branch de ayni aktorun (gercek vaka boyleydi)
     branches: ["T-50-gemini-adapter", "T-16-github-ingest"],
     files: [
       "src/backend/ensemble/config.py",
