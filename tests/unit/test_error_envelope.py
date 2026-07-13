@@ -11,10 +11,15 @@ from ensemble.api.deps import get_radar_service
 from ensemble.api.errors import ErrorEnvelope
 from ensemble.app import create_app
 from ensemble.config import Settings
-from ensemble.integrations.gemini.errors import GeminiPermanentError, GeminiTransientError
+from ensemble.integrations.gemini.errors import (
+    GeminiError,
+    GeminiPermanentError,
+    GeminiTransientError,
+)
 from ensemble.integrations.github.errors import (
     GitHubAuthError,
     GitHubConfigError,
+    GitHubError,
     GitHubRateLimitError,
     GitHubTransientError,
 )
@@ -42,17 +47,20 @@ _SENTINEL = "SENTINEL-IC-DETAY-9x7"
 
 
 @pytest.mark.parametrize(
-    ("exc", "status", "code"),
+    ("exc", "status", "code", "retry_after"),
     [
-        (GitHubRateLimitError(_SENTINEL), 503, "rate_limited"),
-        (GitHubConfigError(_SENTINEL), 503, "github_config"),
-        (GitHubAuthError(_SENTINEL), 502, "github_auth"),
-        (GitHubTransientError(_SENTINEL), 503, "github_unavailable"),
-        (GeminiTransientError(_SENTINEL), 503, "gemini_unavailable"),
-        (GeminiPermanentError(_SENTINEL), 502, "gemini_error"),
+        (GitHubRateLimitError(_SENTINEL), 503, "rate_limited", True),
+        # config eksigi 30 sn'de duzelmez → Retry-After bilerek YOK (Ek D)
+        (GitHubConfigError(_SENTINEL), 503, "github_config", False),
+        (GitHubAuthError(_SENTINEL), 502, "github_auth", False),
+        (GitHubTransientError(_SENTINEL), 503, "github_unavailable", True),
+        (GitHubError(_SENTINEL), 502, "github_error", False),  # taban — gercek yol: client.py
+        (GeminiTransientError(_SENTINEL), 503, "gemini_unavailable", True),
+        (GeminiPermanentError(_SENTINEL), 502, "gemini_error", False),
+        (GeminiError(_SENTINEL), 502, "gemini_error", False),  # taban asimetrisi kapali
     ],
 )
-def test_domain_hatalari_zarfla_doner(exc, status, code):
+def test_domain_hatalari_zarfla_doner(exc, status, code, retry_after):
     resp = _client(exc).get("/radar", headers={"Origin": _ORIGIN})
     assert resp.status_code == status
     body = ErrorEnvelope.model_validate(resp.json())  # sema sozlesmesi
@@ -62,7 +70,9 @@ def test_domain_hatalari_zarfla_doner(exc, status, code):
     assert _SENTINEL not in resp.text
     # CORS-on-error: tarayici gercek hatayi gorebilmeli (#45/#150 dersi)
     assert resp.headers.get("access-control-allow-origin") == _ORIGIN
-    if status == 503:
+    # Vary duplikasyonu yok (elle-CORS yalniz 500 fallback'inde)
+    assert resp.headers.get("vary") == "Origin"
+    if retry_after:
         assert resp.headers.get("retry-after") == "30"
     else:
         assert "retry-after" not in resp.headers
@@ -73,8 +83,9 @@ def test_fallback_local_ozet_verir_stacktrace_vermez():
     assert resp.status_code == 500
     body = ErrorEnvelope.model_validate(resp.json())
     assert body.error == "internal"
-    # local: tur adi + ozet VAR (hizli teshis) — ama stacktrace YOK
+    # local: tur adi + MESAJ ozeti VAR (hizli teshis, bilincli) — stacktrace YOK
     assert "RuntimeError" in body.message
+    assert "gizli ic detay" in body.message
     assert "Traceback" not in resp.text
     # 500 fallback'i CORSMiddleware'in DISINDA kosar — baslik elle eklenmis olmali
     assert resp.headers.get("access-control-allow-origin") == _ORIGIN
@@ -102,3 +113,36 @@ def test_normal_akis_etkilenmez():
     resp = TestClient(app).get("/health")
     assert resp.status_code == 200
     assert resp.json() == {"status": "ok", "mode": "local"}
+
+
+def test_fallback_traceback_loga_yazilir(caplog):
+    # exc_info=exc SART: sync handler ayri thread'de kosar, format_exc bos
+    # donuyordu ("NoneType: None") — adversarial dogrulama blocker'i
+    import logging
+
+    with caplog.at_level(logging.ERROR, logger="ensemble.errors"):
+        resp = _client(RuntimeError("iz-sondasi-123")).get("/radar")
+    assert resp.status_code == 500
+    assert "Traceback" in caplog.text
+    assert "iz-sondasi-123" in caplog.text
+    assert "Traceback" not in resp.text  # zarf asla iz tasimaz
+
+
+def test_framework_http_hatalari_da_zarfta():
+    app = create_app(Settings(ENSEMBLE_MODE="local"))
+    resp = TestClient(app).get("/boyle-bir-yol-yok")
+    assert resp.status_code == 404
+    body = ErrorEnvelope.model_validate(resp.json())
+    assert body.error == "http_404"
+
+
+def test_preflight_calisiyor():
+    # CORS'un preflight bacagi da korunuyor (allow_methods=[GET])
+    app = create_app(Settings(ENSEMBLE_MODE="local"))
+    resp = TestClient(app).options(
+        "/radar",
+        headers={"Origin": _ORIGIN, "Access-Control-Request-Method": "GET"},
+    )
+    assert resp.status_code == 200
+    assert resp.headers.get("access-control-allow-origin") == _ORIGIN
+    assert "GET" in resp.headers.get("access-control-allow-methods", "")

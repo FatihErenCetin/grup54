@@ -247,9 +247,11 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Gecici olarak erisilemez (retry edilebilir) */
+            /** @description Gecici olarak erisilemez */
             503: {
                 headers: {
+                    /** @description Saniye — yalniz kendiliginden duzelebilir durumlarda */
+                    "Retry-After"?: number;
                     [name: string]: unknown;
                 };
                 content: {
@@ -285,9 +287,11 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Gecici olarak erisilemez (retry edilebilir) */
+            /** @description Gecici olarak erisilemez */
             503: {
                 headers: {
+                    /** @description Saniye — yalniz kendiliginden duzelebilir durumlarda */
+                    "Retry-After"?: number;
                     [name: string]: unknown;
                 };
                 content: {
@@ -334,9 +338,11 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Gecici olarak erisilemez (retry edilebilir) */
+            /** @description Gecici olarak erisilemez */
             503: {
                 headers: {
+                    /** @description Saniye — yalniz kendiliginden duzelebilir durumlarda */
+                    "Retry-After"?: number;
                     [name: string]: unknown;
                 };
                 content: {
@@ -372,9 +378,11 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Gecici olarak erisilemez (retry edilebilir) */
+            /** @description Gecici olarak erisilemez */
             503: {
                 headers: {
+                    /** @description Saniye — yalniz kendiliginden duzelebilir durumlarda */
+                    "Retry-After"?: number;
                     [name: string]: unknown;
                 };
                 content: {
@@ -421,9 +429,11 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Gecici olarak erisilemez (retry edilebilir) */
+            /** @description Gecici olarak erisilemez */
             503: {
                 headers: {
+                    /** @description Saniye — yalniz kendiliginden duzelebilir durumlarda */
+                    "Retry-After"?: number;
                     [name: string]: unknown;
                 };
                 content: {
