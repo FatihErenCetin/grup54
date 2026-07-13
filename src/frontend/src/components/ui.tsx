@@ -105,7 +105,7 @@ const AGENT_SUFFIX = /-(claude|gemini|codex|kiro|bot|ai)$/i;
 
 export function ActorChip({ handle }: { handle: string }) {
   // Tasarım dili: insan = daire, AI ajanı = kare (D-34) — handle sonekinden sezilir;
-  // kesin tip Ek B6 (ActorRef) S3'te kontratlaşınca buradan okunacak
+  // kesin tip Ek B1 (ActorRef) S3'te projeksiyonlara girince buradan okunacak
   const isAgent = AGENT_SUFFIX.test(handle);
   const initials = handle.slice(0, 2).toUpperCase();
   return (

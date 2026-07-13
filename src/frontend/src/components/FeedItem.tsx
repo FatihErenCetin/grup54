@@ -21,8 +21,8 @@ export function moduleOf(files: string[]): string {
 
 /* Radar satır anatomisi (#21, tasarım paketi /radar):
    [severity][rationale 1 cümle][aktörler][modül çipi][confidence] + expand.
-   Gate'li (bilinçli yok — Ek B1/B7): yaş göstergesi (first_seen_at S3) ·
-   aksiyon butonları (yazma ucu S3-sonrası) · side-sheet (S2 cila sınırı). */
+   Gate'li (bilinçli yok — Ek B1/B6): yaş göstergesi (first_seen_at, B1 S3) ·
+   aksiyon butonları (yazma ucu B6 ertelemesi) · side-sheet (S2 cila sınırı). */
 export function FeedItem({ detection }: { detection: Detection }) {
   const [open, setOpen] = useState(false);
   return (
@@ -34,7 +34,9 @@ export function FeedItem({ detection }: { detection: Detection }) {
         className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-muted/40"
       >
         <SeverityBadge level={detection.severity} />
-        <span className="min-w-0 flex-1 truncate text-sm">{detection.rationale}</span>
+        <span className="min-w-0 flex-1 truncate text-sm" title={detection.rationale}>
+          {detection.rationale}
+        </span>
         <span className="flex shrink-0 items-center gap-2">
           {detection.actors.map((a, i) => (
             <ActorChip key={`${a}-${i}`} handle={a} />

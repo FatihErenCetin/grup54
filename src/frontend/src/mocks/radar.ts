@@ -10,6 +10,7 @@
  */
 
 import type { components } from "../api/schema.d.ts";
+import { config } from "../lib/config";
 
 type RadarResponse = components["schemas"]["RadarResponse"];
 type Detection = components["schemas"]["Detection"];
@@ -73,7 +74,11 @@ export function mockRadarResponse(): RadarResponse {
 
 /** openapi-fetch custom fetch — yol bazlı fixture yönlendirme */
 export function mockFetch(req: Request): Response {
-  const path = new URL(req.url).pathname;
+  // config.apiBaseUrl path öneki taşıyabilir (örn. https://host/api — config.ts
+  // bunu bilinçli korur); önek soyulmazsa mock modda her yol 404'e düşerdi
+  const prefix = new URL(config.apiBaseUrl).pathname.replace(/\/+$/, "");
+  const raw = new URL(req.url).pathname;
+  const path = prefix && raw.startsWith(prefix) ? raw.slice(prefix.length) : raw;
   if (path === "/radar") {
     return Response.json(mockRadarResponse());
   }

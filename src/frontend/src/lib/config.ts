@@ -26,6 +26,18 @@ function readApiBaseUrl(): string {
   return url.href.replace(/\/+$/, "");
 }
 
+function readMock(): boolean {
+  // Yalnız "1" = açık; boş/tanımsız/"0" = kapalı. Tanınmayan değer ("true",
+  // "yes"…) SESSİZCE kapalı kalmaz — bu dosyanın ilkesi: açılışta net hata
+  // (#45 dersi; adversarial doğrulama bulgusu: VITE_MOCK=true sessiz sürprizdi).
+  const raw = import.meta.env.VITE_MOCK;
+  if (raw === "1") return true;
+  if (raw === undefined || raw === "" || raw === "0") return false;
+  throw new Error(
+    `VITE_MOCK yalnız "1" (açık) ya da boş/"0" (kapalı) kabul eder: "${raw}" geçersiz.`,
+  );
+}
+
 export const config = {
   apiBaseUrl: readApiBaseUrl(),
   mode: (import.meta.env.MODE === "production" ? "hosted" : "local") as
@@ -33,6 +45,6 @@ export const config = {
     | "hosted",
   // Mock modu (#21): VITE_MOCK=1 → tipli client fixture'lardan beslenir
   // (dedektör #17 gelene dek zengin görsel durum). Açıkken UI'da global
-  // "ÖRNEK VERİ" rozeti ZORUNLU — sahte-canlılık yasak (D-34).
-  mock: import.meta.env.VITE_MOCK === "1",
+  // "Örnek veri" rozeti ZORUNLU — sahte-canlılık yasak (D-34).
+  mock: readMock(),
 } as const;

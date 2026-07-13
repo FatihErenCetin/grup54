@@ -17,7 +17,11 @@ const FILTERS: { key: SeverityFilter; label: string }[] = [
    TR judge-rationale jüriye burada görünür.
    Gate'li (eksik DEĞİL, bilinçli — PR gövdesi + tasarım paketi "cila tuzağı"):
    Aktif/Drift/Çözüldü sekmeleri (status S3, Ek B1) · aksiyon butonları
-   (yazma ucu S3-sonrası, B7) · yaş (first_seen_at S3) · "N yeni" pili (B2). */
+   (yazma ucu B6 ertelemesi) · yaş (first_seen_at S3) · "N yeni" pili (B2) ·
+   locks gösterimi (.harness/locks henüz yok).
+   Bilinçli tasarım sapması: paketteki boş durum "kurulum checklist'i"ydi —
+   backend bağlıyken doğru boş durum "radar temiz"dir; checklist onboarding'e
+   (S3 sihirbaz) ait. */
 export default function RadarPage() {
   const { data, isLoading, isFetching, dataUpdatedAt, error } = useRadar();
   const [filter, setFilter] = useState<SeverityFilter>("hepsi");
@@ -33,7 +37,11 @@ export default function RadarPage() {
     );
   }
 
-  if (error) {
+  // != null: openapi-fetch boş-gövdeli non-ok cevapta error="" (falsy!) verebilir —
+  // truthiness kontrolü onu yutup sahte "radar temiz" basardı (doğrulama bulgusu).
+  // !data: geçici tek poll hatası eldeki listeyi GİZLEMESİN — veri varken hata
+  // sessiz geçilir, polling zaten sürüyor (react-query eski datayı tutar).
+  if (error != null && data === undefined) {
     return (
       <EmptyState
         title="Radar'a ulaşılamıyor"

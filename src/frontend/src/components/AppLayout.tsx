@@ -50,7 +50,7 @@ export default function AppLayout() {
               // Sahte-canlılık yasak (D-34): mock modunda TÜM veriler örnektir —
               // tek şeride değil, globale işaret (yarım dürüstlük = dürüstsüzlük)
               <span className="rounded border border-status-in-review/40 bg-status-in-review/10 px-1.5 py-0.5 text-xs font-medium text-status-in-review">
-                ÖRNEK VERİ
+                Örnek veri
               </span>
             )}
             <span className="rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">
