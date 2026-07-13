@@ -23,6 +23,26 @@
                 }
               }
             }
+          },
+          "502": {
+            "description": "Kalici saglayici hatasi (GitHub/Gemini)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Gecici olarak erisilemez (retry edilebilir)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
           }
         }
       }
@@ -41,6 +61,26 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/RadarResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Kalici saglayici hatasi (GitHub/Gemini)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Gecici olarak erisilemez (retry edilebilir)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
                 }
               }
             }
@@ -77,6 +117,26 @@
               }
             }
           },
+          "502": {
+            "description": "Kalici saglayici hatasi (GitHub/Gemini)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Gecici olarak erisilemez (retry edilebilir)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -104,6 +164,26 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/BoardResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Kalici saglayici hatasi (GitHub/Gemini)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Gecici olarak erisilemez (retry edilebilir)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
                 }
               }
             }
@@ -136,6 +216,26 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/QueryResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Kalici saglayici hatasi (GitHub/Gemini)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Gecici olarak erisilemez (retry edilebilir)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
                 }
               }
             }
@@ -288,6 +388,29 @@
           "rationale"
         ],
         "title": "Detection"
+      },
+      "ErrorEnvelope": {
+        "properties": {
+          "error": {
+            "type": "string",
+            "title": "Error"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "status": {
+            "type": "integer",
+            "title": "Status"
+          }
+        },
+        "type": "object",
+        "required": [
+          "error",
+          "message",
+          "status"
+        ],
+        "title": "ErrorEnvelope"
       },
       "HTTPValidationError": {
         "properties": {

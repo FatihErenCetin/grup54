@@ -3,6 +3,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from ensemble.api.errors import ERROR_RESPONSES, register_exception_handlers
 from ensemble.api.routers import board, health, query, radar, scope
 from ensemble.config import Settings, get_settings
 
@@ -33,11 +34,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         allow_headers=["*"],
     )
 
-    # Router'ları bağla
-    app.include_router(health.router)
-    app.include_router(radar.router)
-    app.include_router(scope.router)
-    app.include_router(board.router)
-    app.include_router(query.router)
+    # Global hata zarfı (#54): 500+stacktrace yerine tek tip JSON (Ek D)
+    register_exception_handlers(app, settings)
+
+    # Router'ları bağla — ERROR_RESPONSES tek kaynaktan yayılır (spec beyanı, #54)
+    app.include_router(health.router, responses=ERROR_RESPONSES)
+    app.include_router(radar.router, responses=ERROR_RESPONSES)
+    app.include_router(scope.router, responses=ERROR_RESPONSES)
+    app.include_router(board.router, responses=ERROR_RESPONSES)
+    app.include_router(query.router, responses=ERROR_RESPONSES)
 
     return app
