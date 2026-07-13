@@ -1,14 +1,17 @@
 from dataclasses import dataclass
-from itertools import combinations
 from collections.abc import Mapping
+from datetime import datetime, timedelta, timezone
+from itertools import combinations
 
 from ensemble.models import Detection, NormalizedEvent
 from ensemble.ports import EmbeddingsPort, GitHubPort, JudgePort
 from ensemble.engine.chunking import chunk_diff
+from ensemble.engine.embeddings import HashEmbeddings
 from ensemble.engine.vectorstore import cosine_similarity
 
 
 SEMANTIC_SIMILARITY_TASK = "SEMANTIC_SIMILARITY"
+DEFAULT_RADAR_WINDOW_DAYS = 14
 
 
 @dataclass(frozen=True)
@@ -92,6 +95,9 @@ def semantic_hunk_candidates(
                 embeddings=embeddings,
             )
 
+        # TODO(#28/#29): 0.0 burada "diff hunk yok, sim bilinmiyor" anlamina da
+        # gelebiliyor. JudgePort sim: float | None kontrati gelince bilinmiyor'u
+        # dusuk benzerlikten ayir.
         similarity = max(path_scores.values(), default=0.0)
         if similarity < min_similarity:
             continue
@@ -164,10 +170,88 @@ def _event_order_key(event: NormalizedEvent) -> tuple[str, str, str, str]:
 
 
 class RadarService:
-    def __init__(self, github_port: GitHubPort, judge_port: JudgePort):
+    def __init__(
+        self,
+        github_port: GitHubPort,
+        judge_port: JudgePort,
+        embeddings_port: EmbeddingsPort | None = None,
+        diffs_by_event: Mapping[str, Mapping[str, str]] | None = None,
+        window_days: int = DEFAULT_RADAR_WINDOW_DAYS,
+        min_jaccard: float = 0.0,
+        min_similarity: float = 0.0,
+        include_low_severity: bool = True,
+        default_base: str = "main",
+    ):
+        if window_days <= 0:
+            raise ValueError("window_days must be positive")
         self.github_port = github_port
         self.judge_port = judge_port
+        self.embeddings_port = embeddings_port or HashEmbeddings()
+        self.diffs_by_event = diffs_by_event or {}
+        self.window_days = window_days
+        self.min_jaccard = min_jaccard
+        self.min_similarity = min_similarity
+        self.include_low_severity = include_low_severity
+        self.default_base = default_base
+        self._compare_cache: dict[tuple[str, str], list[str]] = {}
 
     def get_detections(self) -> list[Detection]:
-        # TODO: Implement conflict radar logic (Issue #17)
-        return []
+        events = self._events_with_compare_files(self.github_port.fetch_events(self._since()))
+        file_candidates = file_overlap_candidates(events, min_jaccard=self.min_jaccard)
+        semantic_candidates = semantic_hunk_candidates(
+            file_candidates,
+            self.diffs_by_event,
+            self.embeddings_port,
+            min_similarity=self.min_similarity,
+        )
+
+        detections = [
+            self.judge_port.judge_conflict(
+                candidate.a,
+                candidate.b,
+                candidate.overlap,
+                candidate.similarity,
+            )
+            for candidate in semantic_candidates
+        ]
+        if not self.include_low_severity:
+            detections = [
+                detection
+                for detection in detections
+                if detection.severity in {"med", "high"}
+            ]
+
+        return sorted(
+            detections,
+            key=lambda detection: (
+                _severity_rank(detection.severity),
+                -detection.confidence,
+                detection.id,
+            ),
+        )
+
+    def _since(self) -> datetime:
+        return datetime.now(timezone.utc) - timedelta(days=self.window_days)
+
+    def _events_with_compare_files(
+        self, events: list[NormalizedEvent]
+    ) -> list[NormalizedEvent]:
+        enriched: list[NormalizedEvent] = []
+        for event in events:
+            if event.files or not event.branch:
+                enriched.append(event)
+                continue
+
+            key = (self.default_base, event.branch)
+            if key not in self._compare_cache:
+                try:
+                    self._compare_cache[key] = self.github_port.compare(*key)
+                except Exception:
+                    self._compare_cache[key] = []
+            files = self._compare_cache[key]
+            enriched.append(event.model_copy(update={"files": files}))
+        return enriched
+
+
+def _severity_rank(severity: str) -> int:
+    return {"high": 0, "med": 1, "low": 2}.get(severity, 3)
