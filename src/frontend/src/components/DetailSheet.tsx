@@ -21,9 +21,12 @@ export function DetailSheet({
 }) {
   const modul = moduleOf(detection.files);
   return (
+    // sticky + max-h + iç scroll: 50 dosyalı tespit viewport'u aşıyordu ve
+    // ok-tuşu preventDefault'u ana scroll'u kilitliyordu (doğrulama ölçümü)
     <aside
+      id="detay-paneli"
       aria-label="Tespit detayı"
-      className="flex w-[380px] shrink-0 flex-col gap-4 self-start rounded-lg border border-border bg-card p-4"
+      className="sticky top-0 flex max-h-[calc(100vh-7rem)] w-[380px] shrink-0 flex-col gap-4 self-start overflow-y-auto rounded-lg border border-border bg-card p-4"
     >
       <div className="flex items-center justify-between gap-3">
         <SeverityBadge level={detection.severity} />
@@ -61,7 +64,11 @@ export function DetailSheet({
         </h3>
         <div className="flex flex-wrap gap-1.5">
           {detection.branches.map((b) => (
-            <code key={b} className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">
+            <code
+              key={b}
+              title={b}
+              className="inline-block max-w-full truncate rounded bg-muted px-1.5 py-0.5 align-bottom font-mono text-xs"
+            >
               {b}
             </code>
           ))}

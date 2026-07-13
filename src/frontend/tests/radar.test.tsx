@@ -204,3 +204,51 @@ describe("DetailSheet (#156 — Pencil MOGXv'ye dönüş)", () => {
     expect(screen.queryByLabelText("Tespit detayı")).not.toBeInTheDocument();
   });
 });
+
+
+describe("DetailSheet — doğrulama bulgularının kilitleri", () => {
+  const feedBtn = (i: number) =>
+    within(screen.getByRole("list", { name: "Tespit listesi" })).getAllByRole("button")[i];
+
+  it("hayalet panel yok: filtre gidiş-dönüşünde panel tıklamasız GERİ AÇILMAZ", async () => {
+    const user = userEvent.setup();
+    mockUseRadar.mockReturnValue(dolu);
+    render(<RadarPage />);
+    await user.click(screen.getByRole("button", { name: "● düşük" }));
+    await user.click(feedBtn(0)); // ci.yml tespiti seçili
+    expect(screen.getByLabelText("Tespit detayı")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "▲ yüksek" }));
+    expect(screen.queryByLabelText("Tespit detayı")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "● düşük" }));
+    expect(screen.queryByLabelText("Tespit detayı")).not.toBeInTheDocument(); // state de temiz
+  });
+
+  it("focus seçimi takip eder (roving) + sınırlarda sessiz durur", async () => {
+    const user = userEvent.setup();
+    mockUseRadar.mockReturnValue(dolu);
+    render(<RadarPage />);
+    await user.click(feedBtn(0));
+    await user.keyboard("{ArrowUp}"); // ilk satırda ↑ → değişmez
+    expect(
+      within(screen.getByLabelText("Tespit detayı")).getByText("src/backend/ensemble/config.py"),
+    ).toBeInTheDocument();
+    await user.keyboard("{ArrowDown}");
+    expect(document.activeElement).toBe(feedBtn(1)); // ring seçimle birlikte
+    await user.keyboard("{ArrowDown}{ArrowDown}{ArrowDown}"); // son satırı aşmaya çalış
+    expect(document.activeElement).toBe(feedBtn(3)); // son satırda durdu
+  });
+
+  it("polling tazelemesi (aynı id'ler, yeni nesneler) seçimi KORUR", async () => {
+    const user = userEvent.setup();
+    mockUseRadar.mockReturnValue(dolu);
+    const { rerender } = render(<RadarPage />);
+    await user.click(feedBtn(0));
+    // yeni referanslar, aynı id'ler — gerçek poll davranışı
+    mockUseRadar.mockReturnValue({
+      ...dolu,
+      data: { detections: dolu.data.detections.map((d) => ({ ...d })), updated_at: "x" },
+    });
+    rerender(<RadarPage />);
+    expect(screen.getByLabelText("Tespit detayı")).toBeInTheDocument();
+  });
+});

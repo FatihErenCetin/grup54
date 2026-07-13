@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { DetailSheet } from "../components/DetailSheet";
 import { FeedItem } from "../components/FeedItem";
 import { PresenceStrip } from "../components/PresenceStrip";
@@ -36,16 +36,35 @@ export default function RadarPage() {
   const visible =
     filter === "hepsi" ? detections : detections.filter((d) => d.severity === filter);
 
-  // Klavye (tasarım MOGXv "↑↓ gezin · Esc kapat"): yalnız panel açıkken aktif
+  // Roving focus: klavye gezinmesinde focus ring secimi TAKIP eder (dogrulama
+  // bulgusu: ring eski satirda kalinca en baskin vurgu yanlis satiri gosteriyordu)
+  const rowRefs = useRef(new Map<string, HTMLButtonElement>());
+  useEffect(() => {
+    if (selectedId) rowRefs.current.get(selectedId)?.focus();
+  }, [selectedId]);
+
+  // Hayalet-panel temizligi: secili tespit gorunurden dusunce state de temizlenir
+  // (yalniz gorunumu null'lamak, filtre gidis-donusunde paneli tiklamasiz geri
+  // acyordu — canli dogrulama bulgusu)
+  useEffect(() => {
+    if (selectedId && !visible.some((d) => d.id === selectedId)) setSelectedId(null);
+  }, [selectedId, visible]);
+
+  // Klavye (tasarım MOGXv "↑↓ gezin · Esc kapat"): yalnız panel açıkken aktif.
+  // Ilerletme functional-update ile: hizli ardisik tuslamada stale-closure'in
+  // adim yutmasi kapali (dogrulama repro'su)
   useEffect(() => {
     if (!selectedId) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") setSelectedId(null);
       if (e.key === "ArrowDown" || e.key === "ArrowUp") {
         e.preventDefault();
-        const idx = visible.findIndex((d) => d.id === selectedId);
-        const next = visible[idx + (e.key === "ArrowDown" ? 1 : -1)];
-        if (idx !== -1 && next) setSelectedId(next.id);
+        const yon = e.key === "ArrowDown" ? 1 : -1;
+        setSelectedId((curr) => {
+          const idx = visible.findIndex((d) => d.id === curr);
+          const next = visible[idx + yon];
+          return idx !== -1 && next ? next.id : curr;
+        });
       }
     };
     window.addEventListener("keydown", onKey);
@@ -135,6 +154,10 @@ export default function RadarPage() {
                     onSelect={(det) =>
                       setSelectedId(det.id === selectedId ? null : det.id)
                     }
+                    bindRef={(el) => {
+                      if (el) rowRefs.current.set(d.id, el);
+                      else rowRefs.current.delete(d.id);
+                    }}
                   />
                 ))}
               </ul>

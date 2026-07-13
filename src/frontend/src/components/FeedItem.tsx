@@ -27,17 +27,27 @@ export function FeedItem({
   detection,
   selected = false,
   onSelect,
+  bindRef,
 }: {
   detection: Detection;
   selected?: boolean;
   onSelect: (d: Detection) => void;
+  /** Klavye gezinmesinde focus'un seçimi takip etmesi için (roving) */
+  bindRef?: (el: HTMLButtonElement | null) => void;
 }) {
   return (
-    <li className="rounded-lg border border-border bg-card">
+    <li
+      className={`rounded-lg border bg-card ${
+        selected ? "border-foreground/25" : "border-border"
+      }`}
+    >
+      {/* disclosure deseni: satır yan bölgeyi açar/kapatır (pressed değil) */}
       <button
+        ref={bindRef}
         type="button"
         onClick={() => onSelect(detection)}
-        aria-pressed={selected}
+        aria-expanded={selected}
+        aria-controls="detay-paneli"
         className={`flex w-full items-center gap-3 px-4 py-3 text-left ${
           selected ? "bg-muted" : "hover:bg-muted/40"
         }`}
