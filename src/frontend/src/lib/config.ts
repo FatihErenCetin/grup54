@@ -31,4 +31,8 @@ export const config = {
   mode: (import.meta.env.MODE === "production" ? "hosted" : "local") as
     | "local"
     | "hosted",
+  // Mock modu (#21): VITE_MOCK=1 → tipli client fixture'lardan beslenir
+  // (dedektör #17 gelene dek zengin görsel durum). Açıkken UI'da global
+  // "ÖRNEK VERİ" rozeti ZORUNLU — sahte-canlılık yasak (D-34).
+  mock: import.meta.env.VITE_MOCK === "1",
 } as const;
