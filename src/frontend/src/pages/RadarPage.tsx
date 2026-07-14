@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { DetailSheet } from "../components/DetailSheet";
 import { FeedItem } from "../components/FeedItem";
 import { PresenceStrip } from "../components/PresenceStrip";
 import { EmptyState, SonGuncelleme } from "../components/ui";
@@ -25,6 +26,50 @@ const FILTERS: { key: SeverityFilter; label: string }[] = [
 export default function RadarPage() {
   const { data, isLoading, isFetching, dataUpdatedAt, error } = useRadar();
   const [filter, setFilter] = useState<SeverityFilter>("hepsi");
+  // Seçim ID ile tutulur: polling'de nesne referansı tazelenir, ID kalıcıdır;
+  // tespit listeden düşerse panel dürüstçe kapanır (stale detay gösterilmez)
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+
+  // Erken-return'lerden ÖNCE (hook kuralı). Görünür liste burada da türetilir;
+  // aşağıdaki render bloğu aynı ifadeyi kullanır.
+  const detections = data?.detections ?? [];
+  const visible =
+    filter === "hepsi" ? detections : detections.filter((d) => d.severity === filter);
+
+  // Roving focus: klavye gezinmesinde focus ring secimi TAKIP eder (dogrulama
+  // bulgusu: ring eski satirda kalinca en baskin vurgu yanlis satiri gosteriyordu)
+  const rowRefs = useRef(new Map<string, HTMLButtonElement>());
+  useEffect(() => {
+    if (selectedId) rowRefs.current.get(selectedId)?.focus();
+  }, [selectedId]);
+
+  // Hayalet-panel temizligi: secili tespit gorunurden dusunce state de temizlenir
+  // (yalniz gorunumu null'lamak, filtre gidis-donusunde paneli tiklamasiz geri
+  // acyordu — canli dogrulama bulgusu)
+  useEffect(() => {
+    if (selectedId && !visible.some((d) => d.id === selectedId)) setSelectedId(null);
+  }, [selectedId, visible]);
+
+  // Klavye (tasarım MOGXv "↑↓ gezin · Esc kapat"): yalnız panel açıkken aktif.
+  // Ilerletme functional-update ile: hizli ardisik tuslamada stale-closure'in
+  // adim yutmasi kapali (dogrulama repro'su)
+  useEffect(() => {
+    if (!selectedId) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setSelectedId(null);
+      if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+        e.preventDefault();
+        const yon = e.key === "ArrowDown" ? 1 : -1;
+        setSelectedId((curr) => {
+          const idx = visible.findIndex((d) => d.id === curr);
+          const next = visible[idx + yon];
+          return idx !== -1 && next ? next.id : curr;
+        });
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [selectedId, visible]);
 
   if (isLoading) {
     return (
@@ -50,9 +95,8 @@ export default function RadarPage() {
     );
   }
 
-  const detections = data?.detections ?? [];
-  const visible =
-    filter === "hepsi" ? detections : detections.filter((d) => d.severity === filter);
+  // Filtre değişip seçili tespit görünürden düşerse panel dürüstçe kapanır
+  const selected = visible.find((d) => d.id === selectedId) ?? null;
 
   return (
     <div className="space-y-4">
@@ -99,11 +143,28 @@ export default function RadarPage() {
               Bu filtrede sonuç yok — {detections.length} tespit diğer seviyelerde.
             </p>
           ) : (
-            <ul className="space-y-2">
-              {visible.map((d) => (
-                <FeedItem key={d.id} detection={d} />
-              ))}
-            </ul>
+            // Liste + sağdan detay paneli (#156, Pencil MOGXv yerleşimi)
+            <div className="flex items-start gap-4">
+              <ul aria-label="Tespit listesi" className="min-w-0 flex-1 space-y-2">
+                {visible.map((d) => (
+                  <FeedItem
+                    key={d.id}
+                    detection={d}
+                    selected={d.id === selectedId}
+                    onSelect={(det) =>
+                      setSelectedId(det.id === selectedId ? null : det.id)
+                    }
+                    bindRef={(el) => {
+                      if (el) rowRefs.current.set(d.id, el);
+                      else rowRefs.current.delete(d.id);
+                    }}
+                  />
+                ))}
+              </ul>
+              {selected && (
+                <DetailSheet detection={selected} onClose={() => setSelectedId(null)} />
+              )}
+            </div>
           )}
         </>
       )}
