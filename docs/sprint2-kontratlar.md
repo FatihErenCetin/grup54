@@ -288,3 +288,30 @@ class ConflictCase(BaseModel):
 - **İki dataset, tek şema:** `tests/fixtures/conflict_corpus.jsonl` (kuratörlü, bilinen kenar durumlar) + `eval/datasets/backtest-grup54.jsonl` (gerçek tarih, gerçekçi dağılım). #28 runner'ı ikisini de tek kod yoluyla koşar.
 - **Gri bölge dosyası** (`eval/datasets/backtest-grup54-gri.jsonl`) bu şemada DEĞİLDİR (`label` yerine `label_beklemede` taşır) ve **#28 v1 tarafından tüketilmez**. İnsan etiketi verilen vakalar ayrı `backtest-grup54-el-etiketli.jsonl` dosyasına (bu şemada) eklenir; otomatik üretilen dosyalara elle dokunulmaz (determinizm testi builder çıktısıyla bit-bit eşitlik arar).
 - Üretim/determinizm kuralları: `eval/backtest/build_dataset.py` docstring'i + `eval/README.md`.
+
+## Ek D (13 Tem) — Hata zarfı (#54): tüm endpoint'ler için tek sözleşme
+
+> 500+stacktrace yasak. Her hata cevabı aynı zarfı taşır; kod `api/errors.py` (tek kaynak — `ERROR_RESPONSES` sabiti router'lara oradan yayılır, spec + üretilen TS client otomatik tiplenir).
+
+```python
+class ErrorEnvelope(BaseModel):
+    error: str      # makine-okur kod (aşağıdaki tablo)
+    message: str    # insan-okur TR — iç detay/stacktrace ASLA taşımaz
+    status: int
+```
+
+| Durum | status | error kodu | Not |
+|---|---|---|---|
+| GitHub rate limit | 503 | `rate_limited` | + `Retry-After` başlığı |
+| GitHub config eksik | 503 | `github_config` | ağa çıkmadan yakalanır; `Retry-After` **YOK** (config kendiliğinden düzelmez — otomatik istemci boşuna retry etmesin) |
+| GitHub auth reddi | 502 | `github_auth` | kalıcı — retry edilmez |
+| GitHub 5xx/bağlantı | 503 | `github_unavailable` | + `Retry-After` |
+| GitHub diğer (taban) | 502 | `github_error` | beklenmeyen 4xx vb. |
+| Gemini geçici | 503 | `gemini_unavailable` | + `Retry-After` |
+| Gemini kalıcı/diğer | 502 | `gemini_error` | taban sınıf da eşli (fallback'e düşüp detay sızdırmaz) |
+| Framework HTTP (404/405…) | ilgili | `http_<status>` | zarf kapsamında — "tek tip" vaadi eksiksiz |
+| Beklenmedik | 500 | `internal` | mesaj **mod-bağımlı**: local=özet, hosted=generic; traceback yalnız log'da (`exc_info` ile — uvicorn'un kendi ASGI kaydıyla çift ERROR görünmesi bilinen davranış) |
+
+- `422` FastAPI'nin otomatik doğrulama cevabıdır (zarf dışı, dokunulmadı); `500` spec'e bilerek beyan edilmez.
+- **CORS-on-error:** hata cevapları da `Access-Control-Allow-Origin` taşır (500 fallback'i Starlette'te CORS middleware'inin dışında koşar — başlık elle eklenir; #45/#150 dersi: yoksa tarayıcı gerçek hatayı "CORS error" diye gizler).
+- Tüketiciler: frontend (`api.GET()` sınırında `error` tarafı `ErrorEnvelope` tiplenir; `usePolling` bugün tipi `unknown`'a siler — zarf-farkındalı UI S3 cilası), S3 MCP, curl/jüri. `Retry-After` beyanı spec'te (`503.headers`).
