@@ -55,6 +55,12 @@ class Settings(BaseSettings):
     # Varsayılan SQLite yolu: ensemble.db (repo kökü, .gitignore'da).
     DATABASE_URL: str = f"sqlite:///{_REPO_ROOT / 'ensemble.db'}"
 
+    # Radar eşikleri (#151) — kalibrasyon (#29 threshold sweep) sonucu buraya
+    # yazılır; şimdilik RadarService'in kendi nötr varsayılanlarıyla aynı.
+    RADAR_WINDOW_DAYS: int = 14
+    RADAR_MIN_JACCARD: float = 0.0
+    RADAR_MIN_SIMILARITY: float = 0.0
+
 
 @lru_cache
 def get_settings() -> Settings:
