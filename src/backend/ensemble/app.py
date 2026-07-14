@@ -1,5 +1,6 @@
 import logging
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -19,6 +20,15 @@ logger = logging.getLogger("ensemble.wiring")
 
 
 def _build_github_port(settings: Settings) -> GitHubPort:
+    # pem dosyası yoksa GitHubAdapter bunu hemen fark etmez (yalnız token
+    # yenilenirken okunur) - istek-anı 500'e düşmeden acilis-anı degradasyona
+    # ceviriyoruz (Fatih review notu, PR #159).
+    if settings.GITHUB_APP_PRIVATE_KEY_PATH and not Path(settings.GITHUB_APP_PRIVATE_KEY_PATH).is_file():
+        logger.warning(
+            "GITHUB_APP_PRIVATE_KEY_PATH (%s) bulunamadı — FakeGitHubAdapter kullanılıyor.",
+            settings.GITHUB_APP_PRIVATE_KEY_PATH,
+        )
+        return FakeGitHubAdapter()
     try:
         return GitHubAdapter(settings)
     except GitHubConfigError as exc:
@@ -48,6 +58,7 @@ def _build_radar_service(settings: Settings) -> RadarService:
         window_days=settings.RADAR_WINDOW_DAYS,
         min_jaccard=settings.RADAR_MIN_JACCARD,
         min_similarity=settings.RADAR_MIN_SIMILARITY,
+        default_base=settings.GITHUB_DEFAULT_BRANCH,
     )
 
 

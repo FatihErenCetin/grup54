@@ -7,6 +7,7 @@ yapmaz (lazy) - sahte config degerleriyle guvenle test edilebilir.
 
 import logging
 
+import pytest
 from fastapi.testclient import TestClient
 
 from ensemble.app import _build_radar_service, create_app
@@ -17,21 +18,43 @@ from ensemble.integrations.gemini.judge import GeminiJudgeAdapter
 from ensemble.integrations.github.adapter import GitHubAdapter
 from ensemble.integrations.github.fake import FakeGitHubAdapter
 
-_FULL_GITHUB = {
-    "GITHUB_APP_ID": "123",
-    "GITHUB_APP_PRIVATE_KEY_PATH": "/tmp/does-not-need-to-exist.pem",
-    "GITHUB_APP_INSTALLATION_ID": "456",
-    "GITHUB_REPO_OWNER": "FatihErenCetin",
-    "GITHUB_REPO_NAME": "grup54",
-}
+_ENV_KEYS = [
+    "GEMINI_API_KEY",
+    "GITHUB_APP_ID",
+    "GITHUB_APP_PRIVATE_KEY_PATH",
+    "GITHUB_APP_INSTALLATION_ID",
+    "GITHUB_REPO_OWNER",
+    "GITHUB_REPO_NAME",
+]
+
+
+@pytest.fixture(autouse=True)
+def _clean_env(monkeypatch):
+    # _env_file=None yalniz .env dosyasini kapatir, shell'deki gercek
+    # export'lari DEGIL - gelistiricinin makinesinde bu degiskenler set'liyse
+    # testler yanilir (Fatih'in PR #159 review'inda repro'ladigi kirmizi suite).
+    for key in _ENV_KEYS:
+        monkeypatch.delenv(key, raising=False)
 
 
 def _settings(**overrides) -> Settings:
     return Settings(_env_file=None, **overrides)
 
 
-def test_tam_config_gercek_adapterlari_secer():
-    settings = _settings(GEMINI_API_KEY="fake-key", **_FULL_GITHUB)
+def _full_github(pem_path) -> dict:
+    return {
+        "GITHUB_APP_ID": "123",
+        "GITHUB_APP_PRIVATE_KEY_PATH": str(pem_path),
+        "GITHUB_APP_INSTALLATION_ID": "456",
+        "GITHUB_REPO_OWNER": "FatihErenCetin",
+        "GITHUB_REPO_NAME": "grup54",
+    }
+
+
+def test_tam_config_gercek_adapterlari_secer(tmp_path):
+    pem = tmp_path / "app.pem"
+    pem.write_text("fake-pem-icerigi")
+    settings = _settings(GEMINI_API_KEY="fake-key", **_full_github(pem))
     service = _build_radar_service(settings)
     assert isinstance(service.github_port, GitHubAdapter)
     assert isinstance(service.judge_port, GeminiJudgeAdapter)
@@ -45,28 +68,47 @@ def test_github_config_eksikse_fakeye_duser_ve_loglar(caplog):
     assert "GitHub App yapılandırması eksik" in caplog.text
 
 
-def test_gemini_key_eksikse_fakeye_duser_ve_loglar(caplog):
-    settings = _settings(**_FULL_GITHUB)
+def test_pem_dosyasi_yoksa_fakeye_duser_ve_loglar(tmp_path, caplog):
+    # Alanlarin hepsi dolu ama pem gercekte yok - token yenilenene kadar
+    # (istek anina kadar) fark edilmezdi; acilis-anina cektik.
+    missing_pem = tmp_path / "yok.pem"
+    settings = _settings(GEMINI_API_KEY="fake-key", **_full_github(missing_pem))
+    with caplog.at_level(logging.WARNING, logger="ensemble.wiring"):
+        service = _build_radar_service(settings)
+    assert isinstance(service.github_port, FakeGitHubAdapter)
+    assert "bulunamadı" in caplog.text
+
+
+def test_gemini_key_eksikse_fakeye_duser_ve_loglar(tmp_path, caplog):
+    pem = tmp_path / "app.pem"
+    pem.write_text("fake-pem-icerigi")
+    settings = _settings(**_full_github(pem))
     with caplog.at_level(logging.WARNING, logger="ensemble.wiring"):
         service = _build_radar_service(settings)
     assert isinstance(service.judge_port, FakeJudgeAdapter)
     assert "GEMINI_API_KEY tanımlı değil" in caplog.text
 
 
-def test_embeddings_15_kapaninca_kadar_hash_kalir():
+def test_embeddings_15_kapaninca_kadar_hash_kalir(tmp_path):
     # #15 (gercek Gemini embeddings) acik oldugu surece HER modda HashEmbeddings.
-    service = _build_radar_service(_settings(GEMINI_API_KEY="fake-key", **_FULL_GITHUB))
+    pem = tmp_path / "app.pem"
+    pem.write_text("fake-pem-icerigi")
+    service = _build_radar_service(_settings(GEMINI_API_KEY="fake-key", **_full_github(pem)))
     assert isinstance(service.embeddings_port, HashEmbeddings)
 
 
-def test_esikler_settingsten_akar():
+def test_esikler_ve_default_base_settingsten_akar():
     settings = _settings(
-        RADAR_WINDOW_DAYS=7, RADAR_MIN_JACCARD=0.3, RADAR_MIN_SIMILARITY=0.6
+        RADAR_WINDOW_DAYS=7,
+        RADAR_MIN_JACCARD=0.3,
+        RADAR_MIN_SIMILARITY=0.6,
+        GITHUB_DEFAULT_BRANCH="develop",
     )
     service = _build_radar_service(settings)
     assert service.window_days == 7
     assert service.min_jaccard == 0.3
     assert service.min_similarity == 0.6
+    assert service.default_base == "develop"
 
 
 def test_app_state_lifespan_ile_radar_service_kurulur():
