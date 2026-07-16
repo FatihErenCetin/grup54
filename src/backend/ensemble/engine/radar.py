@@ -95,17 +95,10 @@ def semantic_hunk_candidates(
                 embeddings=embeddings,
             )
 
-        # (#28/#29) sim=0.0 iki anlama gelebilir:
-        #   1. Diff hunk yok (iki tarafta da boş) → "bilinmiyor" → None gibi davran
-        #   2. Gerçek düşük benzerlik → eşik geçidine tabi
-        # Ayrım: semantic_hunk_similarity boş diff → 0.0 döner.
-        # Burada known_scores (en az bir tarafta diff olan) ile unknown'ları ayırıyoruz.
-        known_scores = [s for s in path_scores.values() if s > 0.0]
-        if known_scores:
-            similarity = max(known_scores)
-        else:
-            # Tüm path'lerde diff yok veya hepsi 0.0 — bilinmiyor/düşük
-            similarity = max(path_scores.values(), default=0.0)
+        # TODO(#28/#29): 0.0 burada "diff hunk yok, sim bilinmiyor" anlamina da
+        # gelebiliyor. JudgePort sim: float | None kontrati gelince bilinmiyor'u
+        # dusuk benzerlikten ayir.
+        similarity = max(path_scores.values(), default=0.0)
 
         if similarity < min_similarity:
             continue

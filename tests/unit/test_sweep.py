@@ -1,12 +1,6 @@
 """Threshold sweep (#29) unit testleri."""
 
-from eval.sweep import (
-    JACCARD_GRID_DEFAULT,
-    SIMILARITY_GRID_DEFAULT,
-    SweepPoint,
-    SweepReport,
-    run_sweep,
-)
+from eval.sweep import run_sweep
 
 
 def test_sweep_produces_correct_number_of_points():

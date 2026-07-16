@@ -185,7 +185,7 @@ def main() -> None:
     if report.best:
         b = report.best
         print(f"\n{'='*60}")
-        print(f"  EN IYI (aynı-yazar DAHIL):")
+        print("  EN IYI (aynı-yazar DAHIL):")
         print(f"    Jaccard >= {b.min_jaccard}  |  Similarity >= {b.min_similarity}")
         print(f"    F1={b.f1:.4f}  P={b.precision:.4f}  R={b.recall:.4f}")
         print(f"    TP={b.tp}  FP={b.fp}  FN={b.fn}  TN={b.tn}")
@@ -193,7 +193,7 @@ def main() -> None:
 
     if report.best_excluding_same:
         b = report.best_excluding_same
-        print(f"\n  EN IYI (aynı-yazar HARIÇ):")
+        print("\n  EN IYI (aynı-yazar HARIÇ):")
         print(f"    Jaccard >= {b.min_jaccard}  |  Similarity >= {b.min_similarity}")
         print(f"    F1={b.f1:.4f}  P={b.precision:.4f}  R={b.recall:.4f}")
         print(f"    TP={b.tp}  FP={b.fp}  FN={b.fn}  TN={b.tn}")
@@ -201,7 +201,7 @@ def main() -> None:
     # Önerilen config değerleri
     if report.best:
         b = report.best
-        print(f"\n  Önerilen config (config.py / .env):")
+        print("\n  Önerilen config (config.py / .env):")
         print(f"    RADAR_MIN_JACCARD={b.min_jaccard}")
         print(f"    RADAR_MIN_SIMILARITY={b.min_similarity}")
 
