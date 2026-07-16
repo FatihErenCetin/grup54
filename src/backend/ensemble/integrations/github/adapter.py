@@ -42,6 +42,24 @@ class GitHubAdapter:
             *self._fetch_pr_events(since),
             *self._fetch_issue_events(since),
         ]
+        return self._fresh(events)
+
+    def fetch_backfill_events(self, limit_per_type: int = 50) -> list[NormalizedEvent]:
+        """Ilk calistirmada radar/projeksiyon icin son N GitHub olayini cek.
+
+        `fetch_events(since)` polling semantigini korur; backfill ise tarih
+        penceresi yerine adet penceresi kullanir. Sonuc yine idempotenttir.
+        """
+        if limit_per_type <= 0:
+            return []
+        events = [
+            *self._fetch_recent_commit_events(limit_per_type),
+            *self._fetch_recent_pr_events(limit_per_type),
+            *self._fetch_recent_issue_events(limit_per_type),
+        ]
+        return self._fresh(events)
+
+    def _fresh(self, events: list[NormalizedEvent]) -> list[NormalizedEvent]:
         fresh = [e for e in events if e.id not in self._seen_ids]
         self._seen_ids.update(e.id for e in fresh)
         return fresh
@@ -55,6 +73,19 @@ class GitHubAdapter:
         )
         if not commits:
             return []
+        return self._commit_events_from_summaries(commits)
+
+    def _fetch_recent_commit_events(self, limit: int) -> list[NormalizedEvent]:
+        commits = self._client.get(
+            f"/repos/{self._owner}/{self._repo}/commits",
+            params={"sha": self._default_branch, "per_page": limit},
+            cache_key=f"commits:recent:{limit}",
+        )
+        if not commits:
+            return []
+        return self._commit_events_from_summaries(commits)
+
+    def _commit_events_from_summaries(self, commits: list[dict]) -> list[NormalizedEvent]:
         events = []
         for summary in commits:
             sha = summary["sha"]
@@ -79,12 +110,37 @@ class GitHubAdapter:
             pr_to_event(pr) for pr in prs if datetime.fromisoformat(pr["updated_at"]) >= since
         ]
 
+    def _fetch_recent_pr_events(self, limit: int) -> list[NormalizedEvent]:
+        prs = self._client.get(
+            f"/repos/{self._owner}/{self._repo}/pulls",
+            params={
+                "state": "all",
+                "sort": "updated",
+                "direction": "desc",
+                "per_page": limit,
+            },
+            cache_key=f"pulls:recent:{limit}",
+        )
+        if not prs:
+            return []
+        return [pr_to_event(pr) for pr in prs]
+
     def _fetch_issue_events(self, since: datetime) -> list[NormalizedEvent]:
         since_iso = since.isoformat()
         issues = self._client.get(
             f"/repos/{self._owner}/{self._repo}/issues",
             params={"state": "all", "since": since_iso},
             cache_key=f"issues:{since_iso}",
+        )
+        if not issues:
+            return []
+        return [issue_to_event(i) for i in issues if "pull_request" not in i]
+
+    def _fetch_recent_issue_events(self, limit: int) -> list[NormalizedEvent]:
+        issues = self._client.get(
+            f"/repos/{self._owner}/{self._repo}/issues",
+            params={"state": "all", "sort": "updated", "direction": "desc", "per_page": limit},
+            cache_key=f"issues:recent:{limit}",
         )
         if not issues:
             return []

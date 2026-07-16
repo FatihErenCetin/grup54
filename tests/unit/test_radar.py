@@ -32,18 +32,25 @@ class StaticGitHub:
     def __init__(
         self,
         events: list[NormalizedEvent],
+        backfill_events: list[NormalizedEvent] | None = None,
         compare_files: dict[tuple[str, str], list[str]] | None = None,
         failing_compare: set[tuple[str, str]] | None = None,
     ):
         self.events = events
+        self.backfill_events = backfill_events
         self.compare_files = compare_files or {}
         self.failing_compare = failing_compare or set()
         self.since_calls: list[datetime] = []
+        self.backfill_calls: list[int] = []
         self.compare_calls: list[tuple[str, str]] = []
 
     def fetch_events(self, since: datetime) -> list[NormalizedEvent]:
         self.since_calls.append(since)
         return self.events
+
+    def fetch_backfill_events(self, limit_per_type: int = 50) -> list[NormalizedEvent]:
+        self.backfill_calls.append(limit_per_type)
+        return self.backfill_events if self.backfill_events is not None else self.events
 
     def compare(self, base: str, head: str) -> list[str]:
         self.compare_calls.append((base, head))
@@ -291,6 +298,51 @@ def test_radar_service_judges_semantic_overlap_candidates():
     assert len(judge.calls) == 1
     assert judge.calls[0][2] == ["src/radar.py"]
     assert judge.calls[0][3] == 1.0
+
+
+def test_radar_service_uses_backfill_on_first_call_then_polling():
+    backfill_first = event("backfill-a", "semih", ["src/radar.py"])
+    backfill_second = event("backfill-b", "enes", ["src/radar.py"])
+    polling_first = event("poll-a", "semih", ["src/other.py"])
+    polling_second = event("poll-b", "enes", ["src/other.py"])
+    github = StaticGitHub(
+        [polling_first, polling_second],
+        backfill_events=[backfill_first, backfill_second],
+    )
+    service = RadarService(
+        github_port=github,
+        judge_port=RecordingJudge(),
+        embeddings_port=KeywordEmbeddings(),
+        window_days=100_000,
+        backfill_limit=7,
+    )
+
+    first = service.get_detections()
+    second = service.get_detections()
+
+    assert github.backfill_calls == [7]
+    assert len(github.since_calls) == 1
+    assert first[0].id == "backfill-a-backfill-b"
+    assert second[0].id == "poll-a-poll-b"
+
+
+def test_radar_service_can_disable_backfill():
+    first = event("a", "semih", ["src/radar.py"])
+    second = event("b", "enes", ["src/radar.py"])
+    github = StaticGitHub([first, second])
+    service = RadarService(
+        github_port=github,
+        judge_port=RecordingJudge(),
+        embeddings_port=KeywordEmbeddings(),
+        window_days=100_000,
+        backfill_limit=0,
+    )
+
+    detections = service.get_detections()
+
+    assert github.backfill_calls == []
+    assert len(github.since_calls) == 1
+    assert len(detections) == 1
 
 
 def test_radar_service_includes_low_severity_by_default():
