@@ -8,6 +8,7 @@ from ensemble.config import Settings
 from ensemble.integrations.github.adapter import GitHubAdapter
 from ensemble.integrations.github.client import GitHubRestClient
 from ensemble.integrations.github.fake import FakeGitHubAdapter
+from ensemble.models import NormalizedEvent
 
 _FIXTURES = Path(__file__).parent.parent / "fixtures" / "github_api"
 
@@ -32,6 +33,49 @@ def test_fake_adapter_compare_returns_configured_files():
     fake = FakeGitHubAdapter(compare_files={("main", "feature"): ["a.py", "b.py"]})
     assert fake.compare("main", "feature") == ["a.py", "b.py"]
     assert fake.compare("main", "unknown") == []
+
+
+def test_fake_adapter_backfill_limits_per_type_and_is_idempotent():
+    fake = FakeGitHubAdapter(
+        events=[
+            NormalizedEvent(
+                id="commit:old",
+                type="commit",
+                actor="semih",
+                branch=None,
+                files=["old.py"],
+                ts=datetime(2026, 7, 9, 8, 0, 0),
+                ref="old",
+            ),
+            NormalizedEvent(
+                id="commit:new",
+                type="commit",
+                actor="semih",
+                branch=None,
+                files=["new.py"],
+                ts=datetime(2026, 7, 10, 8, 0, 0),
+                ref="new",
+            ),
+            NormalizedEvent(
+                id="pr:1:2026-07-10T09:00:00",
+                type="pr",
+                actor="enes",
+                branch="T-1-x",
+                files=[],
+                ts=datetime(2026, 7, 10, 9, 0, 0),
+                ref="1",
+            ),
+        ]
+    )
+
+    first = fake.fetch_backfill_events(limit_per_type=1)
+    second = fake.fetch_backfill_events(limit_per_type=1)
+
+    assert [event.id for event in first] == [
+        "commit:new",
+        "pr:1:2026-07-10T09:00:00",
+    ]
+    assert second == []
 
 
 # ---------------------------------------------------------------------------
@@ -134,3 +178,33 @@ def test_adapter_fetch_events_idempotent_replay():
 
     assert len(first) > 0
     assert second == []
+
+
+def test_adapter_fetch_backfill_events_uses_recent_limit_without_since():
+    seen_requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen_requests.append(request)
+        return _fixture_handler(with_etag=False)(request)
+
+    client = GitHubRestClient(
+        token_provider=lambda: "fake-token",
+        http_client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+    adapter = GitHubAdapter(_settings(), client=client)
+
+    events = adapter.fetch_backfill_events(limit_per_type=2)
+    second = adapter.fetch_backfill_events(limit_per_type=2)
+
+    assert [event.ref for event in events if event.type == "pr"] == ["99", "88"]
+    assert [event.ref for event in events if event.type == "issue"] == ["50"]
+    assert [event.ref for event in events if event.type == "commit"] == ["aaa1111"]
+    assert second == []
+
+    list_requests = [
+        request
+        for request in seen_requests
+        if request.url.path.endswith(("/commits", "/pulls", "/issues"))
+    ]
+    assert all(request.url.params.get("per_page") == "2" for request in list_requests)
+    assert all("since" not in request.url.params for request in list_requests)

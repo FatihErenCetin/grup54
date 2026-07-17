@@ -12,6 +12,7 @@ from ensemble.engine.vectorstore import cosine_similarity
 
 SEMANTIC_SIMILARITY_TASK = "SEMANTIC_SIMILARITY"
 DEFAULT_RADAR_WINDOW_DAYS = 14
+DEFAULT_BACKFILL_LIMIT = 50
 
 
 @dataclass(frozen=True)
@@ -180,10 +181,13 @@ class RadarService:
         min_jaccard: float = 0.0,
         min_similarity: float = 0.0,
         include_low_severity: bool = True,
+        backfill_limit: int = DEFAULT_BACKFILL_LIMIT,
         default_base: str = "main",
     ):
         if window_days <= 0:
             raise ValueError("window_days must be positive")
+        if backfill_limit < 0:
+            raise ValueError("backfill_limit must be non-negative")
         self.github_port = github_port
         self.judge_port = judge_port
         self.embeddings_port = embeddings_port or HashEmbeddings()
@@ -192,11 +196,14 @@ class RadarService:
         self.min_jaccard = min_jaccard
         self.min_similarity = min_similarity
         self.include_low_severity = include_low_severity
+        self.backfill_limit = backfill_limit
         self.default_base = default_base
         self._compare_cache: dict[tuple[str, str], list[str]] = {}
+        self._known_events: dict[str, NormalizedEvent] = {}
+        self._backfill_done = False
 
     def get_detections(self) -> list[Detection]:
-        events = self._events_with_compare_files(self.github_port.fetch_events(self._since()))
+        events = self._current_events()
         file_candidates = file_overlap_candidates(events, min_jaccard=self.min_jaccard)
         semantic_candidates = semantic_hunk_candidates(
             file_candidates,
@@ -230,6 +237,28 @@ class RadarService:
             ),
         )
 
+    def _current_events(self) -> list[NormalizedEvent]:
+        for event in self._events_with_compare_files(self._fetch_events()):
+            self._known_events[event.id] = event
+
+        since = self._since()
+        self._known_events = {
+            event_id: event
+            for event_id, event in self._known_events.items()
+            if _datetime_key(event.ts) >= _datetime_key(since)
+        }
+        return sorted(
+            self._known_events.values(),
+            key=lambda event: (_datetime_key(event.ts), event.id),
+        )
+
+    def _fetch_events(self) -> list[NormalizedEvent]:
+        if not self._backfill_done:
+            self._backfill_done = True
+            if self.backfill_limit > 0:
+                return self.github_port.fetch_backfill_events(self.backfill_limit)
+        return self.github_port.fetch_events(self._since())
+
     def _since(self) -> datetime:
         return datetime.now(timezone.utc) - timedelta(days=self.window_days)
 
@@ -255,3 +284,9 @@ class RadarService:
 
 def _severity_rank(severity: str) -> int:
     return {"high": 0, "med": 1, "low": 2}.get(severity, 3)
+
+
+def _datetime_key(value: datetime) -> datetime:
+    if value.tzinfo is None or value.utcoffset() is None:
+        return value
+    return value.astimezone(timezone.utc).replace(tzinfo=None)

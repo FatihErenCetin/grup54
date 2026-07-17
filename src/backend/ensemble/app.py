@@ -60,6 +60,7 @@ def _build_radar_service(settings: Settings) -> RadarService:
         window_days=settings.RADAR_WINDOW_DAYS,
         min_jaccard=settings.RADAR_MIN_JACCARD,
         min_similarity=settings.RADAR_MIN_SIMILARITY,
+        backfill_limit=settings.GITHUB_BACKFILL_LIMIT,
         default_base=settings.GITHUB_DEFAULT_BRANCH,
     )
 

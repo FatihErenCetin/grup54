@@ -52,6 +52,7 @@ class Settings(BaseSettings):
     GITHUB_REPO_OWNER: str | None = None
     GITHUB_REPO_NAME: str | None = None
     GITHUB_DEFAULT_BRANCH: str = "main"
+    GITHUB_BACKFILL_LIMIT: int = 50
 
     # Store — local: SQLite (repo kökünde, gitignored) · hosted: PostgreSQL DSN.
     # Varsayılan SQLite yolu: ensemble.db (repo kökü, .gitignore'da).

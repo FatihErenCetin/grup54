@@ -49,10 +49,25 @@ class FakeGitHubAdapter:
     ) -> None:
         self._events = events if events is not None else _DEFAULT_EVENTS
         self._compare_files = compare_files or {}
+        self._seen_backfill_ids: set[str] = set()
 
     def fetch_events(self, since: datetime) -> list[NormalizedEvent]:
         since_key = _datetime_key(since)
         return [e for e in self._events if _datetime_key(e.ts) >= since_key]
+
+    def fetch_backfill_events(self, limit_per_type: int = 50) -> list[NormalizedEvent]:
+        if limit_per_type <= 0:
+            return []
+
+        selected: list[NormalizedEvent] = []
+        for event_type in ("commit", "pr", "issue"):
+            candidates = [event for event in self._events if event.type == event_type]
+            candidates = sorted(candidates, key=lambda event: (_datetime_key(event.ts), event.id), reverse=True)
+            selected.extend(candidates[:limit_per_type])
+
+        fresh = [event for event in selected if event.id not in self._seen_backfill_ids]
+        self._seen_backfill_ids.update(event.id for event in fresh)
+        return fresh
 
     def compare(self, base: str, head: str) -> list[str]:
         return self._compare_files.get((base, head), [])
