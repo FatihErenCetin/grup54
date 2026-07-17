@@ -1,4 +1,4 @@
-.PHONY: install dev test lint openapi eval-dataset eval-run eval-sweep
+.PHONY: install dev test lint openapi eval-dataset eval-run eval-sweep eval
 
 install:
 	uv sync --all-packages
@@ -29,3 +29,6 @@ eval-run:
 
 eval-sweep:
 	uv run python -m eval.sweep
+
+# #18 DONE kapısı: eşik+judge geçidi bir komutta. CI precision-gate (#30) buna eklenecek.
+eval: eval-run eval-sweep
