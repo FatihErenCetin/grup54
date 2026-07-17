@@ -55,8 +55,10 @@ class Settings(BaseSettings):
     # Varsayılan SQLite yolu: ensemble.db (repo kökü, .gitignore'da).
     DATABASE_URL: str = f"sqlite:///{_REPO_ROOT / 'ensemble.db'}"
 
-    # Radar eşikleri (#151) — kalibrasyon (#29 threshold sweep) sonucu buraya
-    # yazılır; şimdilik RadarService'in kendi nötr varsayılanlarıyla aynı.
+    # Radar eşikleri (#151, kalibre: #18) — 0.0/0.0 kalibrasyon SONUCU, placeholder
+    # değil: sweep (#29) 60 kombinasyonun hiçbirinde FP eklemeden recall
+    # kazandırmıyor — mevcut korpuste FP'yi engelleyen gate/judge katmanı,
+    # jaccard/similarity değil. Detay + şerhler: eval/kalibrasyon-raporu.md
     RADAR_WINDOW_DAYS: int = 14
     RADAR_MIN_JACCARD: float = 0.0
     RADAR_MIN_SIMILARITY: float = 0.0
