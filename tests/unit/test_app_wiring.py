@@ -12,7 +12,8 @@ from fastapi.testclient import TestClient
 
 from ensemble.app import _build_radar_service, create_app
 from ensemble.config import Settings
-from ensemble.engine.embeddings import HashEmbeddings
+from ensemble.engine.embeddings import CachedEmbeddings, HashEmbeddings
+from ensemble.integrations.gemini.embeddings import GeminiEmbeddingsAdapter
 from ensemble.integrations.gemini.fake import FakeJudgeAdapter
 from ensemble.integrations.gemini.judge import GeminiJudgeAdapter
 from ensemble.integrations.github.adapter import GitHubAdapter
@@ -89,11 +90,16 @@ def test_gemini_key_eksikse_fakeye_duser_ve_loglar(tmp_path, caplog):
     assert "GEMINI_API_KEY tanımlı değil" in caplog.text
 
 
-def test_embeddings_15_kapaninca_kadar_hash_kalir(tmp_path):
-    # #15 (gercek Gemini embeddings) acik oldugu surece HER modda HashEmbeddings.
+def test_gemini_key_varsa_cached_gemini_embeddings_secilir(tmp_path):
     pem = tmp_path / "app.pem"
     pem.write_text("fake-pem-icerigi")
     service = _build_radar_service(_settings(GEMINI_API_KEY="fake-key", **_full_github(pem)))
+    assert isinstance(service.embeddings_port, CachedEmbeddings)
+    assert isinstance(service.embeddings_port.inner, GeminiEmbeddingsAdapter)
+
+
+def test_gemini_key_eksikse_hash_embeddings_secilir():
+    service = _build_radar_service(_settings())
     assert isinstance(service.embeddings_port, HashEmbeddings)
 
 

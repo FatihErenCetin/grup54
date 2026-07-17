@@ -1,6 +1,6 @@
 from google import genai
 from google.genai import errors as genai_errors
-from google.genai.types import GenerateContentConfig, HttpOptions
+from google.genai.types import EmbedContentConfig, GenerateContentConfig, HttpOptions
 from pydantic import BaseModel
 from tenacity import (
     retry,
@@ -49,6 +49,11 @@ class ResilientGeminiClient:
     ) -> str:
         return self._call_with_retry(prompt, response_schema=response_schema)
 
+    def embed_content(self, texts: list[str], *, task_type: str) -> list[list[float]]:
+        if not texts:
+            return []
+        return self._embed_with_retry(texts, task_type=task_type)
+
     def _call_with_retry(
         self, prompt: str, *, response_schema: type[BaseModel] | None
     ) -> str:
@@ -78,5 +83,43 @@ class ResilientGeminiClient:
             except Exception as exc:  # bağlantı kopması vb. SDK-dışı hatalar
                 raise GeminiTransientError(str(exc)) from exc
             return response.text or ""
+
+        return _attempt()
+
+    def _embed_with_retry(self, texts: list[str], *, task_type: str) -> list[list[float]]:
+        config = EmbedContentConfig(
+            task_type=task_type,
+            output_dimensionality=self._settings.GEMINI_EMBEDDING_DIMENSIONS,
+        )
+
+        @retry(
+            retry=retry_if_exception_type(GeminiTransientError),
+            stop=stop_after_attempt(self._settings.GEMINI_MAX_RETRIES),
+            wait=wait_random_exponential(multiplier=0.5, max=8),
+            reraise=True,
+        )
+        def _attempt() -> list[list[float]]:
+            try:
+                response = self._client.models.embed_content(
+                    model=self._settings.GEMINI_EMBEDDING_MODEL,
+                    contents=texts,
+                    config=config,
+                )
+            except genai_errors.APIError as exc:
+                raise _classify(exc) from exc
+            except Exception as exc:
+                raise GeminiTransientError(str(exc)) from exc
+
+            embeddings = response.embeddings or []
+            vectors: list[list[float]] = []
+            for embedding in embeddings:
+                if embedding.values is None:
+                    raise GeminiPermanentError("Gemini embedding response missing values")
+                vectors.append(list(embedding.values))
+            if len(vectors) != len(texts):
+                raise GeminiPermanentError(
+                    "Gemini embeddings must return one vector per text"
+                )
+            return vectors
 
         return _attempt()

@@ -8,8 +8,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from ensemble.api.errors import ERROR_RESPONSES, register_exception_handlers
 from ensemble.api.routers import board, health, query, radar, scope
 from ensemble.config import Settings, get_settings
-from ensemble.engine.embeddings import HashEmbeddings
+from ensemble.engine.embeddings import CachedEmbeddings, HashEmbeddings
 from ensemble.engine.radar import RadarService
+from ensemble.integrations.gemini.embeddings import GeminiEmbeddingsAdapter
 from ensemble.integrations.gemini.fake import FakeJudgeAdapter
 from ensemble.integrations.gemini.judge import GeminiJudgeAdapter
 from ensemble.integrations.github.adapter import GitHubAdapter
@@ -45,9 +46,9 @@ def _build_judge_port(settings: Settings) -> JudgePort:
 
 
 def _build_embeddings_port(settings: Settings) -> EmbeddingsPort:
-    # Gerçek Gemini embeddings adapter'ı henüz yok (#15 açık, Semih) — bilinçli
-    # ara-durum: her modda HashEmbeddings; #15 kapanınca tek satır değişir.
-    logger.info("Gerçek embeddings adapter'ı henüz yok (#15 bekleniyor) — HashEmbeddings kullanılıyor.")
+    if settings.GEMINI_API_KEY:
+        return CachedEmbeddings(GeminiEmbeddingsAdapter(settings))
+    logger.warning("GEMINI_API_KEY tanımlı değil — HashEmbeddings kullanılıyor.")
     return HashEmbeddings()
 
 
