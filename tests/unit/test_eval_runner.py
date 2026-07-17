@@ -61,6 +61,7 @@ def test_compute_metrics_perfect():
     assert r.precision == 1.0
     assert r.recall == 1.0
     assert r.f1 == 1.0
+    assert r.f05 == 1.0
     assert r.total == 8
 
 
@@ -69,6 +70,7 @@ def test_compute_metrics_all_zeros():
     assert r.precision == 0.0
     assert r.recall == 0.0
     assert r.f1 == 0.0
+    assert r.f05 == 0.0
     assert r.total == 0
 
 
@@ -77,6 +79,16 @@ def test_compute_metrics_only_fp():
     assert r.precision == 0.0
     assert r.recall == 0.0
     assert r.f1 == 0.0
+    assert r.f05 == 0.0
+
+
+def test_compute_metrics_f05_precision_agirlikli():
+    # P=1.0, R=0.5: F1 recall'a eşit ceza keser, F0.5 precision'ı ödüllendirir.
+    # F1 = 2*0.5/1.5 = 0.6667 · F0.5 = 1.25*0.5/0.75 = 0.8333 — ayrışma kanıtı.
+    r = _compute_metrics(tp=1, fp=0, fn=1, tn=0)
+    assert r.f1 == 0.6667
+    assert r.f05 == 0.8333
+    assert r.f05 > r.f1  # precision > recall iken F0.5 daha yüksek olmalı
 
 
 # ---------------------------------------------------------------------------

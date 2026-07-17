@@ -1,6 +1,7 @@
 """Threshold sweep (#29) — Jaccard × similarity eşik ızgarası taraması.
 
-Eval runner'ı farklı eşik kombinasyonlarıyla koşar, en iyi F1'i bulur.
+Eval runner'ı farklı eşik kombinasyonlarıyla koşar, en iyi F0.5'i bulur
+(precision-ağırlıklı — FP #1 risk; F1 de raporlanır, karşılaştırma için).
 Sonuçlar eval/sweep_results.json'a yazılır → #18 kalibrasyon kanıtı.
 
 Kullanım:
@@ -48,6 +49,7 @@ class SweepPoint:
     precision: float
     recall: float
     f1: float
+    f05: float
     tp: int
     fp: int
     fn: int
@@ -62,6 +64,7 @@ class SweepPoint:
             "precision": self.precision,
             "recall": self.recall,
             "f1": self.f1,
+            "f05": self.f05,
             "tp": self.tp,
             "fp": self.fp,
             "fn": self.fn,
@@ -135,6 +138,7 @@ def run_sweep(
             precision=report.overall.precision,
             recall=report.overall.recall,
             f1=report.overall.f1,
+            f05=report.overall.f05,
             tp=report.overall.tp,
             fp=report.overall.fp,
             fn=report.overall.fn,
@@ -142,13 +146,14 @@ def run_sweep(
             total=report.overall.total,
         ))
 
-    # En iyi F1'i bul (aynı-yazar dahil)
+    # En iyi F0.5'i bul (aynı-yazar dahil) — F0.5 birincil (FP #1 risk),
+    # eşitlikte precision, sonra düşük FP kırar (bkz. eval-metodoloji-devir.md §1)
     all_include = [p for p in points if not p.exclude_same_author]
-    best = max(all_include, key=lambda p: (p.f1, p.precision, -p.fp)) if all_include else None
+    best = max(all_include, key=lambda p: (p.f05, p.precision, -p.fp)) if all_include else None
 
-    # En iyi F1 (aynı-yazar hariç)
+    # En iyi F0.5 (aynı-yazar hariç)
     all_exclude = [p for p in points if p.exclude_same_author]
-    best_excl = max(all_exclude, key=lambda p: (p.f1, p.precision, -p.fp)) if all_exclude else None
+    best_excl = max(all_exclude, key=lambda p: (p.f05, p.precision, -p.fp)) if all_exclude else None
 
     return SweepReport(points=points, best=best, best_excluding_same=best_excl)
 
@@ -185,17 +190,17 @@ def main() -> None:
     if report.best:
         b = report.best
         print(f"\n{'='*60}")
-        print("  EN IYI (aynı-yazar DAHIL):")
+        print("  EN IYI — F0.5'e göre (aynı-yazar DAHIL):")
         print(f"    Jaccard >= {b.min_jaccard}  |  Similarity >= {b.min_similarity}")
-        print(f"    F1={b.f1:.4f}  P={b.precision:.4f}  R={b.recall:.4f}")
+        print(f"    F0.5={b.f05:.4f}  F1={b.f1:.4f}  P={b.precision:.4f}  R={b.recall:.4f}")
         print(f"    TP={b.tp}  FP={b.fp}  FN={b.fn}  TN={b.tn}")
         print(f"{'='*60}")
 
     if report.best_excluding_same:
         b = report.best_excluding_same
-        print("\n  EN IYI (aynı-yazar HARIÇ):")
+        print("\n  EN IYI — F0.5'e göre (aynı-yazar HARIÇ):")
         print(f"    Jaccard >= {b.min_jaccard}  |  Similarity >= {b.min_similarity}")
-        print(f"    F1={b.f1:.4f}  P={b.precision:.4f}  R={b.recall:.4f}")
+        print(f"    F0.5={b.f05:.4f}  F1={b.f1:.4f}  P={b.precision:.4f}  R={b.recall:.4f}")
         print(f"    TP={b.tp}  FP={b.fp}  FN={b.fn}  TN={b.tn}")
 
     # Önerilen config değerleri

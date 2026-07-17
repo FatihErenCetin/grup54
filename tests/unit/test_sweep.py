@@ -30,19 +30,19 @@ def test_sweep_without_same_author_axis():
     assert all(not p.exclude_same_author for p in report.points)
 
 
-def test_sweep_finds_best_f1():
-    """Sweep en iyi F1 noktasını bulmalı."""
+def test_sweep_finds_best_f05():
+    """Sweep en iyi noktayı F0.5'e göre seçmeli (FP #1 risk — precision-ağırlıklı)."""
     report = run_sweep(
         jaccard_grid=[0.0, 0.1],
         similarity_grid=[0.0, 0.3],
         include_same_author_axis=False,
     )
     assert report.best is not None
-    # En iyi F1, tüm noktaların F1'inden küçük veya eşit olmamalı
+    # En iyi F0.5, tüm noktaların F0.5'inden küçük olmamalı
     for p in report.points:
         if not p.exclude_same_author:
-            assert report.best.f1 >= p.f1 or (
-                report.best.f1 == p.f1 and report.best.precision >= p.precision
+            assert report.best.f05 >= p.f05 or (
+                report.best.f05 == p.f05 and report.best.precision >= p.precision
             )
 
 

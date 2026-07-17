@@ -47,10 +47,15 @@ class CaseResult:
 
 @dataclass
 class EvalResult:
-    """Precision / recall / F1 metrikleri + ham sayılar."""
+    """Precision / recall / F1 / F0.5 metrikleri + ham sayılar.
+
+    F0.5 = precision-ağırlıklı Fβ (β=0.5) — FP #1 risk olduğu için
+    operasyon noktası seçiminde birincil metrik (issue #28/#18).
+    """
     precision: float = 0.0
     recall: float = 0.0
     f1: float = 0.0
+    f05: float = 0.0
     tp: int = 0
     fp: int = 0
     fn: int = 0
@@ -62,6 +67,7 @@ class EvalResult:
             "precision": self.precision,
             "recall": self.recall,
             "f1": self.f1,
+            "f05": self.f05,
             "tp": self.tp,
             "fp": self.fp,
             "fn": self.fn,
@@ -112,10 +118,18 @@ def _compute_metrics(tp: int, fp: int, fn: int, tn: int) -> EvalResult:
         if (precision + recall) > 0
         else 0.0
     )
+    # Fβ (β=0.5): precision'ı 4x ağırlıklandırır — FP = #1 risk (bkz.
+    # docs/eval-metodoloji-devir.md §1). Payda yalnız P=R=0'da sıfırlanır.
+    f05 = (
+        1.25 * (precision * recall) / (0.25 * precision + recall)
+        if (0.25 * precision + recall) > 0
+        else 0.0
+    )
     return EvalResult(
         precision=round(precision, 4),
         recall=round(recall, 4),
         f1=round(f1, 4),
+        f05=round(f05, 4),
         tp=tp, fp=fp, fn=fn, tn=tn,
         total=total,
     )
@@ -332,6 +346,7 @@ def _print_metrics(name: str, result: EvalResult) -> None:
     print(f"    Precision : {result.precision:.4f}")
     print(f"    Recall    : {result.recall:.4f}")
     print(f"    F1        : {result.f1:.4f}")
+    print(f"    F0.5      : {result.f05:.4f}")
     print(f"    TP={result.tp}  FP={result.fp}  FN={result.fn}  TN={result.tn}  (toplam={result.total})")
 
 
