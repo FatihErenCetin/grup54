@@ -199,10 +199,11 @@ class RadarService:
         self.backfill_limit = backfill_limit
         self.default_base = default_base
         self._compare_cache: dict[tuple[str, str], list[str]] = {}
+        self._known_events: dict[str, NormalizedEvent] = {}
         self._backfill_done = False
 
     def get_detections(self) -> list[Detection]:
-        events = self._events_with_compare_files(self._fetch_events())
+        events = self._current_events()
         file_candidates = file_overlap_candidates(events, min_jaccard=self.min_jaccard)
         semantic_candidates = semantic_hunk_candidates(
             file_candidates,
@@ -236,12 +237,26 @@ class RadarService:
             ),
         )
 
+    def _current_events(self) -> list[NormalizedEvent]:
+        for event in self._events_with_compare_files(self._fetch_events()):
+            self._known_events[event.id] = event
+
+        since = self._since()
+        self._known_events = {
+            event_id: event
+            for event_id, event in self._known_events.items()
+            if _datetime_key(event.ts) >= _datetime_key(since)
+        }
+        return sorted(
+            self._known_events.values(),
+            key=lambda event: (_datetime_key(event.ts), event.id),
+        )
+
     def _fetch_events(self) -> list[NormalizedEvent]:
         if not self._backfill_done:
             self._backfill_done = True
-            fetch_backfill = getattr(self.github_port, "fetch_backfill_events", None)
-            if self.backfill_limit > 0 and fetch_backfill is not None:
-                return fetch_backfill(self.backfill_limit)
+            if self.backfill_limit > 0:
+                return self.github_port.fetch_backfill_events(self.backfill_limit)
         return self.github_port.fetch_events(self._since())
 
     def _since(self) -> datetime:
@@ -269,3 +284,9 @@ class RadarService:
 
 def _severity_rank(severity: str) -> int:
     return {"high": 0, "med": 1, "low": 2}.get(severity, 3)
+
+
+def _datetime_key(value: datetime) -> datetime:
+    if value.tzinfo is None or value.utcoffset() is None:
+        return value
+    return value.astimezone(timezone.utc).replace(tzinfo=None)

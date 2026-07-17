@@ -69,6 +69,7 @@ from typing import Protocol
 
 class GitHubPort(Protocol):             # impl: #16 · fake: fixtures
     def fetch_events(self, since: datetime) -> list[NormalizedEvent]: ...
+    def fetch_backfill_events(self, limit_per_type: int = 50) -> list[NormalizedEvent]: ...  # #49 ilk radar dolumu
     def compare(self, base: str, head: str) -> list[str]: ...   # değişen dosyalar
 
 class EmbeddingsPort(Protocol):         # impl: #15 (Gemini) · fake: hash-vector

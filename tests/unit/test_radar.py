@@ -59,6 +59,30 @@ class StaticGitHub:
         return self.compare_files.get((base, head), [])
 
 
+class DedupingGitHub:
+    def __init__(self, events: list[NormalizedEvent]):
+        self.events = events
+        self.seen_ids: set[str] = set()
+        self.since_calls: list[datetime] = []
+        self.backfill_calls: list[int] = []
+
+    def fetch_events(self, since: datetime) -> list[NormalizedEvent]:
+        self.since_calls.append(since)
+        fresh = [event for event in self.events if event.id not in self.seen_ids]
+        self.seen_ids.update(event.id for event in fresh)
+        return fresh
+
+    def fetch_backfill_events(self, limit_per_type: int = 50) -> list[NormalizedEvent]:
+        self.backfill_calls.append(limit_per_type)
+        selected = self.events[:limit_per_type]
+        fresh = [event for event in selected if event.id not in self.seen_ids]
+        self.seen_ids.update(event.id for event in fresh)
+        return fresh
+
+    def compare(self, base: str, head: str) -> list[str]:
+        return []
+
+
 class RecordingJudge:
     def __init__(self, severity: str = "high", confidence: float = 0.9):
         self.severity = severity
@@ -323,7 +347,33 @@ def test_radar_service_uses_backfill_on_first_call_then_polling():
     assert github.backfill_calls == [7]
     assert len(github.since_calls) == 1
     assert first[0].id == "backfill-a-backfill-b"
-    assert second[0].id == "poll-a-poll-b"
+    assert [detection.id for detection in second] == [
+        "backfill-a-backfill-b",
+        "poll-a-poll-b",
+    ]
+
+
+def test_radar_service_keeps_backfill_detections_when_adapter_dedups_seen_events():
+    first = event("backfill-a", "semih", ["src/radar.py"])
+    second = event("backfill-b", "enes", ["src/radar.py"])
+    github = DedupingGitHub([first, second])
+    service = RadarService(
+        github_port=github,
+        judge_port=RecordingJudge(),
+        embeddings_port=KeywordEmbeddings(),
+        window_days=100_000,
+        backfill_limit=50,
+    )
+
+    first_poll = service.get_detections()
+    second_poll = service.get_detections()
+    third_poll = service.get_detections()
+
+    assert github.backfill_calls == [50]
+    assert len(github.since_calls) == 2
+    assert [detection.id for detection in first_poll] == ["backfill-a-backfill-b"]
+    assert [detection.id for detection in second_poll] == ["backfill-a-backfill-b"]
+    assert [detection.id for detection in third_poll] == ["backfill-a-backfill-b"]
 
 
 def test_radar_service_can_disable_backfill():
