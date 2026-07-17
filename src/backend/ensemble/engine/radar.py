@@ -95,9 +95,9 @@ def semantic_hunk_candidates(
                 embeddings=embeddings,
             )
 
-        # TODO(#28/#29): 0.0 burada "diff hunk yok, sim bilinmiyor" anlamina da
-        # gelebiliyor. JudgePort sim: float | None kontrati gelince bilinmiyor'u
-        # dusuk benzerlikten ayir.
+        # TODO(#163): 0.0 burada "diff hunk yok, sim bilinmiyor" anlamina da
+        # geliyor. JudgePort sim: float | None kontrati HAZIR (Ek C, PR #161);
+        # bilinmiyor'u dusuk benzerlikten ayirma isi #163'te, eval delta'siyla.
         similarity = max(path_scores.values(), default=0.0)
         if similarity < min_similarity:
             continue

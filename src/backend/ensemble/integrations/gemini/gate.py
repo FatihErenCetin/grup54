@@ -39,7 +39,7 @@ def _low_confidence(
 
 
 def cheap_prejudge(
-    a: NormalizedEvent, b: NormalizedEvent, overlap: list[str], sim: float
+    a: NormalizedEvent, b: NormalizedEvent, overlap: list[str], sim: float | None
 ) -> Detection | None:
     """Gemini'ye hic sormadan karar verilebiliyorsa Detection doner; belirsizse None."""
     if a.actor == b.actor:

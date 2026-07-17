@@ -23,5 +23,5 @@ class VectorIndexPort(Protocol):
 
 class JudgePort(Protocol):
     def judge_conflict(
-        self, a: NormalizedEvent, b: NormalizedEvent, overlap: list[str], sim: float
+        self, a: NormalizedEvent, b: NormalizedEvent, overlap: list[str], sim: float | None
     ) -> Detection: ...

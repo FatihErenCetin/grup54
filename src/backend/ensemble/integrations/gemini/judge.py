@@ -32,7 +32,8 @@ def _fallback_detection(a: NormalizedEvent, b: NormalizedEvent, reason: str) -> 
     )
 
 
-def _build_prompt(a: NormalizedEvent, b: NormalizedEvent, overlap: list[str], sim: float) -> str:
+def _build_prompt(a: NormalizedEvent, b: NormalizedEvent, overlap: list[str], sim: float | None) -> str:
+    sim_text = f"{sim}" if sim is not None else "Bilinmiyor (yalnızca dosya kesişimi mevcut)"
     return (
         "İki GitHub olayı arasında GERÇEK bir çakışma olup olmadığını rubrik "
         "kriterleriyle değerlendir (her kriteri ayrı ayrı düşün):\n"
@@ -44,7 +45,7 @@ def _build_prompt(a: NormalizedEvent, b: NormalizedEvent, overlap: list[str], si
         f"Olay A: actor={a.actor}, files={a.files}\n"
         f"Olay B: actor={b.actor}, files={b.files}\n"
         f"Kesişen dosyalar: {overlap}\n"
-        f"Semantik benzerlik: {sim}\n"
+        f"Semantik benzerlik: {sim_text}\n"
     )
 
 
@@ -56,7 +57,7 @@ class GeminiJudgeAdapter:
         self._client = client
 
     def judge_conflict(
-        self, a: NormalizedEvent, b: NormalizedEvent, overlap: list[str], sim: float
+        self, a: NormalizedEvent, b: NormalizedEvent, overlap: list[str], sim: float | None
     ) -> Detection:
         pre = cheap_prejudge(a, b, overlap, sim)
         if pre is not None:
