@@ -68,14 +68,16 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          if [ -z "$(git status --porcelain docs)" ]; then
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          # Once STAGE'le, sonra STAGED diff'i kontrol et — guard kapsami ile
+          # stage kapsami ayni (docs/*-bagimlilik.md); glob eslesmezse hata degil.
+          git add docs/*-bagimlilik.md 2>/dev/null || true
+          if git diff --cached --quiet; then
             echo "harita degismedi — PR gerekmez"
             exit 0
           fi
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git checkout -B bot/bagimlilik-oto
-          git add docs/*-bagimlilik.md
           git commit -m "chore: bagimlilik haritasi oto-guncelleme (bot)"
           git push -f origin bot/bagimlilik-oto
           gh pr view bot/bagimlilik-oto >/dev/null 2>&1 || \

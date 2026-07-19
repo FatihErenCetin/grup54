@@ -45,6 +45,34 @@ def test_parse_dash_means_none():
     assert soft == []
 
 
+def test_prose_mention_not_a_prereq():
+    """Narrative/olumsuzlama satırı sahte HARD kenar üretmemeli (adversarial bulgu)."""
+    assert parse_prereqs("bu bir ön-koşul değildir ama #42 ilgilidir") == ([], [])
+    assert parse_prereqs("Ön-koşul yoktur; sadece #42 referansı") == ([], [])
+    assert parse_prereqs("Not: bunun #1 ile bir ön-koşul ilişkisi YOKTUR") == ([], [])
+
+
+def test_structured_field_still_parses():
+    """Anchor'lı alan (opsiyonel ** ve çoklu değer) hâlâ doğru çıkar."""
+    assert parse_prereqs("**Ön-koşul:** #28") == ([28], [])
+    assert parse_prereqs("Ön-koşul: #1, #2, #3") == ([1, 2, 3], [])
+
+
+def test_prose_negation_does_not_fabricate_cycle():
+    """Gerçek kenar + prose-olumsuzlama → sahte döngü/kenar olmamalı."""
+    issues = [
+        {"number": 1, "title": "a", "state": "open",
+         "assignees": [], "labels": [], "body": "**Ön-koşul:** #2"},
+        {"number": 2, "title": "b", "state": "open",
+         "assignees": [], "labels": [],
+         "body": "Burada #1 için bir ön-koşul söz konusu değildir."},
+    ]
+    graph = build_graph(issues)
+    assert graph.cycles == []
+    assert any(e.src == 2 and e.dst == 1 for e in graph.edges)
+    assert not any(e.src == 1 and e.dst == 2 for e in graph.edges)
+
+
 # --- graf inşası ---
 
 def test_edges_hard_and_soft():

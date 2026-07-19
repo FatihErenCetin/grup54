@@ -52,9 +52,14 @@ HANDLE_STYLE = {
 _BLOK_BASI = "<!-- BOT-BLOK:baslangic -->"
 _BLOK_SONU = "<!-- BOT-BLOK:bitis -->"
 
-# "Yumuşak ön-koşul" metni "ön-koşul"u da içerir → yumuşağı ÖNCE eşle.
-_SOFT_RE = re.compile(r"yumu[şs]ak\s*[öo]n-ko[şs]ul", re.IGNORECASE)
-_HARD_RE = re.compile(r"[öo]n-ko[şs]ul", re.IGNORECASE)
+# Ön-koşul YAPILANDIRILMIŞ alan satırından okunur (rehber kaynak-1): satır
+# başında (opsiyonel ** / boşluk) 'Ön-koşul:' ya da 'Yumuşak ön-koşul:', ardından
+# ':'. Anchor + zorunlu iki nokta → prose/olumsuzlama ("bu bir ön-koşul değildir
+# ama #42") EŞLEŞMEZ, sahte kenar üretilmez. #N yalnız ':' SONRASINDAN toplanır.
+_FIELD_RE = re.compile(
+    r"^\s*\**\s*(?P<soft>yumu[şs]ak\s+)?[öo]n-ko[şs]ul\b[^:\n]*:(?P<rest>.*)$",
+    re.IGNORECASE,
+)
 _ISSUE_REF_RE = re.compile(r"#(\d+)")
 
 
@@ -95,14 +100,23 @@ class Graph:
 # ---------------------------------------------------------------------------
 
 def parse_prereqs(body: str) -> tuple[list[int], list[int]]:
-    """Gövdeden (sert, yumuşak) ön-koşul issue numaralarını çıkarır."""
+    """Gövdedeki yapılandırılmış alan satırlarından (sert, yumuşak) çıkarır.
+
+    Yalnız satır başındaki 'Ön-koşul:' / 'Yumuşak ön-koşul:' alanları sayılır;
+    #N referansları YALNIZ ':' sonrasından toplanır → narrative/olumsuzlama
+    ("... ön-koşul değildir ama #42") sahte bağımlılık ÜRETMEZ.
+    """
     hard: list[int] = []
     soft: list[int] = []
     for line in (body or "").splitlines():
-        if _SOFT_RE.search(line):
-            soft.extend(int(n) for n in _ISSUE_REF_RE.findall(line))
-        elif _HARD_RE.search(line):
-            hard.extend(int(n) for n in _ISSUE_REF_RE.findall(line))
+        match = _FIELD_RE.match(line)
+        if not match:
+            continue
+        refs = [int(n) for n in _ISSUE_REF_RE.findall(match.group("rest"))]
+        if match.group("soft"):
+            soft.extend(refs)
+        else:
+            hard.extend(refs)
     return (sorted(set(hard)), sorted(set(soft)))
 
 
