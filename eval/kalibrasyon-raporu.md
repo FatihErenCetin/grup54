@@ -1,6 +1,6 @@
 # Kalibrasyon Raporu (#18) — Radar eşikleri
 
-> **Kontrat:** çıktı = kalibre eşikler (`config.py` `RADAR_MIN_JACCARD`/`RADAR_MIN_SIMILARITY`) + bu rapor (`docs/sprint2-kontratlar.md` #18 satırı). Kaynak: `eval/sweep_results.json` (60 kombinasyon, #29) + `eval/eval_runner.py` (#28). Tekrarlanabilir: `make eval-run` / `make eval-sweep` (veya `make eval`).
+> **Kanıt:** çıktı = kalibre eşikler (`config.py` `RADAR_MIN_JACCARD`/`RADAR_MIN_SIMILARITY`) + bu rapor (#18 kabul kriteri). Kaynak: `eval/sweep_results.json` (60 kombinasyon, #29) + `eval/eval_runner.py` (#28). Tekrarlanabilir: `make eval-run` / `make eval-sweep` (veya `make eval`).
 
 ## Operasyon noktası
 
