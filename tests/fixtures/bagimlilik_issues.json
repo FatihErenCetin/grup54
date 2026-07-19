@@ -1,0 +1,8 @@
+[
+  {"number": 17, "title": "Dedektör çekirdeği", "state": "closed", "assignees": [{"login": "asmarufoglu"}], "labels": [{"name": "task"}, {"name": "tema:eval"}], "body": "Çekirdek çakışma dedektörü."},
+  {"number": 26, "title": "Çakışma korpusu", "state": "closed", "assignees": [{"login": "EnesErdemT"}], "labels": [{"name": "task"}, {"name": "tema:eval"}], "body": "Kuratörlü test korpusu."},
+  {"number": 28, "title": "Eval runner", "state": "closed", "assignees": [{"login": "EnesErdemT"}], "labels": [{"name": "task"}, {"name": "tema:eval"}], "body": "**Ön-koşul:** #26\n**Yumuşak ön-koşul:** #17"},
+  {"number": 30, "title": "eval precision-gate", "state": "open", "assignees": [{"login": "FatihErenCetin"}], "labels": [{"name": "task"}, {"name": "infra"}, {"name": "tema:eval"}], "body": "AI-çekirdek task.\n**Ön-koşul:** #28\n**Yumuşak ön-koşul:** —"},
+  {"number": 124, "title": "Bağımlılık haritası botu", "state": "open", "assignees": [{"login": "FatihErenCetin"}], "labels": [{"name": "task"}, {"name": "infra"}, {"name": "tema:süreç"}], "body": "Süreç otomasyonu.\n**Ön-koşul:** —\n**Yumuşak ön-koşul:** #117"},
+  {"number": 99, "title": "sahipsiz iş", "state": "open", "assignees": [], "labels": [], "body": "ön-koşul yok, kimse atanmadı"}
+]

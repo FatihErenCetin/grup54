@@ -1,0 +1,84 @@
+# Bagimlilik haritasi oto-guncelleme (#124) — issue degisince harita tazelenir.
+# Script deterministik (AI'siz); bu workflow onu kosturup DIFF varsa sabit
+# 'bot/bagimlilik-oto' dalinda bir bot PR acar/tazeler. Main'e DOGRUDAN push YOK:
+# insan review+merge (konvansiyon korunur; bot yazarligi insan-katki metrigine
+# karismaz — commit github-actions[bot] adina).
+name: Bagimlilik haritasi guncel
+
+on:
+  issues:
+    types: [opened, edited, assigned, unassigned, labeled, unlabeled, milestoned, demilestoned, closed, reopened]
+  workflow_dispatch:
+    inputs:
+      milestone:
+        description: "Milestone adi (or. 'Sprint 2')"
+        required: true
+        default: "Sprint 2"
+
+# En dar izinler: dal push (contents) + PR ac (pull-requests) + issue oku.
+permissions:
+  contents: write
+  pull-requests: write
+  issues: read
+
+# Ayni anda tek kosu; hizli ardisik issue duzenlemelerinde son durum kazanir.
+concurrency:
+  group: bagimlilik-oto
+  cancel-in-progress: true
+
+jobs:
+  guncelle:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # Untrusted girdiler (issue basligi/milestone) ASLA shell'e enterpole
+      # edilmez ve GITHUB_OUTPUT'a yazilmaz (newline->output-injection riski).
+      # Yalnizca kontrollu 'skip' bayragi output'a gider; milestone degeri her
+      # adimda env'den yeniden hesaplanip TIRNAKLI arg olarak gecirilir.
+      - name: Milestone var mi?
+        id: ms
+        env:
+          EVENT_MS: ${{ github.event.issue.milestone.title }}
+          INPUT_MS: ${{ github.event.inputs.milestone }}
+        run: |
+          MS="${INPUT_MS:-$EVENT_MS}"
+          if [ -z "$MS" ]; then
+            echo "milestone yok (or. demilestoned) — atlaniyor"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Harita uret
+        if: steps.ms.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          EVENT_MS: ${{ github.event.issue.milestone.title }}
+          INPUT_MS: ${{ github.event.inputs.milestone }}
+        run: |
+          MS="${INPUT_MS:-$EVENT_MS}"
+          python scripts/bagimlilik_uret.py --milestone "$MS"
+
+      - name: Bot PR ac/tazele (diff varsa)
+        if: steps.ms.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [ -z "$(git status --porcelain docs)" ]; then
+            echo "harita degismedi — PR gerekmez"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -B bot/bagimlilik-oto
+          git add docs/*-bagimlilik.md
+          git commit -m "chore: bagimlilik haritasi oto-guncelleme (bot)"
+          git push -f origin bot/bagimlilik-oto
+          gh pr view bot/bagimlilik-oto >/dev/null 2>&1 || \
+            gh pr create --base main --head bot/bagimlilik-oto \
+              --title "chore: bagimlilik haritasi oto-guncelleme" \
+              --body "Otomatik (#124): issue degisikligi sonrasi harita tazelendi. Insan review+merge — bot main'e push etmez."
