@@ -29,6 +29,12 @@ jobs:
       - name: Test
         run: make test
 
+      # Eval precision-gate (#30): dedektor/judge regresyonunda kirmizi.
+      # precision veya F0.5 kalibre tabanin (eval/kalibrasyon-raporu.md) altina
+      # duserse build kirilir. FakeJudge ile offline/deterministik.
+      - name: Eval precision-gate (#30)
+        run: make eval-gate
+
       # Kontrat drift-check (#20): router'lar degisip openapi.json commit'lenmediyse kirmizi
       - name: OpenAPI drift-check
         run: |
