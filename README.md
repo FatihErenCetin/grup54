@@ -386,7 +386,228 @@ Kaynak veri: [`burndown-sprint1.csv`](ProjectManagement/Sprint1/Burndown/burndow
 
 # Sprint 2
 
-*(6 – 19 Temmuz 2026)* — **Hedef:** kusursuz çakışma radarı — uçtan uca AI çekirdeği (ingest → embeddings → LLM judge → **false-positive kalibrasyonu/eval**) + web radar sayfası. *(Sprint sonunda 6 başlık burada doldurulacak: Backlog Dağıtma Mantığı · Daily Scrum · Sprint Board · Ürün Durumu · Review · Retrospective + burndown.)*
+> **Tarih:** 6 – 19 Temmuz 2026 · **Takım:** grup54 (PO Fatih Eren Çetin · SM Esma Fazilet Karagülle · Dev Enes Talha Erdem · Dev Semih Marufoğlu) · **Ürün:** Ensemble — AI-çağı yazılım ekipleri için "paylaşılan proje beyni" (proaktif çakışma radarı · canlı scope-drift bekçisi · kendiliğinden dolan board · doğal dille "projeye sor").
+
+- **Sprint Notları**:
+
+**Sprint hedefi:** Ürünün kalbini — **AI çekirdeğini** — çalışır ve **kalibre** hale getirmek. Sprint 1'in çalışan prototipinin (harness-dashboard) gösterdiği akışı, üretim mimarisiyle gerçek bir **FastAPI engine** olarak yeniden inşa ettik: çakışma radarını dosya-kesişiminden **semantik** tespite taşıyan uçtan uca hat — **ingest → embeddings → Gemini "judge" → false-positive kalibrasyonu/eval** — artı web radar sayfası. Sprint 2 bilinçli olarak **en ağır ve en riskli** sprinttir: değerlendirmenin "yapay zeka öğeleri" kaldıracı (final 35p; ön değ. YZ modeli 20 + AI agent/orkestrasyon 15) doğrudan buraya bakıyor.
+
+**Tahmin edilen puan:** hedef 10/10 (tam puan) — gerçekleşen puan bootcamp değerlendirmesiyle netleşecek (bkz. Sprint Review). Sprint kapsamındaki **39 issue**'nun 37'si kapandı; kalan 2'si (#30 CI eval-gate · #124 bağımlılık botu) sprint kapanışında PR'da (review/merge bekliyor).
+
+**Bu sprintte alınan teknik/süreç kararları (kısa özet)**
+
+- **Kontrat-önce paralelleşme.** Sprint başında port/endpoint sözleşmeleri donduruldu (`docs/sprint2-kontratlar.md` Ek A–D); ekip mock/fixture ile beklemeden paralel branch'lerde ilerledi (Sprint-1 retro aksiyonu R2 uygulandı).
+- **Eval = Definition of Done kapısı (R4 uygulandı).** Bir dedektör, `eval/` kabul edilebilir false-positive göstermeden "done" sayılmadı. Operasyon noktası kalibrasyonla seçildi: `RADAR_MIN_JACCARD = RADAR_MIN_SIMILARITY = 0.0` → **precision = 1.0 · F0.5 = 0.9375 · FP = 0** (kanıt: [`eval/kalibrasyon-raporu.md`](eval/kalibrasyon-raporu.md)).
+- **F0.5 birincil metrik.** Yanlış-pozitif #1 risk olduğu için operasyon noktası precision-ağırlıklı **F0.5** ile seçildi (F1 de raporlanır). Kalibrasyon in-sample + `FakeJudge` ile; gerçek-Gemini spot-check S3'e bırakıldı (rapor §4 şerhi).
+- **Gemini kullanımı.** Embeddings adapteri + rubrik-tabanlı LLM **judge** (`response_schema` ile Pydantic verdict), dayanıklı istemci (retry/backoff/timeout) ve deterministik `FakeJudge` (offline/CI). Model seçimi ve kullanımı amaca yönelik — "süs AI" değil.
+- **D-36 — PR triyaj otomasyonu.** assignee = açan (Action); reviewer = alan-bazlı CODEOWNERS çift-sahip (istek atar, merge'i **bloklamaz**).
+- **D-38 — aynı-yazar çakışması → düşük-severity uyarı.** Backtest verisi "kişi kendi işiyle çakışmaz" tasarım varsayımını çürüttü (3 gerçek çakışmanın 2'si aynı-yazar); tamamen susmak yerine düşük-severity uyarıya çevrilecek (implementasyon S3 #164).
+- **#15 dilimlendi.** Teslim edilen kısım (Gemini embeddings + vector-index sözleşmesi) S2'yi karşıladı; kalan (FAISS/pgvector entegrasyon testi + cache) S3'e taşındı.
+- **Board'a "Tema" alanı (#116)** — kartlar alana göre süzülebilir (AI çekirdek · Veri · Web · Emniyet · PM/Süreç).
+
+**User story'ler nerede tutuluyor:** Sprint 1'deki gibi — tüm story/task **GitHub Issues**'ta ("Bir `<rol>` olarak `<istek>` istiyorum, böylece `<fayda>`"), `story` (🔵) / `task` (🔴) label'ı + `sprint` milestone + `tema` alanı taşır. Sprint 2 milestone'u **39 issue** taşıdı (AI hattı + web radar + destek + süreç/doküman).
+
+**Kullanılan araçlar:**
+
+| Araç | Kullanım |
+|---|---|
+| **GitHub** | Repo, Issues (user story / backlog), Projects (kanban board + otomasyon + Tema alanı) |
+| **Slack + WhatsApp** | Günlük scrum (async, sabit saat yok) — danışman-dahil Slack + ekip-içi WhatsApp |
+| **Pencil** | Ürünün UI tasarımı (`design/ensemble.pen` — 14 yüzey; token senkronu D-34) |
+| **AI araçları** (heterojen) | Çok-araçlı AI-destekli geliştirme + **adversarial doğrulama**: Claude Code ×2 · Gemini CLI · Antigravity · Kiro · Codex |
+
+> Çalışan çekirdeğin kanıtı = eval metrikleri + testler (aşağıda "Ürün Durumu"); UI tasarımı görselleri → `ProjectManagement/Sprint2/Screenshots/` · board → `.../Board/` · daily → `.../DailyScrum/`.
+
+---
+
+- **Backlog düzeni ve Story seçimleri**:
+
+Sprint 2 kapsamı **`ai` (AI çekirdek) epic**'ine ve onu canlıya bağlayan `engine`/`frontend` işlerine odaklandı. Story seçimi, çakışma radarının uçtan uca hattını tamamlayacak biçimde yapıldı: **ingest** (#16), **embeddings + vector index** (#15), **AI aşamaları** (Jaccard #22 → cosine #23 → Gemini judge #24/#50), **dedektör** (#17 ⭐), **eval hattı** (korpus #26 · backtest #27 · runner #28 · sweep #29 · **kalibrasyon #18 ⭐**), **canlı kablolama** (#151) ve **web radar sayfası** (#21; shell #19 + üretilen client #20 + router #25). Destek işleri: CORS #45 · global hata zarfı #54 · GitHub App kaydı #46 · PR triyaj #146. Her issue `story`/`task` + `sprint-2` milestone + `tema` alanı taşır.
+
+**Üç sprinte dağıtım gerekçesi** — dağıtım, **değerlendirme kaldıracı** (YZ öğeleri 35p) ile **teknik bağımlılık sırası** (önce zemin, sonra çekirdek, sonra kabuk) birlikte belirledi:
+
+- **Sprint 1 — Foundation + prototip + süreç.** Repo omurgası, backlog, board otomasyonu, ilk çalışan UI prototipi (harness-dashboard). *(tamamlandı)*
+- **Sprint 2 — AI çekirdeği (bu sprint, en yüksek kaldıraç).** Uçtan uca yapay zeka hattı: ingest → embeddings → LLM judge → eval/kalibrasyon + web radar. **Gerekçe:** ~70 puanlık YZ alanı doğrudan buraya bakıyor; en ağır/riskli iş zemin oturunca ortaya alındı. *(gerçekleşti — bu rapor)*
+- **Sprint 3 — Kabuk + tamamlama + sunum.** Board/Ask kabuğu, scope-drift bekçisi, MCP, hosted demo, 3 dk video. *(planlandı)*
+
+**Dağıtım kuralı:** Story bazında tahmini puan **sprint hedefinin yarısını geçmeyecek** şekilde bölündü; hedef vs gerçekleşen her sprint sonunda açıkça yazılır.
+
+**Hedef vs Gerçekleşen (puan)**
+
+| Sprint | Odak | Hedef puan | Gerçekleşen puan |
+|---|---|---|---|
+| Sprint 1 | Foundation + prototip + süreç | 10/10 (tam puan) | bootcamp değerlendirmesi bekleniyor |
+| **Sprint 2** | **AI çekirdeği (çakışma radarı + eval)** | **10/10 (tam puan)** | **çekirdek uçtan uca çalışır + kalibre (P=1.0/F0.5=0.9375); 39 issue → 37 kapandı, 2 PR'da — bootcamp değerlendirmesi bekleniyor** |
+| Sprint 3 | Kabuk + scope-drift + MCP + demo/video | 10/10 (tam puan) | planlandı |
+
+> Backlog'un kanonik kaydı GitHub Issues + GitHub Projects board'undadır. Board görselleri ve renk kodu için bkz. aşağıdaki "Sprint board update" + `ProjectManagement/Sprint2/Board/`.
+
+---
+
+- **Daily Scrum**:
+
+Daily scrum'lar **Slack ve WhatsApp** üzerinden **yazılı (async)** yürütülür — **sabit bir saat yoktur**; geliştirme yapılan gün her üye *dün / bugün / blocker* paylaşır.
+
+**Cadence:** yazılı async — Slack (danışman dahil) + WhatsApp (ekip-içi); yalnızca geliştirme yapılan günlerde.
+
+**Kanıt:** Günlük loglar + ekran görüntüleri → [`daily-scrum-log.md`](ProjectManagement/Sprint2/DailyScrum/daily-scrum-log.md) *(8–19 Temmuz tam kronik, kanıt sütunuyla)* · görüntüler: [9 Tem](ProjectManagement/Sprint2/DailyScrum/daily-2026-07-09-whatsapp.png) · [10](ProjectManagement/Sprint2/DailyScrum/daily-2026-07-10-whatsapp.png) · [11](ProjectManagement/Sprint2/DailyScrum/daily-2026-07-11-whatsapp.png) · [12](ProjectManagement/Sprint2/DailyScrum/daily-2026-07-12-whatsapp.png) · [13](ProjectManagement/Sprint2/DailyScrum/daily-2026-07-13-whatsapp.png) · [14](ProjectManagement/Sprint2/DailyScrum/daily-2026-07-14-whatsapp.png) · [16](ProjectManagement/Sprint2/DailyScrum/daily-2026-07-16-whatsapp.png) · [17](ProjectManagement/Sprint2/DailyScrum/daily-2026-07-17-whatsapp.png) · [19](ProjectManagement/Sprint2/DailyScrum/daily-2026-07-19-whatsapp.png) · [📁 tüm klasör](ProjectManagement/Sprint2/DailyScrum/)
+
+**Doğrulandı:** Sprint'in **12 gününün tam kroniği** log'da; **9 günde doğrudan WhatsApp ekran görüntüsü** (07-09→07-14 · 07-16 · 07-17 · 07-19), 07-08 planlama toplantısı görseliyle, 07-15 ve 07-18 ise **sakin gün** olarak dürüstçe `—` işaretli. Kırık referans yok (anılan 9 görsel = repodaki 9 görsel). Bu, Sprint-1 retrosunun **R5 (daily disiplini) + R6 (kanıt adlandırma standardı)** aksiyonlarının uygulandığını gösterir — S1'de 13 günün yalnız 4'ünde doğrudan görsel varken, S2'de kanıt her gün anında commit'lendi.
+
+---
+
+- **Sprint board update**:
+
+**Açılış board'u (8 Tem — sprint başı):** *(canlı board: [GitHub Projects](https://github.com/users/FatihErenCetin/projects/1) — public)*
+
+![Sprint 2 açılış board](ProjectManagement/Sprint2/Board/board-2026-07-08-start.png)
+
+**Kapanış board'u (19 Tem — kanban):**
+
+![Sprint 2 kapanış — kanban](ProjectManagement/Sprint2/Board/board-2026-07-19-end.png)
+
+<details><summary>📋 Tablo görünümü (Status + bağlı PR kolonlarıyla)</summary>
+
+![Sprint 2 kapanış — tablo](ProjectManagement/Sprint2/Board/board-2026-07-19-end-table.png)
+
+</details>
+
+Kanonik board **GitHub Projects**'te tutulur (issue/PR durumundan otomatik beslenir). Sprint 1'den farklı olarak Sprint 2'nin **hem açılış hem kapanış** snapshot'ı var.
+
+**GitHub Projects kolonları** — kılavuzun beklediği akışı kapsar:
+
+| Kolon | Anlamı |
+|---|---|
+| **Backlog** | Henüz sprint'e alınmamış işler |
+| **To Do** | Bu sprint'e alınmış, başlanmamış işler |
+| **In Progress** | Aktif geliştirilen işler (assignee atanmış) |
+| **In Review** | PR açılmış, review bekleyen işler |
+| **Done** | Merge edilmiş / kapanmış işler |
+
+**Otomasyon (dogfood):** Kartlar elle sürüklenmez — `T-<id>` branch + PR'da `Closes #<id>` sayesinde PR açılınca kart *In Review*'a, merge olunca *Done*'a **otomatik** geçer. Bu, ürünümüz Ensemble'ın "kendiliğinden dolan board" vaadini kendi repomuzda dogfood ettiğimiz anlamına gelir. Sprint 2'de ayrıca **PR triyaj otomasyonu** (D-36) devreye girdi: assignee = açan, reviewer = CODEOWNERS.
+
+**Renk kodu (kılavuz zorunluluğu):**
+
+- 🔵 **Mavi = Story** (`story` label) — kullanıcı değeri taşıyan üst seviye iş
+- 🔴 **Kırmızı = Task** (`task` label) — bir story'yi gerçekleştiren teknik alt iş
+
+Her kart ayrıca **Tema** alanı (AI çekirdek · Veri · Web · Emniyet · PM/Süreç) ve **milestone = sprint** ile etiketlidir. Tüm board kanıtları repoya commit'lenmiştir (`ProjectManagement/Sprint2/Board/`); dış servis linki yoktur.
+
+---
+
+- **Ürün Durumu**:
+
+![Ensemble — Radar ekranı (UI tasarımı / mockup)](ProjectManagement/Sprint2/Screenshots/tasarim-2026-07-19-radar.png)
+
+<details><summary>🖼️ Tasarlanan diğer ekranlar (Graph ısı-matrisi · Board · Scope · Ask)</summary>
+
+![Graph — aktör×modül ısı matrisi](ProjectManagement/Sprint2/Screenshots/tasarim-2026-07-19-graph-isi-matrisi.png)
+![Board — kendiliğinden dolan kanban](ProjectManagement/Sprint2/Screenshots/tasarim-2026-07-19-board.png)
+![Scope — kapsam bekçisi](ProjectManagement/Sprint2/Screenshots/tasarim-2026-07-19-scope.png)
+![Ask — projeye sor](ProjectManagement/Sprint2/Screenshots/tasarim-2026-07-19-ask.png)
+
+</details>
+
+Sprint 2'nin ürün çıktısı **iki katmanlıdır** — ve dürüstlük adına ayrımı net tutuyoruz:
+
+**1) Çalışan AI çekirdeği (kod + kanıt, mockup değil).** Sprint 1 prototipinin akışı, üretim mimarisiyle gerçek bir **FastAPI engine** olarak yeniden inşa edildi:
+
+- **GitHub ingest** — App-auth + ETag'li REST istemci + polling + normalize + backfill (#16, #49).
+- **Gemini embeddings + vector index** — cache'li embeddings + Local/FAISS/pgvector index sözleşmesi (#15, #134).
+- **Semantik çakışma dedektörü** — dosya-kesişimi (Jaccard) → hunk cosine benzerliği → **Gemini "judge"** (rubrik prompt + Pydantic verdict) (#17, #22–#24, #50).
+- **Eval / kalibrasyon** — kuratörlü korpus (#26) + backtest (#27) + runner (#28) + threshold sweep (#29) + **kalibrasyon (#18 ⭐)**. Sonuç operasyon noktası: **precision = 1.0 · F0.5 = 0.9375 · FP = 0** ([`eval/kalibrasyon-raporu.md`](eval/kalibrasyon-raporu.md)).
+- **Web radar sayfası** (#21) — React + Tailwind; canlı kablolama (#151) ile gerçek adapter DI; şimdilik mock vitrin, `.env` bayrağıyla canlı radara bağlanır.
+
+> **Kanıt = numaralar.** Çekirdeğin "çalışıyor" iddiası slayt değil; ana dalda **193 test yeşil** ve yukarıdaki eval metrikleri (precision/recall/F1/F0.5, `make eval`) ile ölçülü. Kalibrasyon in-sample + FakeJudge ile yapıldı (dürüst şerh, rapor §4); gerçek-Gemini spot-check S3'te.
+
+**2) Tam UI tasarımı (14 yüzey, mockup).** Ürünün bütün arayüzü `design/ensemble.pen` (Pencil) içinde tasarlandı — her ekran deep-search + PO brainstorm ritüelinden geçti, token senkronu kodla birebir (D-34). Bunlar **çalışan ürün değil, tasarım mockup'ıdır** (`tasarim-` öneki bunu ayırır); yukarıdaki görseller bu pakettendir. Tasarımın canlı backend üzerinde bütünleşmesi Sprint 3'ün işidir.
+
+| Ne | Durum | Kanıt |
+|---|---|---|
+| AI çekirdeği (ingest → judge → eval) | ✅ çalışır + kalibre | `src/backend/`, `eval/`, 193 test, P=1.0/F0.5=0.9375 |
+| Web radar sayfası | ✅ çalışır (mock vitrin, canlı kablolu) | `src/frontend/` (#21/#151) |
+| Tam UI (14 ekran) | 🎨 tasarlandı (mockup) | `ProjectManagement/Sprint2/Screenshots/tasarim-*` |
+
+---
+
+- **Sprint Review**:
+
+<details><summary>🖼️ Toplantı kanıtları (2 toplantı — katılımcılar görünür)</summary>
+
+![Planlama — 8 Tem](ProjectManagement/Sprint2/Meetings/sprint2-planning-2026-07-08.png)
+![Kapanış — 19 Tem](ProjectManagement/Sprint2/Meetings/sprint2-closing-2026-07-19.png)
+
+</details>
+
+**Tarih / format:** Sprint 2, iki görüntülü oturumla çerçevelendi — **açılış/planlama (8 Tem)** ve **kapanış (19 Tem)**; Review + Retrospective + Sprint-3 planlaması kapanış sync'inde birlikte yapıldı (kanıt: `Meetings/sprint2-closing-2026-07-19.png`).
+
+**Demo edilen ürün**
+
+- Çalışan **AI çekirdeği**: `make eval` çıktısı (precision = 1.0 / F0.5 = 0.9375 / FP = 0) + 193 yeşil test; semantik çakışma hattı (ingest → embeddings → Gemini judge).
+- **Web radar sayfası** (#21) — judged-conflict feed'i, mock vitrin.
+- **Tam UI tasarımı** (14 ekran, `design/ensemble.pen`).
+
+**Sprint 2'de alınan kararlar**
+
+1. **Eval = DoD kapısı** — bir dedektör, `eval/` kabul edilebilir false-positive göstermeden "done" sayılmaz; operasyon noktası kalibrasyonla seçildi (P=1.0/F0.5=0.9375).
+2. **F0.5 birincil metrik** — FP #1 risk olduğu için precision-ağırlıklı Fβ (β=0.5) esas alındı.
+3. **D-36 — PR triyaj otomasyonu** — assignee = açan; reviewer = CODEOWNERS çift-sahip (bloklamaz).
+4. **D-38 — aynı-yazar çakışması → düşük-severity** — backtest verisi tasarım varsayımını çürüttü; implementasyon S3 (#164).
+5. **Kontrat-önce paralelleşme** — S2 kontratları donduruldu (Ek A–D); ekip mock/fixture ile paralel ilerledi.
+6. **#15 dilimleme + board'a Tema alanı (#116)** — kapsam yönetimi ve board süzme netleşti.
+7. **CI regresyon kapısı + otomasyon** — eval precision-gate (#30) ve bağımlılık haritası botu (#124) sprint sonunda eklendi.
+
+**Katılımcılar** — tüm ekip tam katıldı:
+
+- Fatih Eren Çetin (PO)
+- Esma Fazilet Karagülle (SM)
+- Enes Talha Erdem (Developer)
+- Semih Marufoğlu (Developer)
+
+---
+
+- **Sprint Retrospective**:
+
+Sprint 2 retrospektifi takımın 4 üyesiyle **19 Temmuz 2026**'da, kapanış sync'inde (Review + Sprint-3 planlaması ile birlikte) yapıldı (kanıt: `Meetings/sprint2-closing-2026-07-19.png`).
+
+**İyi gidenler (Keep)**
+
+- **Kontrat-önce paralelleşme çalıştı.** S2 kontratları dondurulunca (Ek A–D) ekip mock/fixture ile beklemeden paralel ilerledi — Sprint-1 retro aksiyonu **R2** hayata geçti.
+- **Eval-kapılı disiplin (R4).** Kalibrasyon Definition of Done oldu: operasyon noktası ölçülerek seçildi (P=1.0/F0.5=0.9375/FP=0), kanıt `eval/kalibrasyon-raporu.md`. AI çekirdeğin "ne zaman bitti" ölçütü artık numaraya bağlı.
+- **Kanıt disiplini (R5/R6).** Daily kanıtları her gün anında, ASCII/ISO adlarıyla commit'lendi — 12/12 gün kayıtlı, 9 günde doğrudan görsel. S1'in "kanıt dağınıklığı" problemi kapandı.
+- **Review kültürü + adversarial doğrulama.** Her onay birinci-el repro ile verildi; sprint sonu iki CI/otomasyon işi (#30/#124) bağımsız adversarial merceklerden geçirildi ve **gerçek bir HIGH bug** (sahte bağımlılık üretimi) yakalanıp düzeltildi. Board otomasyonu + Tema alanı (R3) da devrede.
+
+**İyileştirilecekler (Problem)**
+
+- **Kritik yol tek kişide birikti.** `#28 → #29 → #18` zinciri tek geliştiricide (Enes) toplandı; araya sınav/sunum girince **07-14→07-16 platosu** oluştu (burndown'da görünür). Tek noktalı bağımlılık riski.
+- **Beyan-gerçek tutarsızlığı.** Birkaç kez "bitirdim/mergeledim" beyanı GitHub'a yansımadan verildi (PR açık/CI kırmızıyken). Süreç notu eklendi: beyandan önce PR sayfasına 30 sn bak.
+- **Tasarım varsayımı yanlış çıktı.** "Kişi kendi işiyle çakışmaz" varsayımını backtest çürüttü (D-38) — dedektör davranışı revize edilecek (S3 #164).
+- **Story-point hâlâ tutulmuyor.** Board'da puan/estimate alanı yok; burndown zorunlu olarak issue-adedi bazlı kaldı (S1'den beri açık madde).
+- **Gerçek Gemini judge kalibre edilmedi.** Kalibrasyon FakeJudge (kural-tabanlı) ile; canlı Gemini yolu spot-check bekliyor.
+
+**Somut aksiyonlar (Sprint 3 için)**
+
+| # | Aksiyon | Sahip | Ne zaman | Ölçülebilir çıktı |
+|---|---|---|---|---|
+| R1 | **D-38'i uygula** — aynı-yazar çakışması → düşük-severity uyarı (#164) | Semih | S3 erken | #164 merge; eval'de aynı-yazar FN → low-severity |
+| R2 | **`sim=None` gerçek ayrımı** (#163) — "bilinmiyor" ≠ "düşük benzerlik" | Semih | S3 | #163 merge + eval delta raporu |
+| R3 | **Gerçek Gemini judge spot-check** (FakeJudge dışı doğrulama) | Enes + PO | S3 | ≥1 vaka canlı Gemini ile doğrulanmış |
+| R4 | **Board'a "Puan/Estimate" alanı ekle** → S3 burndown puan-bazlı (S1'den beri açık) | SM Esma | S3 günü 1 | Board'da puan alanı; S3 burndown story-point |
+| R5 | **Kritik yolu tek kişiye yığma** — pair/yedek + erken PR | PO Fatih | S3 planlama | Kritik zincir ≥2 kişiye dağıtılmış |
+| R6 | **"Beyan öncesi PR'a 30 sn bak" sürecini koru** | Herkes | Her gün | Beyan-gerçek tutarsızlığı sıfır |
+| R7 | **Hosted demo + 3 dk video** (S3 ana teslim, 2 Ağustos) | Ekip | Sprint 3 | Canlı link + YouTube video |
+
+> Retro çıktısı: R1/R2 zaten GitHub issue'larına (#163/#164) dönüştürülmüş durumda; kalanlar Sprint-3 planlamasında issue'lanacak.
+
+---
+
+- **Burndown Chart** *(bonus)*:
+
+![Sprint 2 burndown](ProjectManagement/Sprint2/Burndown/burndown-sprint2.png)
+
+*(bonus puan)* Sprint 2 burndown grafiği, açık işin (issue) gün bazında düşüşünü gösterir; kaynak `.csv` ile birlikte commit'lenir. Eğri **07-09'da tepe** (32; planlama'da issue üretimi) → **07-14→07-16 platosu** (sınav + kritik-yol beklemesi, retro'da işlendi) → sert kapanış. Gerçek çizgi ideal'in altında seyretti (plandan hızlı). Kanıt → `ProjectManagement/Sprint2/Burndown/`
+
+Kaynak veri: [`burndown-sprint2.csv`](ProjectManagement/Sprint2/Burndown/burndown-sprint2.csv) — **issue-adedi bazlı** (Sprint 1 ile aynı; story-point alanı board'a hâlâ eklenmedi → retro aksiyonu R4). Gerçek `createdAt`/`closedAt` verisinden deterministik üretildi.
 
 # Sprint 3
 
