@@ -424,12 +424,6 @@ Kaynak veri: [`burndown-sprint1.csv`](ProjectManagement/Sprint1/Burndown/burndow
 
 Sprint 2 kapsamı **`ai` (AI çekirdek) epic**'ine ve onu canlıya bağlayan `engine`/`frontend` işlerine odaklandı. Story seçimi, çakışma radarının uçtan uca hattını tamamlayacak biçimde yapıldı: **ingest** (#16), **embeddings + vector index** (#15), **AI aşamaları** (Jaccard #22 → cosine #23 → Gemini judge #24/#50), **dedektör** (#17 ⭐), **eval hattı** (korpus #26 · backtest #27 · runner #28 · sweep #29 · **kalibrasyon #18 ⭐**), **canlı kablolama** (#151) ve **web radar sayfası** (#21; shell #19 + üretilen client #20 + router #25). Destek işleri: CORS #45 · global hata zarfı #54 · GitHub App kaydı #46 · PR triyaj #146. Her issue `story`/`task` + `sprint-2` milestone + `tema` alanı taşır.
 
-**Üç sprinte dağıtım gerekçesi** — dağıtım, **değerlendirme kaldıracı** (YZ öğeleri 35p) ile **teknik bağımlılık sırası** (önce zemin, sonra çekirdek, sonra kabuk) birlikte belirledi:
-
-- **Sprint 1 — Foundation + prototip + süreç.** Repo omurgası, backlog, board otomasyonu, ilk çalışan UI prototipi (harness-dashboard). *(tamamlandı)*
-- **Sprint 2 — AI çekirdeği (bu sprint, en yüksek kaldıraç).** Uçtan uca yapay zeka hattı: ingest → embeddings → LLM judge → eval/kalibrasyon + web radar. **Gerekçe:** ~70 puanlık YZ alanı doğrudan buraya bakıyor; en ağır/riskli iş zemin oturunca ortaya alındı. *(gerçekleşti — bu rapor)*
-- **Sprint 3 — Kabuk + tamamlama + sunum.** Board/Ask kabuğu, scope-drift bekçisi, MCP, hosted demo, 3 dk video. *(planlandı)*
-
 **Dağıtım kuralı:** Story bazında tahmini puan **sprint hedefinin yarısını geçmeyecek** şekilde bölündü; hedef vs gerçekleşen her sprint sonunda açıkça yazılır.
 
 **Hedef vs Gerçekleşen (puan)**
