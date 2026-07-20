@@ -109,6 +109,36 @@ def test_greenfield_ai_cagirmaz_sablon_yazar(tmp_path: Path):
     assert port.read_scope("1")["status"] == "draft"
 
 
+def test_drafter_patlarsa_harness_yarim_kalmaz(tmp_path: Path):
+    """#57 review (Fatih + Semih, bağımsız aynı repro): drafter hata verirse
+    .harness/ hiç oluşmamalı - aksi halde ikinci çalıştırma "zaten var" sanıp
+    atlar ve operatör kurulumun bittiğini zanneder."""
+    class _ExplodingDrafter:
+        def draft(self, *, milestone, context):
+            raise RuntimeError("gemini-timeout")
+
+    with pytest.raises(RuntimeError, match="gemini-timeout"):
+        init_harness(
+            tmp_path,
+            milestone="Sprint 3",
+            settings=_settings(),
+            issues=_FIXTURE_ISSUES,
+            scope_drafter=_ExplodingDrafter(),
+        )
+
+    assert not (tmp_path / ".harness").exists()
+
+    # Retry temiz calismali - "zaten var" diye atlamamali.
+    result = init_harness(
+        tmp_path,
+        milestone="Sprint 3",
+        settings=_settings(),
+        issues=_FIXTURE_ISSUES,
+        scope_drafter=FakeScopeDrafter(),
+    )
+    assert result.mode == "brownfield"
+
+
 def test_bos_kategoriler_ve_readme_her_modda_yazilir(tmp_path: Path):
     init_harness(
         tmp_path, milestone="Sprint 1", settings=_settings(), issues=[],

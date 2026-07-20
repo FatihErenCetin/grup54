@@ -26,6 +26,7 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import shutil
 import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -116,24 +117,25 @@ def _write_tasks(port: HarnessPort, issues: list[dict]) -> list[str]:
     return created
 
 
-def _write_brownfield_scope(
-    port: HarnessPort, settings: Settings, milestone: str, context: str,
-    scope_drafter: ScopeDrafter | None,
-) -> str:
+def _draft_scope_content(
+    settings: Settings, milestone: str, context: str, scope_drafter: ScopeDrafter | None,
+) -> dict:
+    """Riskli (ağ çağrısı olabilen) adım — HİÇBİR dosya yazılmadan ÖNCE çağrılır.
+
+    #57 review (Fatih + Semih, bağımsız aynı bulgu): drafter (Gemini) tasks/
+    yazıldıktan SONRA patlarsa `.harness/` yarım kalıyordu ve var olduğu için
+    sonraki çalıştırma yanlışlıkla "skipped" dönüyordu. Riskli adımı en başa
+    almak + `init_harness`'teki try/except temizliği bu sınıfı kapatır.
+    """
     drafter = scope_drafter or build_scope_drafter(settings)
     draft = drafter.draft(milestone=milestone, context=context)
-    sprint = _sprint_slug(milestone)
-    port.write_scope(
-        sprint,
-        {
-            "title": milestone,
-            "status": "draft",
-            "goals": draft.in_scope,
-            "non_goals": draft.non_goals,
-            "body": f"[TASLAK — insan onayı bekliyor, PO düzenleyip dondurur]\n\n{draft.goal}\n",
-        },
-    )
-    return f"scope/sprint-{sprint}.md"
+    return {
+        "title": milestone,
+        "status": "draft",
+        "goals": draft.in_scope,
+        "non_goals": draft.non_goals,
+        "body": f"[TASLAK — insan onayı bekliyor, PO düzenleyip dondurur]\n\n{draft.goal}\n",
+    }
 
 
 def _write_greenfield_templates(port: HarnessPort, milestone: str) -> list[str]:
@@ -174,6 +176,16 @@ def _write_empty_categories(root: Path) -> list[str]:
     return created
 
 
+def _cleanup_partial_harness(root: Path) -> None:
+    """Init sırasında hata olursa yarım `.harness/`'i siler.
+
+    Aksi halde fail-safe guard'ın ("`.harness/` zaten var → dokunma") yanlış
+    yorumlanmasına yol açar: yarım kalan dizin sonraki çalıştırmada "zaten
+    kurulmuş" sanılıp atlanır (#57 review, Fatih + Semih — bağımsız repro).
+    """
+    shutil.rmtree(root / ".harness", ignore_errors=True)
+
+
 def init_harness(
     root: Path | str,
     *,
@@ -194,19 +206,29 @@ def init_harness(
     if issues is None:
         issues = fetch_open_issues()
 
-    created: list[str] = []
-    if issues:
-        created += _write_tasks(port, issues)
-        context = _gather_context(root, issues)
-        created.append(_write_brownfield_scope(port, settings, milestone, context, scope_drafter))
-        mode = "brownfield"
-    else:
-        created += _write_greenfield_templates(port, milestone)
-        mode = "greenfield"
+    try:
+        created: list[str] = []
+        if issues:
+            # Riskli (ağ çağrısı olan) adım ÖNCE: patlarsa hiçbir dosya
+            # yazılmamış olur (#57 review, aşağıdaki _cleanup ile birlikte).
+            context = _gather_context(root, issues)
+            scope_content = _draft_scope_content(settings, milestone, context, scope_drafter)
 
-    created += _write_empty_categories(root)
-    (root / ".harness" / "README.md").write_text(_HARNESS_README, encoding="utf-8")
-    created.append(".harness/README.md")
+            created += _write_tasks(port, issues)
+            sprint = _sprint_slug(milestone)
+            port.write_scope(sprint, scope_content)
+            created.append(f"scope/sprint-{sprint}.md")
+            mode = "brownfield"
+        else:
+            created += _write_greenfield_templates(port, milestone)
+            mode = "greenfield"
+
+        created += _write_empty_categories(root)
+        (root / ".harness" / "README.md").write_text(_HARNESS_README, encoding="utf-8")
+        created.append(".harness/README.md")
+    except Exception:
+        _cleanup_partial_harness(root)
+        raise
 
     return OnboardingResult(mode=mode, created=created)
 
