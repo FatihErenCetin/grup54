@@ -18,6 +18,11 @@ from ensemble.models import BoardCard, Detection
 class HealthResponse(BaseModel):
     status: Literal["ok"]
     mode: Literal["local", "hosted"]
+    # #53: gercekten kurulu mu (Fake* adaptere dusmemis mi) - Fly health-check
+    # + local-first "token/key ayarli mi?" onboarding sinyali. Canli ag cagrisi
+    # YOK (Fly health-check flaky olmasin) - yalniz acilis-anindaki wiring sonucu.
+    github_auth: Literal["ok", "degraded"]
+    gemini: Literal["ok", "degraded"]
 
 
 class RadarResponse(BaseModel):

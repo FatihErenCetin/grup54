@@ -109,10 +109,18 @@ def test_izinsiz_origin_cors_basligi_almaz():
 
 
 def test_normal_akis_etkilenmez():
+    # /health artik RadarServiceDep gerektiriyor (#53) - lifespan'in
+    # app.state.radar_service'i kurmasi icin context manager sart.
     app = create_app(Settings(ENSEMBLE_MODE="local"))
-    resp = TestClient(app).get("/health")
+    with TestClient(app) as client:
+        resp = client.get("/health")
     assert resp.status_code == 200
-    assert resp.json() == {"status": "ok", "mode": "local"}
+    assert resp.json() == {
+        "status": "ok",
+        "mode": "local",
+        "github_auth": "degraded",
+        "gemini": "degraded",
+    }
 
 
 def test_fallback_traceback_loga_yazilir(caplog):

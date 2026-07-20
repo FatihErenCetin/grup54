@@ -96,7 +96,7 @@ class HarnessPort(Protocol):            # impl: #13 (GATE 1)
 
 | Method · Path | Girdi | Çıktı (JSON) | Issue |
 |---|---|---|---|
-| `GET /health` | — | `{status, mode}` | #14 |
+| `GET /health` | — | `{status, mode, github_auth, gemini}` | #14, zenginleştirme #53 |
 | `GET /radar` | — | `{detections: Detection[], updated_at}` | #17, #25 |
 | `GET /scope/check?ref=<pr>` | query | `ScopeVerdict` | #31 (S3) |
 | `GET /board` | — | `{cards: BoardCard[]}` | S3 |

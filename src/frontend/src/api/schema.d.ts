@@ -166,6 +166,16 @@ export interface components {
              * @enum {string}
              */
             mode: "local" | "hosted";
+            /**
+             * Github Auth
+             * @enum {string}
+             */
+            github_auth: "ok" | "degraded";
+            /**
+             * Gemini
+             * @enum {string}
+             */
+            gemini: "ok" | "degraded";
         };
         /** QueryResponse */
         QueryResponse: {
