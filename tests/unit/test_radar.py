@@ -589,6 +589,38 @@ def test_radar_service_constructor_diffs_take_priority_over_live_fetch():
     assert github.diff_calls == [("main", "T-b")]
 
 
+def test_radar_service_ikinci_pollde_guncel_diffi_gorur():
+    """Semih review bulgusu (#152): _diff_cache servis-omru boyunca yasarsa,
+    bir branch'e ikinci pollde yeni push atilsa bile ilk gorulen diff'e
+    kilitleniyordu. Cache artik tek get_detections() cagrisiyla sinirli -
+    ikinci poll GUNCEL diff'i gormeli (ayni servis, ayni branch anahtari)."""
+    first = event("a", "semih", ["src/radar.py"])
+    second = event("b", "enes", ["src/radar.py"])
+    judge = RecordingJudge()
+    github = StaticGitHub(
+        [first, second],
+        diffs={
+            ("main", "T-a"): {"src/radar.py": "@@ -1 +1 @@\n-old\n+same intent"},
+            ("main", "T-b"): {"src/radar.py": "@@ -1 +1 @@\n-old\n+same intent"},
+        },
+    )
+    service = RadarService(
+        github_port=github,
+        judge_port=judge,
+        embeddings_port=KeywordEmbeddings(),
+        window_days=100_000,
+    )
+
+    service.get_detections()
+    assert judge.calls[-1][3] == 1.0  # ilk poll: same intent -> sim=1.0
+
+    # T-b branch'ine yeni bir commit geldi, diff icerigi degisti.
+    github.diffs[("main", "T-b")] = {"src/radar.py": "@@ -1 +1 @@\n-old\n+different intent"}
+    service.get_detections()
+
+    assert judge.calls[-1][3] == 0.0  # ikinci poll GUNCEL diff'i gormeli, bayat degil
+
+
 def test_radar_service_memoizes_get_diff_for_same_branch():
     first = event("a", "semih", ["src/radar.py"])
     second = event("b", "enes", ["src/radar.py"])
