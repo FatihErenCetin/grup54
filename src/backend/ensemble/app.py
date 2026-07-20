@@ -6,7 +6,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from ensemble.api.errors import ERROR_RESPONSES, register_exception_handlers
-from ensemble.api.routers import board, health, query, radar, scope
+from ensemble.api.routers import board, health, query, radar, scope, webhook
 from ensemble.config import Settings, get_settings
 from ensemble.engine.embeddings import CachedEmbeddings, HashEmbeddings
 from ensemble.engine.radar import RadarService
@@ -17,6 +17,7 @@ from ensemble.integrations.github.adapter import GitHubAdapter
 from ensemble.integrations.github.errors import GitHubConfigError
 from ensemble.integrations.github.fake import FakeGitHubAdapter
 from ensemble.ports import EmbeddingsPort, GitHubPort, JudgePort
+from ensemble.store.engine import get_engine, get_session_factory
 
 logger = logging.getLogger("ensemble.wiring")
 
@@ -67,7 +68,11 @@ def _build_radar_service(settings: Settings) -> RadarService:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    app.state.radar_service = _build_radar_service(app.state.settings)
+    settings = app.state.settings
+    app.state.radar_service = _build_radar_service(settings)
+    # #62 webhook receiver: Projector'un yazacagi gercek DB session factory.
+    # Tablolar Alembic ile onceden kurulu varsayilir (make migrate).
+    app.state.session_factory = get_session_factory(get_engine(settings))
     # TODO: ScopeService/BoardService gercek DI (Issue #15/#16 disinda, ayri kapsam)
     yield
     # TODO: Kapanışta kaynakları temizle
@@ -102,5 +107,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(scope.router, responses=ERROR_RESPONSES)
     app.include_router(board.router, responses=ERROR_RESPONSES)
     app.include_router(query.router, responses=ERROR_RESPONSES)
+    app.include_router(webhook.router, responses={**ERROR_RESPONSES, 401: {"description": "Geçersiz webhook imzası"}})
 
     return app
