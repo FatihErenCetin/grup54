@@ -88,10 +88,10 @@ class RecordingJudge:
     def __init__(self, severity: str = "high", confidence: float = 0.9):
         self.severity = severity
         self.confidence = confidence
-        self.calls: list[tuple[NormalizedEvent, NormalizedEvent, list[str], float]] = []
+        self.calls: list[tuple[NormalizedEvent, NormalizedEvent, list[str], float | None]] = []
 
     def judge_conflict(
-        self, a: NormalizedEvent, b: NormalizedEvent, overlap: list[str], sim: float
+        self, a: NormalizedEvent, b: NormalizedEvent, overlap: list[str], sim: float | None
     ) -> Detection:
         self.calls.append((a, b, overlap, sim))
         return Detection(
@@ -293,7 +293,7 @@ def test_semantic_hunk_candidates_respect_min_similarity():
     assert scored == []
 
 
-def test_semantic_hunk_candidates_missing_hunks_score_zero():
+def test_semantic_hunk_candidates_missing_hunks_keep_unknown_score():
     embeddings = KeywordEmbeddings()
     candidates = file_overlap_candidates(
         [
@@ -302,10 +302,52 @@ def test_semantic_hunk_candidates_missing_hunks_score_zero():
         ]
     )
 
-    scored = semantic_hunk_candidates(candidates, {}, embeddings)
+    scored = semantic_hunk_candidates(candidates, {}, embeddings, min_similarity=0.9)
 
-    assert scored[0].similarity == 0.0
-    assert scored[0].path_scores == {"src/radar.py": 0.0}
+    assert scored[0].similarity is None
+    assert scored[0].path_scores == {"src/radar.py": None}
+    assert embeddings.calls == []
+
+
+def test_semantic_hunk_candidates_use_known_score_when_other_path_is_unknown():
+    embeddings = KeywordEmbeddings()
+    candidates = file_overlap_candidates(
+        [
+            event("a", "semih", ["src/known.py", "src/unknown.py"]),
+            event("b", "enes", ["src/known.py", "src/unknown.py"]),
+        ]
+    )
+    diffs_by_event = {
+        "a": {"src/known.py": "@@ -1 +1 @@\n-old\n+same intent"},
+        "b": {"src/known.py": "@@ -1 +1 @@\n-old\n+same intent"},
+    }
+
+    scored = semantic_hunk_candidates(candidates, diffs_by_event, embeddings)
+
+    assert scored[0].similarity == 1.0
+    assert scored[0].path_scores == {
+        "src/known.py": 1.0,
+        "src/unknown.py": None,
+    }
+
+
+def test_semantic_hunk_candidates_sort_known_scores_before_unknown():
+    embeddings = KeywordEmbeddings()
+    candidates = file_overlap_candidates(
+        [
+            event("a", "semih", ["src/known.py", "src/unknown.py"]),
+            event("b", "enes", ["src/known.py"]),
+            event("c", "fatih", ["src/unknown.py"]),
+        ]
+    )
+    diffs_by_event = {
+        "a": {"src/known.py": "@@ -1 +1 @@\n-old\n+same intent"},
+        "b": {"src/known.py": "@@ -1 +1 @@\n-old\n+same intent"},
+    }
+
+    scored = semantic_hunk_candidates(candidates, diffs_by_event, embeddings)
+
+    assert [candidate.similarity for candidate in scored] == [1.0, None]
 
 
 def test_similarity_threshold_bilinmeyen_degeri_elemez():
@@ -470,6 +512,27 @@ def test_radar_service_respects_min_similarity_before_judge():
 
     assert service.get_detections() == []
     assert judge.calls == []
+
+
+def test_radar_service_sends_unknown_similarity_to_judge():
+    judge = RecordingJudge()
+    service = RadarService(
+        github_port=StaticGitHub(
+            [
+                event("a", "semih", ["src/radar.py"]),
+                event("b", "enes", ["src/radar.py"]),
+            ]
+        ),
+        judge_port=judge,
+        embeddings_port=KeywordEmbeddings(),
+        min_similarity=0.9,
+        window_days=100_000,
+    )
+
+    service.get_detections()
+
+    assert len(judge.calls) == 1
+    assert judge.calls[0][3] is None
 
 
 def test_radar_service_uses_compare_for_branch_events_without_files():
