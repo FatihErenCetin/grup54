@@ -2,7 +2,11 @@
 name = "ensemble-mcp"
 version = "0.0.1"
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "mcp>=1.0",
+    "ensemble-backend",
+    "ensemble-shared",
+]
 
 [build-system]
 requires = ["hatchling"]
