@@ -9,6 +9,7 @@ from ensemble.engine.radar import (
     semantic_hunk_candidates,
     semantic_hunk_similarity,
 )
+from ensemble.integrations.gemini.fake import FakeJudgeAdapter
 from ensemble.models import Detection, NormalizedEvent
 
 
@@ -135,7 +136,7 @@ def test_jaccard_similarity_empty_union_is_zero():
     assert jaccard_similarity([], []) == 0.0
 
 
-def test_file_overlap_candidates_skip_same_actor_and_no_overlap():
+def test_file_overlap_candidates_include_same_actor_on_different_branches():
     candidates = file_overlap_candidates(
         [
             event("a", "semih", ["src/radar.py", "README.md"]),
@@ -144,19 +145,28 @@ def test_file_overlap_candidates_skip_same_actor_and_no_overlap():
         ]
     )
 
-    assert candidates == []
+    assert [(candidate.a.id, candidate.b.id) for candidate in candidates] == [("a", "b")]
 
 
-def test_file_overlap_candidates_can_include_same_actor():
+def test_file_overlap_candidates_can_exclude_same_actor():
     candidates = file_overlap_candidates(
         [
             event("a", "semih", ["src/radar.py"]),
             event("b", "semih", ["src/radar.py"]),
         ],
-        exclude_same_actor=False,
+        exclude_same_actor=True,
     )
 
-    assert [(candidate.a.id, candidate.b.id) for candidate in candidates] == [("a", "b")]
+    assert candidates == []
+
+
+def test_file_overlap_candidates_skip_same_actor_on_same_branch():
+    first = event("a", "semih", ["src/radar.py"])
+    second = event("b", "semih", ["src/radar.py"]).model_copy(
+        update={"branch": first.branch}
+    )
+
+    assert file_overlap_candidates([first, second]) == []
 
 
 def test_file_overlap_candidates_return_overlap_and_score():
@@ -533,6 +543,29 @@ def test_radar_service_sends_unknown_similarity_to_judge():
 
     assert len(judge.calls) == 1
     assert judge.calls[0][3] is None
+
+
+def test_radar_service_keeps_cross_branch_same_actor_as_low_warning():
+    service = RadarService(
+        github_port=StaticGitHub(
+            [
+                event("a", "semih", ["src/radar.py"]),
+                event("b", "semih", ["src/radar.py"]),
+            ]
+        ),
+        judge_port=FakeJudgeAdapter(),
+        embeddings_port=KeywordEmbeddings(),
+        min_similarity=0.9,
+        window_days=100_000,
+    )
+
+    detections = service.get_detections()
+
+    assert len(detections) == 1
+    assert detections[0].severity == "low"
+    assert detections[0].actors == ["semih"]
+    assert detections[0].branches == ["T-a", "T-b"]
+    assert "kendi iki branch'in ayni bolgeye dokunuyor" in detections[0].rationale
 
 
 def test_radar_service_uses_compare_for_branch_events_without_files():
