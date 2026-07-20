@@ -118,8 +118,8 @@ def test_normal_akis_etkilenmez():
     assert resp.json() == {
         "status": "ok",
         "mode": "local",
-        "github_auth": "degraded",
-        "gemini": "degraded",
+        "github_auth": "missing",
+        "gemini": "missing",
     }
 
 

@@ -18,11 +18,15 @@ from ensemble.models import BoardCard, Detection
 class HealthResponse(BaseModel):
     status: Literal["ok"]
     mode: Literal["local", "hosted"]
-    # #53: gercekten kurulu mu (Fake* adaptere dusmemis mi) - Fly health-check
-    # + local-first "token/key ayarli mi?" onboarding sinyali. Canli ag cagrisi
-    # YOK (Fly health-check flaky olmasin) - yalniz acilis-anindaki wiring sonucu.
-    github_auth: Literal["ok", "degraded"]
-    gemini: Literal["ok", "degraded"]
+    # #53: acilis-anindaki WIRING sonucu — Fake* adaptere degil gercek
+    # adapter sinifina mi dusuldu (Fly health-check + local-first "token/key
+    # ayarli mi?" sinyali). Canli ag cagrisi YOK (Fly health-check flaky
+    # olmasin). "configured" = gercek kimlik bilgisi SET EDILMIS ve adapter
+    # kuruldu — GECERLI/DOGRULANMIS anlamina GELMEZ (review bulgusu, Semih:
+    # gecersiz PEM/anahtarla da adapter kurulur, ilk gercek API cagrisinda
+    # patlar). Canli dogrulama icin: #58/spot-check (kalibrasyon-raporu §4).
+    github_auth: Literal["configured", "missing"]
+    gemini: Literal["configured", "missing"]
 
 
 class RadarResponse(BaseModel):

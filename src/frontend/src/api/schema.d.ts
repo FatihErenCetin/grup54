@@ -170,12 +170,12 @@ export interface components {
              * Github Auth
              * @enum {string}
              */
-            github_auth: "ok" | "degraded";
+            github_auth: "configured" | "missing";
             /**
              * Gemini
              * @enum {string}
              */
-            gemini: "ok" | "degraded";
+            gemini: "configured" | "missing";
         };
         /** QueryResponse */
         QueryResponse: {

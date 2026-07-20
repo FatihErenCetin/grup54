@@ -483,16 +483,16 @@
           "github_auth": {
             "type": "string",
             "enum": [
-              "ok",
-              "degraded"
+              "configured",
+              "missing"
             ],
             "title": "Github Auth"
           },
           "gemini": {
             "type": "string",
             "enum": [
-              "ok",
-              "degraded"
+              "configured",
+              "missing"
             ],
             "title": "Gemini"
           }
