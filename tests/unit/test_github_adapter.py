@@ -35,6 +35,12 @@ def test_fake_adapter_compare_returns_configured_files():
     assert fake.compare("main", "unknown") == []
 
 
+def test_fake_adapter_get_diff_returns_configured_hunks():
+    fake = FakeGitHubAdapter(diffs={("main", "feature"): {"a.py": "@@ -1 +1 @@\n-x\n+y"}})
+    assert fake.get_diff("main", "feature") == {"a.py": "@@ -1 +1 @@\n-x\n+y"}
+    assert fake.get_diff("main", "unknown") == {}
+
+
 def test_fake_adapter_backfill_limits_per_type_and_is_idempotent():
     fake = FakeGitHubAdapter(
         events=[
@@ -148,6 +154,44 @@ def test_adapter_compare_returns_files():
     adapter = _adapter(with_etag=False)
     files = adapter.compare("base", "head")
     assert files == ["src/backend/ensemble/engine/radar.py", "src/backend/ensemble/engine/board.py"]
+
+
+def test_adapter_get_diff_returns_patch_per_path():
+    adapter = _adapter(with_etag=False)
+    diffs = adapter.get_diff("base", "head")
+    assert diffs["src/backend/ensemble/engine/radar.py"] == "@@ -1 +1 @@\n-old\n+new"
+    # buyuk diff'lerde GitHub 'patch' alanini hic gondermez - sessizce ""
+    assert diffs["src/backend/ensemble/engine/board.py"] == ""
+
+
+def test_adapter_get_diff_uses_separate_cache_key_from_compare():
+    """#152: compare() ve get_diff() AYNI cache_key'i paylasirsa, compare()
+    once cagrilinca ETag kaydedilir ve get_diff() ayni istekte If-None-Match
+    gonderip 304/None alir - patch verisi sessizce kaybolur. Bu test gercek
+    ETag/If-None-Match davranisini simule eden bir handler'la bu regresyona
+    karsi repro yapiyor (paylasilan _fixture_handler bunu simule etmiyordu)."""
+    compare_body = _load("compare_response.json")
+    seen_etags: dict[str, str] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        key = request.url.path
+        if_none_match = request.headers.get("if-none-match")
+        if if_none_match and seen_etags.get(key) == if_none_match:
+            return httpx.Response(304)
+        etag = '"compare-etag"'
+        seen_etags[key] = etag
+        return httpx.Response(200, json=compare_body, headers={"ETag": etag})
+
+    client = GitHubRestClient(
+        token_provider=lambda: "fake-token",
+        http_client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+    adapter = GitHubAdapter(_settings(), client=client)
+
+    adapter.compare("base", "head")
+    diffs = adapter.get_diff("base", "head")
+
+    assert diffs["src/backend/ensemble/engine/radar.py"] == "@@ -1 +1 @@\n-old\n+new"
 
 
 def test_adapter_fetch_events_normalizes_and_filters_by_since():

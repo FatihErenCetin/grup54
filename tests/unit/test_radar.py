@@ -35,14 +35,19 @@ class StaticGitHub:
         backfill_events: list[NormalizedEvent] | None = None,
         compare_files: dict[tuple[str, str], list[str]] | None = None,
         failing_compare: set[tuple[str, str]] | None = None,
+        diffs: dict[tuple[str, str], dict[str, str]] | None = None,
+        failing_diff: set[tuple[str, str]] | None = None,
     ):
         self.events = events
         self.backfill_events = backfill_events
         self.compare_files = compare_files or {}
         self.failing_compare = failing_compare or set()
+        self.diffs = diffs or {}
+        self.failing_diff = failing_diff or set()
         self.since_calls: list[datetime] = []
         self.backfill_calls: list[int] = []
         self.compare_calls: list[tuple[str, str]] = []
+        self.diff_calls: list[tuple[str, str]] = []
 
     def fetch_events(self, since: datetime) -> list[NormalizedEvent]:
         self.since_calls.append(since)
@@ -57,6 +62,12 @@ class StaticGitHub:
         if (base, head) in self.failing_compare:
             raise RuntimeError("compare failed")
         return self.compare_files.get((base, head), [])
+
+    def get_diff(self, base: str, head: str) -> dict[str, str]:
+        self.diff_calls.append((base, head))
+        if (base, head) in self.failing_diff:
+            raise RuntimeError("get_diff failed")
+        return self.diffs.get((base, head), {})
 
 
 class DedupingGitHub:
@@ -81,6 +92,9 @@ class DedupingGitHub:
 
     def compare(self, base: str, head: str) -> list[str]:
         return []
+
+    def get_diff(self, base: str, head: str) -> dict[str, str]:
+        return {}
 
 
 class RecordingJudge:
@@ -522,3 +536,106 @@ def test_radar_service_keeps_radar_up_when_compare_fails():
     assert service.get_detections() == []
     assert github.compare_calls == [("main", "T-a")]
     assert judge.calls == []
+
+
+# --- #152: canlı get_diff (PR #148 beyanlı evreleme sınırının kapanışı) ---
+
+
+def test_radar_service_fetches_live_diff_for_uninjected_events():
+    """diffs_by_event enjekte EDİLMEDEN, github_port.get_diff() üzerinden
+    canlı hunk beslenir - semantik aşama artık her zaman 0.0 değil."""
+    first = event("a", "semih", ["src/radar.py"])
+    second = event("b", "enes", ["src/radar.py"])
+    judge = RecordingJudge()
+    github = StaticGitHub(
+        [first, second],
+        diffs={
+            ("main", "T-a"): {"src/radar.py": "@@ -1 +1 @@\n-old\n+same intent"},
+            ("main", "T-b"): {"src/radar.py": "@@ -1 +1 @@\n-old\n+same intent"},
+        },
+    )
+    service = RadarService(
+        github_port=github,
+        judge_port=judge,
+        embeddings_port=KeywordEmbeddings(),
+        window_days=100_000,
+    )
+
+    service.get_detections()
+
+    assert sorted(github.diff_calls) == [("main", "T-a"), ("main", "T-b")]
+    assert judge.calls[0][3] == 1.0
+
+
+def test_radar_service_constructor_diffs_take_priority_over_live_fetch():
+    """Kabul kriteri: constructor enjeksiyonu test-yolu olarak kalır - enjekte
+    edilen event için get_diff HİÇ çağrılmaz."""
+    first = event("a", "semih", ["src/radar.py"])
+    second = event("b", "enes", ["src/radar.py"])
+    github = StaticGitHub(
+        [first, second],
+        diffs={("main", "T-b"): {"src/radar.py": "@@ -1 +1 @@\n-old\n+different intent"}},
+    )
+    service = RadarService(
+        github_port=github,
+        judge_port=RecordingJudge(),
+        embeddings_port=KeywordEmbeddings(),
+        diffs_by_event={"a": {"src/radar.py": "@@ -1 +1 @@\n-old\n+same intent"}},
+        window_days=100_000,
+    )
+
+    service.get_detections()
+
+    assert github.diff_calls == [("main", "T-b")]
+
+
+def test_radar_service_memoizes_get_diff_for_same_branch():
+    first = event("a", "semih", ["src/radar.py"])
+    second = event("b", "enes", ["src/radar.py"])
+    third = event("c", "fatih", ["src/radar.py"])
+    third = third.model_copy(update={"branch": "T-a"})
+    github = StaticGitHub([first, second, third])
+    service = RadarService(
+        github_port=github,
+        judge_port=RecordingJudge(),
+        embeddings_port=KeywordEmbeddings(),
+        window_days=100_000,
+    )
+
+    service.get_detections()
+
+    assert github.diff_calls.count(("main", "T-a")) == 1
+
+
+def test_radar_service_keeps_radar_up_when_get_diff_fails():
+    first = event("a", "semih", ["src/radar.py"])
+    second = event("b", "enes", ["src/radar.py"])
+    github = StaticGitHub([first, second], failing_diff={("main", "T-a")})
+    judge = RecordingJudge()
+    service = RadarService(
+        github_port=github,
+        judge_port=judge,
+        embeddings_port=KeywordEmbeddings(),
+        window_days=100_000,
+    )
+
+    detections = service.get_detections()
+
+    assert len(detections) == 1
+    assert judge.calls[0][3] == 0.0
+
+
+def test_radar_service_skips_get_diff_when_no_branch():
+    first = event("a", "semih", ["src/radar.py"]).model_copy(update={"branch": None})
+    second = event("b", "enes", ["src/radar.py"]).model_copy(update={"branch": None})
+    github = StaticGitHub([first, second])
+    service = RadarService(
+        github_port=github,
+        judge_port=RecordingJudge(),
+        embeddings_port=KeywordEmbeddings(),
+        window_days=100_000,
+    )
+
+    service.get_detections()
+
+    assert github.diff_calls == []

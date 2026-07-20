@@ -199,15 +199,17 @@ class RadarService:
         self.backfill_limit = backfill_limit
         self.default_base = default_base
         self._compare_cache: dict[tuple[str, str], list[str]] = {}
+        self._diff_cache: dict[tuple[str, str], dict[str, str]] = {}
         self._known_events: dict[str, NormalizedEvent] = {}
         self._backfill_done = False
 
     def get_detections(self) -> list[Detection]:
         events = self._current_events()
         file_candidates = file_overlap_candidates(events, min_jaccard=self.min_jaccard)
+        diffs = self._diffs_for_candidates(file_candidates)
         semantic_candidates = semantic_hunk_candidates(
             file_candidates,
-            self.diffs_by_event,
+            diffs,
             self.embeddings_port,
             min_similarity=self.min_similarity,
         )
@@ -251,6 +253,31 @@ class RadarService:
             self._known_events.values(),
             key=lambda event: (_datetime_key(event.ts), event.id),
         )
+
+    def _diffs_for_candidates(
+        self, candidates: list[FileOverlapCandidate]
+    ) -> Mapping[str, Mapping[str, str]]:
+        """Semantik hunk aşaması (#23/#152) için path->hunk metni sağlar.
+
+        Constructor'da enjekte edilen `diffs_by_event` ÖNCELİKLİDİR (test-yolu
+        korunur, #152 kabul kriteri) - yalnız orada olmayan ve `branch`'i olan
+        event'ler için CANLI `github_port.get_diff()` çağrılır (aynı `.compare()`/
+        `_compare_cache` deseni: (base, branch) başına bir kez, hata → boş dict,
+        radar ayakta kalır).
+        """
+        diffs: dict[str, Mapping[str, str]] = dict(self.diffs_by_event)
+        events = {event.id: event for pair in candidates for event in (pair.a, pair.b)}
+        for candidate_event in events.values():
+            if candidate_event.id in diffs or not candidate_event.branch:
+                continue
+            key = (self.default_base, candidate_event.branch)
+            if key not in self._diff_cache:
+                try:
+                    self._diff_cache[key] = self.github_port.get_diff(*key)
+                except Exception:
+                    self._diff_cache[key] = {}
+            diffs[candidate_event.id] = self._diff_cache[key]
+        return diffs
 
     def _fetch_events(self) -> list[NormalizedEvent]:
         if not self._backfill_done:
