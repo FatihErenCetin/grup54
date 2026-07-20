@@ -5,6 +5,7 @@ from ensemble.engine.radar import (
     RadarService,
     file_overlap_candidates,
     jaccard_similarity,
+    passes_similarity_threshold,
     semantic_hunk_candidates,
     semantic_hunk_similarity,
 )
@@ -146,6 +147,18 @@ def test_file_overlap_candidates_skip_same_actor_and_no_overlap():
     assert candidates == []
 
 
+def test_file_overlap_candidates_can_include_same_actor():
+    candidates = file_overlap_candidates(
+        [
+            event("a", "semih", ["src/radar.py"]),
+            event("b", "semih", ["src/radar.py"]),
+        ],
+        exclude_same_actor=False,
+    )
+
+    assert [(candidate.a.id, candidate.b.id) for candidate in candidates] == [("a", "b")]
+
+
 def test_file_overlap_candidates_return_overlap_and_score():
     candidates = file_overlap_candidates(
         [
@@ -168,12 +181,8 @@ def test_file_overlap_candidate_pair_identity_is_input_order_independent():
     forward = file_overlap_candidates([first, second])
     reverse = file_overlap_candidates([second, first])
 
-    assert [(candidate.a.id, candidate.b.id) for candidate in forward] == [
-        ("a", "b")
-    ]
-    assert [(candidate.a.id, candidate.b.id) for candidate in reverse] == [
-        ("a", "b")
-    ]
+    assert [(candidate.a.id, candidate.b.id) for candidate in forward] == [("a", "b")]
+    assert [(candidate.a.id, candidate.b.id) for candidate in reverse] == [("a", "b")]
 
 
 def test_file_overlap_candidates_respect_min_jaccard():
@@ -297,6 +306,12 @@ def test_semantic_hunk_candidates_missing_hunks_score_zero():
 
     assert scored[0].similarity == 0.0
     assert scored[0].path_scores == {"src/radar.py": 0.0}
+
+
+def test_similarity_threshold_bilinmeyen_degeri_elemez():
+    assert passes_similarity_threshold(None, 0.8) is True
+    assert passes_similarity_threshold(0.79, 0.8) is False
+    assert passes_similarity_threshold(0.8, 0.8) is True
 
 
 def test_radar_service_judges_semantic_overlap_candidates():

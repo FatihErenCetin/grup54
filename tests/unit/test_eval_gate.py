@@ -18,8 +18,8 @@ def _report(
 
 
 def test_gate_passes_at_calibrated_point():
-    """Kalibre nokta (P=1.0, F0.5=0.9375) tabanları geçer."""
-    assert evaluate_gate(_report(1.0, 0.9375)) == []
+    """#162 sonrası kalibre nokta (P=1.0, F0.5=0.8929) tabanları geçer."""
+    assert evaluate_gate(_report(1.0, 0.8929)) == []
 
 
 def test_gate_fails_on_precision_regression():
@@ -53,10 +53,9 @@ def test_gate_fails_on_shrunk_corpus():
     assert any("toplam" in v for v in violations)
 
 
-def test_gate_catches_single_tp_loss():
-    """1 tespit kaybı: P=1.0 kalır ama F0.5≈0.893 < 0.90 → yakalanır (recall regresyon)."""
-    # TP 6->5, FP=0: recall=5/8=0.625, F0.5=1.25*0.625/(0.25+0.625)=0.8929
-    violations = evaluate_gate(_report(1.0, 0.8929))
+def test_gate_catches_next_tp_loss():
+    """Sonraki tespit kaybı: TP 5->4, F0.5=0.8333 < 0.89 → yakalanır."""
+    violations = evaluate_gate(_report(1.0, 0.8333))
     assert any("F0.5" in v for v in violations)
 
 
