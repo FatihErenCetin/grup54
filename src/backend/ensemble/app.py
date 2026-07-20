@@ -9,6 +9,7 @@ from ensemble.api.errors import ERROR_RESPONSES, register_exception_handlers
 from ensemble.api.routers import board, graph, health, query, radar, scope
 from ensemble.config import Settings, get_settings
 from ensemble.engine.embeddings import CachedEmbeddings, HashEmbeddings
+from ensemble.engine.graph import GraphService
 from ensemble.engine.radar import RadarService
 from ensemble.integrations.gemini.embeddings import GeminiEmbeddingsAdapter
 from ensemble.integrations.gemini.fake import FakeJudgeAdapter
@@ -17,6 +18,7 @@ from ensemble.integrations.github.adapter import GitHubAdapter
 from ensemble.integrations.github.errors import GitHubConfigError
 from ensemble.integrations.github.fake import FakeGitHubAdapter
 from ensemble.ports import EmbeddingsPort, GitHubPort, JudgePort
+from ensemble.store.engine import get_engine, get_session_factory
 
 logger = logging.getLogger("ensemble.wiring")
 
@@ -67,7 +69,13 @@ def _build_radar_service(settings: Settings) -> RadarService:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    app.state.radar_service = _build_radar_service(app.state.settings)
+    settings = app.state.settings
+    app.state.radar_service = _build_radar_service(settings)
+    # #104 review bulgusu (Semih, blocker): stub session_factory=lambda: None
+    # override'sız istekte TypeError veriyordu - store/engine.py'deki gercek
+    # engine'e baglandi (radar_service ile ayni desen). Tablolar Alembic'le
+    # onceden kurulu varsayilir (make migrate) - burasi sema kurmaz.
+    app.state.graph_service = GraphService(get_session_factory(get_engine(settings)))
     # TODO: ScopeService/BoardService gercek DI (Issue #15/#16 disinda, ayri kapsam)
     yield
     # TODO: Kapanışta kaynakları temizle

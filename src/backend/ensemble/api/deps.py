@@ -26,9 +26,10 @@ def get_board_service(request: Request) -> BoardService:
 
 
 def get_graph_service(request: Request) -> GraphService:
-    # return request.app.state.graph_service
-    # Board/Scope ile aynı gecici stub - gercek DI #183 (hosted app-boot) kapsami
-    return GraphService(session_factory=lambda: None)  # type: ignore
+    # #104 review bulgusu (Semih, blocker): eskiden Board/Scope ile ayni gecici
+    # stub'du (session_factory=lambda: None) - override'siz istekte TypeError
+    # veriyordu. Gercek DI app.py::lifespan'de kuruluyor (radar_service deseni).
+    return request.app.state.graph_service
 
 
 # Annotated dependencies
