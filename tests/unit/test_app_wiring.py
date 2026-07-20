@@ -23,6 +23,7 @@ _ENV_KEYS = [
     "GEMINI_API_KEY",
     "GITHUB_APP_ID",
     "GITHUB_APP_PRIVATE_KEY_PATH",
+    "GITHUB_APP_PRIVATE_KEY",
     "GITHUB_APP_INSTALLATION_ID",
     "GITHUB_REPO_OWNER",
     "GITHUB_REPO_NAME",
@@ -67,6 +68,21 @@ def test_github_config_eksikse_fakeye_duser_ve_loglar(caplog):
         service = _build_radar_service(settings)
     assert isinstance(service.github_port, FakeGitHubAdapter)
     assert "GitHub App yapılandırması eksik" in caplog.text
+
+
+def test_pem_icerigi_ile_diskte_pem_olmadan_gercek_adapter_secilir():
+    """#186: yalnız GITHUB_APP_PRIVATE_KEY (içerik) ile, diskte .pem olmadan bile
+    hosted engine gerçek GitHubAdapter'ı kurar."""
+    settings = _settings(
+        GEMINI_API_KEY="fake-key",
+        GITHUB_APP_ID="123",
+        GITHUB_APP_PRIVATE_KEY="fake-pem-icerigi",
+        GITHUB_APP_INSTALLATION_ID="456",
+        GITHUB_REPO_OWNER="FatihErenCetin",
+        GITHUB_REPO_NAME="grup54",
+    )
+    service = _build_radar_service(settings)
+    assert isinstance(service.github_port, GitHubAdapter)
 
 
 def test_pem_dosyasi_yoksa_fakeye_duser_ve_loglar(tmp_path, caplog):
