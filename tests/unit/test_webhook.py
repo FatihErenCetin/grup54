@@ -12,8 +12,10 @@ import hmac
 import json
 
 import pytest
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
+from ensemble.api.routers.webhook import verify_signature
 from ensemble.app import create_app
 from ensemble.config import Settings
 from ensemble.integrations.github.normalize import webhook_push_to_events
@@ -91,6 +93,20 @@ def test_sha256_onekisiz_imza_401_doner(client):
         "/webhooks/github", content=body, headers={"X-Hub-Signature-256": bad, "X-GitHub-Event": "push"}
     )
     assert resp.status_code == 401
+
+
+def test_ascii_disi_imza_401_verir_500_degil():
+    """Fatih review nit (#62): hmac.compare_digest ASCII-disi str'de TypeError
+    atar - fail-closed 401'e cevrilmeli, 500'e sizmamali. HTTP header'lar
+    latin-1 tasiyabildigi icin (httpx client-tarafinda ASCII'ye zorluyor,
+    gercek ASGI katmani zorlamiyor) fonksiyonu dogrudan cagirip test ediyoruz."""
+    settings = Settings(_env_file=None, GITHUB_WEBHOOK_SECRET=_SECRET)
+    body = json.dumps(_PUSH_PAYLOAD).encode()
+
+    with pytest.raises(HTTPException) as exc_info:
+        verify_signature(settings, body, "sha256=" + "\xe9" * 64)
+
+    assert exc_info.value.status_code == 401
 
 
 def test_secret_yapilandirilmamissa_503_doner(tmp_path):

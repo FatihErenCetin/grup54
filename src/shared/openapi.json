@@ -375,8 +375,25 @@
               }
             }
           },
+          "400": {
+            "description": "Geçersiz JSON gövdesi",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
           "401": {
-            "description": "Geçersiz webhook imzası"
+            "description": "Eksik/geçersiz webhook imzası",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
           },
           "422": {
             "description": "Validation Error",

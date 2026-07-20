@@ -46,7 +46,15 @@ def verify_signature(settings: Settings, body: bytes, signature_header: str | No
         settings.GITHUB_WEBHOOK_SECRET.encode(), body, hashlib.sha256
     ).hexdigest()
     provided = signature_header.removeprefix("sha256=")
-    if not hmac.compare_digest(expected, provided):
+    try:
+        # compare_digest ASCII-dışı str'de TypeError atar (Fatih review nit,
+        # #62) - HTTP header'lar latin-1 tasiyabilir; gecersiz imza zaten
+        # fail-closed 401'e gidiyor, TypeError'i de ayni sonuca cevirmek
+        # 500 sizintisini onler (guvenlik degil, tutarlilik).
+        signatures_match = hmac.compare_digest(expected, provided)
+    except TypeError:
+        signatures_match = False
+    if not signatures_match:
         raise HTTPException(status_code=401, detail="Geçersiz webhook imzası")
 
 

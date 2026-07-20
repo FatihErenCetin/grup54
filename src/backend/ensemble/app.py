@@ -5,7 +5,7 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from ensemble.api.errors import ERROR_RESPONSES, register_exception_handlers
+from ensemble.api.errors import ERROR_RESPONSES, ErrorEnvelope, register_exception_handlers
 from ensemble.api.routers import board, health, query, radar, scope, webhook
 from ensemble.config import Settings, get_settings
 from ensemble.engine.embeddings import CachedEmbeddings, HashEmbeddings
@@ -107,6 +107,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(scope.router, responses=ERROR_RESPONSES)
     app.include_router(board.router, responses=ERROR_RESPONSES)
     app.include_router(query.router, responses=ERROR_RESPONSES)
-    app.include_router(webhook.router, responses={**ERROR_RESPONSES, 401: {"description": "Geçersiz webhook imzası"}})
+    # #62 hata sözleşmesi: framework HTTPException'ları da Ek D zarfını taşır
+    # (errors.py::http_exception) ama bunu ERROR_RESPONSES'a genel eklemedik -
+    # 400/401 diğer (GET) router'lara uymuyor. Webhook'a özel bildiriliyor ki
+    # üretilen client (#20 zinciri) gerçek hata gövdesini tipleyebilsin
+    # (Semih review, #62: openapi 401'i gövdesiz ilan ediyordu).
+    _webhook_responses = {
+        **ERROR_RESPONSES,
+        400: {"model": ErrorEnvelope, "description": "Geçersiz JSON gövdesi"},
+        401: {"model": ErrorEnvelope, "description": "Eksik/geçersiz webhook imzası"},
+    }
+    app.include_router(webhook.router, responses=_webhook_responses)
 
     return app

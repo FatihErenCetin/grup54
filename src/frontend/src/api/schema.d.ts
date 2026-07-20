@@ -482,12 +482,23 @@ export interface operations {
                     };
                 };
             };
-            /** @description Geçersiz webhook imzası */
+            /** @description Geçersiz JSON gövdesi */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Eksik/geçersiz webhook imzası */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Validation Error */
             422: {
