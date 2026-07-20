@@ -88,6 +88,8 @@ class HarnessPort(Protocol):            # impl: #13 (GATE 1)
     def read_tasks(self) -> list[dict]: ...      # board'ın tek kaynağı (#13 ile eklendi)
     def read_active(self) -> list[dict]: ...
     def write_active(self, handle: str, decl: dict) -> None: ...   # yazar başına 1 dosya
+    def write_task(self, task_id: str, decl: dict) -> None: ...    # #57 onboarding
+    def write_scope(self, sprint: str, decl: dict) -> None: ...    # #57 onboarding
 ```
 
 ---

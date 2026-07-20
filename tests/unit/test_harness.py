@@ -131,6 +131,54 @@ def test_read_scope_missing_file_raises_harness_error(tmp_path: Path):
         FileHarnessPort(tmp_path).read_scope("2")
 
 
+def test_write_task_creates_slugged_file_and_round_trips(tmp_path: Path):
+    port = FileHarnessPort(tmp_path)
+
+    port.write_task(
+        "T-57",
+        {"title": "Onboarding: greenfield + brownfield!", "status": "backlog", "paths": []},
+    )
+
+    files = sorted((tmp_path / ".harness/tasks").glob("*.md"))
+    assert files == [tmp_path / ".harness/tasks/T-57-onboarding-greenfield-brownfield.md"]
+
+    task = port.read_tasks()[0]
+    assert task["task_id"] == "T-57"
+    assert task["status"] == "backlog"
+
+
+def test_write_task_slug_strips_unsafe_characters(tmp_path: Path):
+    """Path traversal denemesi bile slug'a indirgenip zararsızlaşır."""
+    port = FileHarnessPort(tmp_path)
+
+    port.write_task("T-1", {"title": "../../etc/passwd", "status": "backlog"})
+
+    files = list((tmp_path / ".harness/tasks").glob("*.md"))
+    assert len(files) == 1
+    assert ".." not in files[0].name
+    assert files[0].parent == tmp_path / ".harness/tasks"
+
+
+def test_write_scope_round_trips(tmp_path: Path):
+    port = FileHarnessPort(tmp_path)
+
+    port.write_scope(
+        "3",
+        {"title": "Sprint 3", "status": "draft", "goals": ["a"], "non_goals": ["b"]},
+    )
+
+    scope = port.read_scope("3")
+    assert scope["title"] == "Sprint 3"
+    assert scope["sprint"] == "3"
+    assert scope["status"] == "draft"
+    assert scope["path"] == ".harness/scope/sprint-3.md"
+
+
+def test_write_scope_rejects_unsafe_sprint_id(tmp_path: Path):
+    with pytest.raises(HarnessValidationError, match="Unsafe sprint id"):
+        FileHarnessPort(tmp_path).write_scope("../evil", {"title": "x"})
+
+
 # --- #83 sertleştirme testleri ---
 
 
