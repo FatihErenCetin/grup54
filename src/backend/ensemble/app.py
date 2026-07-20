@@ -6,7 +6,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from ensemble.api.errors import ERROR_RESPONSES, register_exception_handlers
-from ensemble.api.routers import board, health, query, radar, scope
+from ensemble.api.routers import board, graph, health, query, radar, scope
 from ensemble.config import Settings, get_settings
 from ensemble.engine.embeddings import CachedEmbeddings, HashEmbeddings
 from ensemble.engine.radar import RadarService
@@ -102,5 +102,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(scope.router, responses=ERROR_RESPONSES)
     app.include_router(board.router, responses=ERROR_RESPONSES)
     app.include_router(query.router, responses=ERROR_RESPONSES)
+    app.include_router(graph.router, responses=ERROR_RESPONSES)
 
     return app

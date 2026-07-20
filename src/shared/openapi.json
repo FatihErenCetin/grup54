@@ -292,6 +292,77 @@
           }
         }
       }
+    },
+    "/graph": {
+      "get": {
+        "tags": [
+          "graph"
+        ],
+        "summary": "Get Graph",
+        "operationId": "get_graph_graph_get",
+        "parameters": [
+          {
+            "name": "window_days",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 14,
+              "title": "Window Days"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TouchGraph"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Kalici saglayici hatasi (GitHub/Gemini)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Gecici olarak erisilemez",
+            "headers": {
+              "Retry-After": {
+                "description": "Saniye — yalniz kendiliginden duzelebilir durumlarda",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -452,6 +523,69 @@
         ],
         "title": "ErrorEnvelope"
       },
+      "GraphEdge": {
+        "properties": {
+          "actor": {
+            "type": "string",
+            "title": "Actor"
+          },
+          "module": {
+            "type": "string",
+            "title": "Module"
+          },
+          "count": {
+            "type": "integer",
+            "title": "Count"
+          },
+          "last_ts": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Last Ts"
+          },
+          "is_active_declared": {
+            "type": "boolean",
+            "title": "Is Active Declared"
+          }
+        },
+        "type": "object",
+        "required": [
+          "actor",
+          "module",
+          "count",
+          "last_ts",
+          "is_active_declared"
+        ],
+        "title": "GraphEdge",
+        "description": "Aktör -> modül kenarı (#104). module = path'in ilk 2 segmenti (HESAPLANIR)."
+      },
+      "GraphNode": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "actor",
+              "module"
+            ],
+            "title": "Type"
+          },
+          "weight": {
+            "type": "integer",
+            "title": "Weight"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "type",
+          "weight"
+        ],
+        "title": "GraphNode",
+        "description": "GET /graph düğümü (#104) — kontrat: docs/sprint2-kontratlar.md Ek A."
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -563,6 +697,36 @@
           "evidence"
         ],
         "title": "ScopeVerdict"
+      },
+      "TouchGraph": {
+        "properties": {
+          "window_days": {
+            "type": "integer",
+            "title": "Window Days"
+          },
+          "nodes": {
+            "items": {
+              "$ref": "#/components/schemas/GraphNode"
+            },
+            "type": "array",
+            "title": "Nodes"
+          },
+          "edges": {
+            "items": {
+              "$ref": "#/components/schemas/GraphEdge"
+            },
+            "type": "array",
+            "title": "Edges"
+          }
+        },
+        "type": "object",
+        "required": [
+          "window_days",
+          "nodes",
+          "edges"
+        ],
+        "title": "TouchGraph",
+        "description": "GET /graph çıktısı (#104) — sıfır LLM, saf NormalizedEvent + active/ aggregation."
       },
       "ValidationError": {
         "properties": {
