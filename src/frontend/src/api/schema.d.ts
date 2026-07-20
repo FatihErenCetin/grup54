@@ -184,6 +184,17 @@ export interface components {
              */
             updated_at: string;
         };
+        /** ScopeItemRef */
+        ScopeItemRef: {
+            /** Quote */
+            quote: string;
+            /** Item Id */
+            item_id?: string | null;
+            /** Section */
+            section?: ("goal" | "in_scope" | "non_goals") | null;
+            /** Line */
+            line?: number | null;
+        };
         /** ScopeVerdict */
         ScopeVerdict: {
             /** Ref */
@@ -196,7 +207,22 @@ export interface components {
             /** Confidence */
             confidence: number;
             /** Evidence */
-            evidence: string;
+            evidence: string | components["schemas"]["ScopeItemRef"];
+            /**
+             * Match None
+             * @default false
+             */
+            match_none: boolean;
+            /** Judged At */
+            judged_at?: string | null;
+            signals?: components["schemas"]["Signals"] | null;
+        };
+        /** Signals */
+        Signals: {
+            /** Files */
+            files: string[];
+            /** Matched Text */
+            matched_text?: string | null;
         };
         /** ValidationError */
         ValidationError: {
