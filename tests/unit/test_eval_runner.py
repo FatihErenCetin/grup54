@@ -3,6 +3,7 @@ eşik parametreleri, per-case detaylar ve edge case'ler."""
 
 from datetime import datetime
 
+from ensemble.engine.radar import file_overlap_candidates, passes_similarity_threshold
 from ensemble.integrations.gemini.fake import FakeJudgeAdapter
 from ensemble.models import NormalizedEvent
 from eval.eval_runner import (
@@ -20,10 +21,16 @@ from tests.fixtures.conflict_corpus import ConflictCase, load_conflict_corpus
 # Yardımcı fixture'lar
 # ---------------------------------------------------------------------------
 
+
 def _event(eid: str, actor: str, files: list[str]) -> NormalizedEvent:
     return NormalizedEvent(
-        id=eid, type="commit", actor=actor, branch="main",
-        files=files, ts=datetime(2026, 7, 10), ref=eid,
+        id=eid,
+        type="commit",
+        actor=actor,
+        branch="main",
+        files=files,
+        ts=datetime(2026, 7, 10),
+        ref=eid,
     )
 
 
@@ -55,6 +62,7 @@ def _case(
 # ---------------------------------------------------------------------------
 # _compute_metrics testleri
 # ---------------------------------------------------------------------------
+
 
 def test_compute_metrics_perfect():
     r = _compute_metrics(tp=5, fp=0, fn=0, tn=3)
@@ -95,6 +103,7 @@ def test_compute_metrics_f05_precision_agirlikli():
 # _is_same_author testleri
 # ---------------------------------------------------------------------------
 
+
 def test_is_same_author_by_actor():
     case = _case("sa1", actor_a="enes", actor_b="enes")
     assert _is_same_author(case) is True
@@ -113,6 +122,7 @@ def test_not_same_author():
 # ---------------------------------------------------------------------------
 # EvalRunner — temel akış
 # ---------------------------------------------------------------------------
+
 
 def test_eval_runner_with_fake_judge_returns_report():
     """FakeJudgeAdapter ile eval runner çalışır ve EvalReport döner."""
@@ -154,6 +164,7 @@ def test_eval_runner_with_backtest():
 # EvalRunner — dataset-bazlı kırılım
 # ---------------------------------------------------------------------------
 
+
 def test_dataset_breakdown_sums_to_overall():
     """Kuratörlü + backtest TP/FP/FN/TN'leri overall'e eşit olmalı."""
     judge = FakeJudgeAdapter()
@@ -169,6 +180,7 @@ def test_dataset_breakdown_sums_to_overall():
 # ---------------------------------------------------------------------------
 # EvalRunner — per-case detaylar
 # ---------------------------------------------------------------------------
+
 
 def test_per_case_results_have_correct_count():
     judge = FakeJudgeAdapter()
@@ -200,6 +212,7 @@ def test_per_case_outcomes_match_totals():
 # EvalRunner — aynı-yazar filtresi
 # ---------------------------------------------------------------------------
 
+
 def test_exclude_same_author_reduces_total():
     """Aynı-yazar filtresi açıkken toplam vaka sayısı azalmalı."""
     judge = FakeJudgeAdapter()
@@ -229,6 +242,7 @@ def test_exclude_same_author_no_same_author_cases():
 # ---------------------------------------------------------------------------
 # EvalRunner — eşik parametreleri
 # ---------------------------------------------------------------------------
+
 
 def test_min_jaccard_threshold_filters_low_overlap():
     """Yüksek Jaccard eşiği düşük overlap'li vakaları eler."""
@@ -261,9 +275,47 @@ def test_min_similarity_threshold_filters_low_sim():
     assert report_hi.overall.total == report_no.overall.total
 
 
+def test_eval_esik_karari_radar_pipeline_ile_ayni():
+    cases = [
+        (
+            _case(
+                "pass",
+                files_a=["shared.py", "a.py"],
+                files_b=["shared.py", "a.py", "b.py"],
+                sim=0.8,
+            ),
+            True,
+        ),
+        (
+            _case(
+                "dusuk-jaccard",
+                files_a=["shared.py", "a.py"],
+                files_b=["shared.py", "b.py"],
+                sim=0.8,
+            ),
+            False,
+        ),
+        (_case("overlap-yok", files_a=["a.py"], files_b=["b.py"], sim=0.8), False),
+        (_case("dusuk-sim", sim=0.2), False),
+        (_case("sim-bilinmiyor", sim=None), True),
+    ]
+    runner = EvalRunner(judge=FakeJudgeAdapter(), min_jaccard=0.5, min_similarity=0.7)
+
+    for case, expected in cases:
+        radar_candidates = file_overlap_candidates(
+            [case.event_a, case.event_b],
+            min_jaccard=0.5,
+            exclude_same_actor=False,
+        )
+        radar_passes = bool(radar_candidates) and passes_similarity_threshold(case.sim, 0.7)
+        assert radar_passes is expected
+        assert runner._apply_thresholds(case) is expected
+
+
 # ---------------------------------------------------------------------------
 # EvalRunner — sim=None vakalar (backtest verisi)
 # ---------------------------------------------------------------------------
+
 
 def test_sim_none_cases_passed_to_judge():
     """sim=None olan backtest vakaları judge'a None olarak geçmeli."""
@@ -280,6 +332,7 @@ def test_sim_none_cases_passed_to_judge():
 # ---------------------------------------------------------------------------
 # EvalRunner — boş dataset edge case
 # ---------------------------------------------------------------------------
+
 
 def test_empty_datasets_returns_zero_metrics():
     """Hiç vaka yokken metrikler sıfır olmalı."""
@@ -298,6 +351,7 @@ def test_empty_datasets_returns_zero_metrics():
 # EvalReport — to_dict / serileştirme
 # ---------------------------------------------------------------------------
 
+
 def test_report_to_dict_is_json_serializable():
     """Report JSON'a dönüştürülebilir olmalı."""
     judge = FakeJudgeAdapter()
@@ -307,6 +361,7 @@ def test_report_to_dict_is_json_serializable():
     d = report.to_dict()
     # JSON serialization test
     import json
+
     s = json.dumps(d)
     assert isinstance(s, str)
     parsed = json.loads(s)
@@ -319,6 +374,7 @@ def test_report_to_dict_is_json_serializable():
 # ---------------------------------------------------------------------------
 # Gerçek corpus entegrasyonu
 # ---------------------------------------------------------------------------
+
 
 def test_curated_corpus_loads_successfully():
     """Kuratörlü corpus başarıyla yüklenmeli."""

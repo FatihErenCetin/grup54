@@ -43,12 +43,15 @@ def jaccard_similarity(left: list[str], right: list[str]) -> float:
 
 
 def file_overlap_candidates(
-    events: list[NormalizedEvent], min_jaccard: float = 0.0
+    events: list[NormalizedEvent],
+    min_jaccard: float = 0.0,
+    *,
+    exclude_same_actor: bool = True,
 ) -> list[FileOverlapCandidate]:
     candidates: list[FileOverlapCandidate] = []
 
     for a, b in combinations(events, 2):
-        if a.actor == b.actor:
+        if exclude_same_actor and a.actor == b.actor:
             continue
 
         overlap = sorted(set(a.files) & set(b.files))
@@ -60,9 +63,7 @@ def file_overlap_candidates(
             continue
 
         a, b = _canonical_pair(a, b)
-        candidates.append(
-            FileOverlapCandidate(a=a, b=b, overlap=overlap, jaccard=score)
-        )
+        candidates.append(FileOverlapCandidate(a=a, b=b, overlap=overlap, jaccard=score))
 
     return sorted(
         candidates,
@@ -100,7 +101,7 @@ def semantic_hunk_candidates(
         # geliyor. JudgePort sim: float | None kontrati HAZIR (Ek C, PR #161);
         # bilinmiyor'u dusuk benzerlikten ayirma isi #163'te, eval delta'siyla.
         similarity = max(path_scores.values(), default=0.0)
-        if similarity < min_similarity:
+        if not passes_similarity_threshold(similarity, min_similarity):
             continue
 
         semantic_candidates.append(
@@ -127,6 +128,14 @@ def semantic_hunk_candidates(
     )
 
 
+def passes_similarity_threshold(
+    similarity: float | None,
+    min_similarity: float,
+) -> bool:
+    """Bilinmeyen benzerligi elemeden kanonik similarity esigini uygular."""
+    return similarity is None or similarity >= min_similarity
+
+
 def semantic_hunk_similarity(
     left_diff: str,
     right_diff: str,
@@ -146,11 +155,7 @@ def semantic_hunk_similarity(
 
     left_vectors = vectors[: len(left_texts)]
     right_vectors = vectors[len(left_texts) :]
-    return max(
-        cosine_similarity(left, right)
-        for left in left_vectors
-        for right in right_vectors
-    )
+    return max(cosine_similarity(left, right) for left in left_vectors for right in right_vectors)
 
 
 def _canonical_pair(
@@ -223,9 +228,7 @@ class RadarService:
         ]
         if not self.include_low_severity:
             detections = [
-                detection
-                for detection in detections
-                if detection.severity in {"med", "high"}
+                detection for detection in detections if detection.severity in {"med", "high"}
             ]
 
         return sorted(
@@ -262,9 +265,7 @@ class RadarService:
     def _since(self) -> datetime:
         return datetime.now(timezone.utc) - timedelta(days=self.window_days)
 
-    def _events_with_compare_files(
-        self, events: list[NormalizedEvent]
-    ) -> list[NormalizedEvent]:
+    def _events_with_compare_files(self, events: list[NormalizedEvent]) -> list[NormalizedEvent]:
         enriched: list[NormalizedEvent] = []
         for event in events:
             if event.files or not event.branch:
