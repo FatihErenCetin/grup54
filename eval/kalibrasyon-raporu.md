@@ -17,13 +17,13 @@
 | Kuratörlü, hariç | 1.0000 | 0.8000 | 0.8889 | 0.9524 | 4 | 0 | 1 | 6 | 11 |
 | Backtest, hariç | 1.0000 | 1.0000 | 1.0000 | 1.0000 | 1 | 0 | 0 | 74 | 75 |
 
-**Headline rakam = Genel (aynı-yazar HARİÇ), F0.5 = 0.9615** — mevcut üretim davranışı (`gate.py`: `a.actor == b.actor` → otomatik geçit) zaten aynı-yazar çiftlerini elediği için bu, canlıdaki gerçek performansı yansıtıyor.
+**Binary headline = Genel (aynı-yazar DAHİL), F0.5 = 0.8929.** #164 sonrası üretim farklı branch'lerdeki aynı-yazar çiftlerini aday bırakır; `gate.py` bunları Gemini'ye göndermeden `low` uyarıya çevirir. Binary eval yalnız `med/high` sonuçları conflict saydığı için bu uyarılar TP/FP sayılarını değiştirmez. Üretim aday akışını kullanan ayrı uyarı ölçümünde aynı-yazar gerçek çakışma coverage'ı **2/2**, negatif düşük uyarı sayısı **0**'dır.
 
 `#162` öncesinde eval, `semantic-only-no-file-overlap` vakasını gerçek radarın zorunlu dosya-kesişimi kapısından geçirmeden doğrudan judge'a veriyordu. Pipeline paritesi sonrası bu vaka dürüstçe FN sayılıyor; genel TP `6→5`, FN `2→3` ve F0.5 `0.9375→0.8929`. Precision/FP değişmedi (`1.0/0`) ve sweep'in önerdiği operasyon noktası yine `0.0/0.0`.
 
 ## ⚠️ "HARİÇ = 1.0" ne anlama GELMİYOR
 
-Aynı-yazar HARİÇ modundaki yüksek skor bir **çözüm değil, ölçüm kapsamının daraltılması**. "DAHİL" modundaki 3 FN'nin ikisi aynı-yazar çifti (`backtest-pr88-pr89-icmerge`, `backtest-pr135-pr137-icmerge` — Fatih'in kendi pr88↔pr89'u ve Esma'nın pr135↔pr137'si); üçüncüsü dosya-kesişimi olmayan kuratörlü vakadır. HARİÇ modu iki aynı-yazar vakasını **eleyerek** F0.5=0.9615'e ulaşıyor, doğru sınıflandırarak değil. Bu tam olarak **D-38** kararının çıkış noktası: "tek kişi + çok branch" backtest'teki 3 gerçek çakışmanın 2'si — radar bunlara bilerek susuyor. İmplementasyon (#164, S3) bu boşluğu kapatana kadar bu rapor bu gerçeği gizlemez.
+Aynı-yazar HARİÇ modundaki yüksek skor bir **çözüm değil, ölçüm kapsamının daraltılması**. "DAHİL" modundaki 3 FN'nin ikisi aynı-yazar çifti (`backtest-pr88-pr89-icmerge`, `backtest-pr135-pr137-icmerge` — Fatih'in kendi pr88↔pr89'u ve Esma'nın pr135↔pr137'si); üçüncüsü dosya-kesişimi olmayan kuratörlü vakadır. HARİÇ modu iki aynı-yazar vakasını **eleyerek** F0.5=0.9615'e ulaşıyor, doğru sınıflandırarak değil. D-38/#164 bu iki vakayı binary conflict'e yükseltmeden düşük-severity uyarı olarak görünür kılar; bu yüzden binary recall `0.6250` kalırken üretimdeki gerçek çakışma warning coverage'ı `0/2 → 2/2` olur.
 
 ## Metodoloji şerhleri (bkz. `docs/eval-metodoloji-devir.md` — MUTLAKA birlikte oku)
 
