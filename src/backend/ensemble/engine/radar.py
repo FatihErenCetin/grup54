@@ -46,13 +46,16 @@ def file_overlap_candidates(
     events: list[NormalizedEvent],
     min_jaccard: float = 0.0,
     *,
-    exclude_same_actor: bool = True,
+    exclude_same_actor: bool = False,
 ) -> list[FileOverlapCandidate]:
     candidates: list[FileOverlapCandidate] = []
 
     for a, b in combinations(events, 2):
-        if exclude_same_actor and a.actor == b.actor:
-            continue
+        if a.actor == b.actor:
+            if exclude_same_actor:
+                continue
+            if not a.branch or not b.branch or a.branch == b.branch:
+                continue
 
         overlap = sorted(set(a.files) & set(b.files))
         if not overlap:
