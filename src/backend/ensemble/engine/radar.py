@@ -29,8 +29,8 @@ class SemanticHunkCandidate:
     b: NormalizedEvent
     overlap: list[str]
     jaccard: float
-    similarity: float
-    path_scores: dict[str, float]
+    similarity: float | None
+    path_scores: dict[str, float | None]
 
 
 def jaccard_similarity(left: list[str], right: list[str]) -> float:
@@ -86,7 +86,7 @@ def semantic_hunk_candidates(
     semantic_candidates: list[SemanticHunkCandidate] = []
 
     for candidate in candidates:
-        path_scores: dict[str, float] = {}
+        path_scores: dict[str, float | None] = {}
         for path in candidate.overlap:
             left_diff = diffs_by_event.get(candidate.a.id, {}).get(path, "")
             right_diff = diffs_by_event.get(candidate.b.id, {}).get(path, "")
@@ -97,10 +97,8 @@ def semantic_hunk_candidates(
                 embeddings=embeddings,
             )
 
-        # TODO(#163): 0.0 burada "diff hunk yok, sim bilinmiyor" anlamina da
-        # geliyor. JudgePort sim: float | None kontrati HAZIR (Ek C, PR #161);
-        # bilinmiyor'u dusuk benzerlikten ayirma isi #163'te, eval delta'siyla.
-        similarity = max(path_scores.values(), default=0.0)
+        known_scores = [score for score in path_scores.values() if score is not None]
+        similarity = max(known_scores, default=None)
         if not passes_similarity_threshold(similarity, min_similarity):
             continue
 
@@ -118,7 +116,8 @@ def semantic_hunk_candidates(
     return sorted(
         semantic_candidates,
         key=lambda candidate: (
-            -candidate.similarity,
+            candidate.similarity is None,
+            -(candidate.similarity if candidate.similarity is not None else 0.0),
             -candidate.jaccard,
             candidate.a.ts,
             candidate.b.ts,
@@ -141,11 +140,11 @@ def semantic_hunk_similarity(
     right_diff: str,
     path: str,
     embeddings: EmbeddingsPort,
-) -> float:
+) -> float | None:
     left_chunks = chunk_diff(left_diff, path=path)
     right_chunks = chunk_diff(right_diff, path=path)
     if not left_chunks or not right_chunks:
-        return 0.0
+        return None
 
     left_texts = [chunk.text for chunk in left_chunks]
     right_texts = [chunk.text for chunk in right_chunks]
