@@ -1,9 +1,8 @@
 """FastMCP read tool'ları (#32) testleri — kontrat: docs/sprint3-kontratlar.md Ek D.
 
 who_is_touching -> HarnessPort.read_active() projeksiyonu; check_scope ->
-ScopeService.check_scope() delegasyonu (mantık YENİDEN YAZILMAZ, o yüzden
-#31 henüz implemente değilken NotImplementedError'ın MCP'den de aynen
-geçtiğini doğruluyoruz - delegasyonun kanıtı).
+ScopeService.check_scope() delegasyonu (mantık YENİDEN YAZILMAZ). #31 ile
+motor dolduktan sonra eksik ref hatasının da MCP'den aynen geçtiği doğrulanır.
 """
 
 from pathlib import Path
@@ -11,7 +10,7 @@ from textwrap import dedent
 
 import pytest
 
-from ensemble.engine.scope import ScopeService
+from ensemble.engine.scope import ScopeReferenceError, ScopeService
 from ensemble.models import PresenceEntry, ScopeVerdict
 from ensemble_mcp.server import check_scope, check_scope_impl, mcp, who_is_touching, who_is_touching_impl
 from ensemble_shared.harness import FileHarnessPort
@@ -126,17 +125,14 @@ def test_check_scope_delege_eder_fake_service():
     assert result == verdict
 
 
-def test_check_scope_gercek_scopeservice_henuz_implemente_degil():
-    """#31 henuz yazilmadigi icin delegasyon ayni NotImplementedError'i verir
-    (mantik burada YENIDEN YAZILMADIGININ kaniti)."""
-    with pytest.raises(NotImplementedError):
+def test_check_scope_gercek_service_eksik_ref_hatasini_gecirir():
+    with pytest.raises(ScopeReferenceError):
         check_scope_impl("PR-1")
 
 
 def test_check_scope_tool_wrapper_de_ayni_sekilde_delege_eder():
-    """Tool wrapper (check_scope) de impl ile ayni yoldan gecer - #31 tamamlanana
-    kadar ikisi de NotImplementedError verir."""
-    with pytest.raises(NotImplementedError):
+    """Tool wrapper da engine'in açık eksik-ref hatasını gizlemez."""
+    with pytest.raises(ScopeReferenceError):
         check_scope("PR-1")
 
 

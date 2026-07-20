@@ -21,23 +21,13 @@ from datetime import datetime
 
 from mcp.server.fastmcp import FastMCP
 
-from ensemble.config import Settings, get_settings
+from ensemble.config import get_settings
 from ensemble.engine.scope import ScopeService
-from ensemble.integrations.gemini.fake import FakeJudgeAdapter
-from ensemble.integrations.gemini.judge import GeminiJudgeAdapter
+from ensemble.integrations.gemini.scope_judge import build_scope_judge
 from ensemble.models import ActorRef, PresenceEntry, ScopeVerdict
-from ensemble.ports import JudgePort
 from ensemble_shared.harness import FileHarnessPort, HarnessPort
 
 mcp = FastMCP("ensemble")
-
-
-def _build_judge_port(settings: Settings) -> JudgePort:
-    # app.py::_build_judge_port ile aynı seçim (GEMINI_API_KEY yoksa fake) -
-    # HTTP/MCP aynı motoru paylaşır ilkesi burada da geçerli.
-    if settings.GEMINI_API_KEY:
-        return GeminiJudgeAdapter(settings)
-    return FakeJudgeAdapter()
 
 
 def _presence_entry(decl: dict) -> PresenceEntry:
@@ -70,7 +60,7 @@ def check_scope_impl(
     scope_service: ScopeService | None = None,
 ) -> ScopeVerdict:
     service = scope_service or ScopeService(
-        harness_port=FileHarnessPort(), judge_port=_build_judge_port(get_settings())
+        harness_port=FileHarnessPort(), judge_port=build_scope_judge(get_settings())
     )
     return service.check_scope(ref)
 
