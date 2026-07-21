@@ -1,19 +1,18 @@
 #!/usr/bin/env node
 /**
  * #188 — Prod build hijyen guard: `npm run build` bittikten SONRA `dist/`'i
- * tarar. Üç kategori bulunursa exit 1 (CI kırmızı):
+ * tarar. İki kategori bulunursa exit 1 (CI kırmızı):
  *
  *   1. Bilinen mock fixture bayrakları (mockFetch / mocks/radar) — VITE_MOCK
  *      gate'i DCE'yi eleyemedi, mock kod prod'a sızdı (#21 bulgusunun aynısı).
- *   2. Bilinen fixture handle'ları — gerçek/eski kişi adları dist'e sızdı
- *      (bu issue'nun "Neden"i: asmarufoglu/EnesErdemT/fatih-claude sızmıştı).
- *   3. Backend sır imzaları — GEMINI_ / GITHUB_ / DATABASE_URL ya da PEM
+ *   2. Backend sır imzaları — GEMINI_ / GITHUB_ / DATABASE_URL ya da PEM
  *      başlığı frontend bundle'ında ASLA olmamalı (frontend yalnız VITE_
  *      önekli değişkenleri okur, #19).
  *
- * Kaynak: bu liste tek elden `src/frontend/src/mocks/*.ts` + bilinen geçmiş
- * sızıntı vakalarından derlenir; yeni bir fixture handle'ı eklenince buraya
- * da eklenmesi gerekir (frozen değil, kasıtlı elle-senkron — az sayıda kayıt).
+ * PO kararı (Option B, #214): takım handle'ları (asmarufoglu/EnesErdemT/
+ * fatih-claude) demo verisinde BİLİNÇLİ olarak kalır — dogfood hissi + AI
+ * ajanı anlatısını güçlendirir. Guard bunları sızıntı SAYMAZ; yalnız
+ * mock-modu açıklığını ve gerçek sırları yakalar.
  */
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
@@ -27,11 +26,6 @@ const MOCK_FLAG_MARKERS = [
   { label: "mockFetch (VITE_MOCK fixture fonksiyonu)", pattern: "mockFetch" },
   { label: "mocks/radar (radar fixture modülü)", pattern: "mocks/radar" },
 ];
-
-// #188 "Neden": bu üç handle GERÇEKTEN sızmıştı (presence.ts, VITE_MOCK'tan
-// bağımsız bundle'a giriyordu). #188 kapsamında presence.ts anonimleştirildi
-// (dev-a/b/c); bu liste regresyona karşı KALICI bekçi — silinmez.
-const KNOWN_FIXTURE_HANDLES = ["asmarufoglu", "EnesErdemT", "fatih-claude", "esma6", "FatihErenCetin"];
 
 // Literal env-değişkeni adları: gerçek değer değil, adın kendisi bile frontend
 // bundle'ında görünmemeli (bir adaptörün yanlışlıkla backend config'ini import
@@ -86,12 +80,6 @@ for (const file of files) {
     }
   }
 
-  for (const handle of KNOWN_FIXTURE_HANDLES) {
-    if (content.includes(handle)) {
-      findings.push(`[fixture-handle] bilinen kişi/handle sızıntısı → "${handle}" bulundu: ${rel}`);
-    }
-  }
-
   for (const { label, pattern } of SECRET_PATTERNS) {
     const m = content.match(pattern);
     if (m) {
@@ -104,8 +92,9 @@ if (findings.length > 0) {
   console.error(`prod-build-guard: ${findings.length} hijyen ihlali bulundu (#188):\n`);
   for (const f of findings) console.error(`  - ${f}`);
   console.error(
-    "\nProd build TEMİZ olmalı: mock kapalı + fixture/gerçek-isim/sır sızıntısı yok. " +
-      "Bkz. src/frontend/src/lib/api.ts (mock gate) + src/frontend/src/mocks/*.ts (fixture kaynağı).",
+    "\nProd build TEMİZ olmalı: mock-modu kapalı + gerçek sır sızıntısı yok " +
+      "(takım handle'ları serbest — bilinçli dogfood demo verisi, PO kararı #214). " +
+      "Bkz. src/frontend/src/lib/api.ts (mock gate).",
   );
   process.exit(1);
 }

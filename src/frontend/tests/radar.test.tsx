@@ -58,7 +58,7 @@ describe("PresenceStrip", () => {
   it("dürüstlük etiketi HER ZAMAN görünür (Ek B1 — canlı S3'te)", () => {
     render(<PresenceStrip />);
     expect(screen.getByText("(örnek — canlı S3'te)")).toBeInTheDocument();
-    expect(screen.getByText("dev-a")).toBeInTheDocument();
+    expect(screen.getByText("asmarufoglu")).toBeInTheDocument();
   });
 });
 
