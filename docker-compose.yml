@@ -1,0 +1,48 @@
+# Lokal "hosted" mod denemesi (#61): pgvector'lu Postgres + backend imajı.
+#
+# NOT (önemli): backend'in Postgres sürücüsü (psycopg) HENÜZ bağımlılıklarda
+# yok — #179'da eklenecek. Bu yüzden `api` servisi bugün ENSEMBLE_MODE=hosted
+# ile ayağa kalksa da DATABASE_URL'e gerçekten BAĞLANAMAZ (import/connect hatası
+# store katmanına dokunan endpoint'lerde görülür; /health SQLAlchemy engine'e
+# dokunmadığı için yine 200 döner). #179 landing olunca bu compose değişiklik
+# gerektirmeden çalışır hale gelir. O güne kadar `api` servisini
+# ENSEMBLE_MODE=local (SQLite, varsayılan) ile de çalıştırabilirsin — sadece
+# environment bloğunu yorumla/değiştir.
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ensemble
+      POSTGRES_PASSWORD: ensemble
+      POSTGRES_DB: ensemble
+    ports:
+      - "5432:5432"
+    volumes:
+      - ensemble-pg-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ensemble -d ensemble"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      ENSEMBLE_MODE: hosted
+      # psycopg gelene kadar (#179) bu DSN'e gerçek bağlantı KURULMAZ — yine de
+      # hosted modun beklediği şekli göstermek için burada tutuluyor.
+      DATABASE_URL: postgresql://ensemble:ensemble@db:5432/ensemble
+      CORS_ORIGINS: http://localhost:5173,http://127.0.0.1:5173
+      PORT: "8000"
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  ensemble-pg-data:
