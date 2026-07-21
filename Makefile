@@ -1,4 +1,4 @@
-.PHONY: install dev test lint openapi eval-dataset eval-run eval-sweep eval eval-gate
+.PHONY: install dev test lint openapi eval-dataset eval-run eval-sweep eval eval-gate harness-init
 
 install:
 	uv sync --all-packages
@@ -37,3 +37,8 @@ eval: eval-run eval-sweep eval-gate
 # veya F0.5 kalibre tabanın altına düşerse exit 1 (dedektör/judge regresyonu).
 eval-gate:
 	uv run python -m eval.gate
+
+# Onboarding sihirbazı (#57): ilk .harness/ iskeletini yazar (.harness/ zaten
+# varsa DOKUNMAZ - fail-safe). Örnek: make harness-init MILESTONE="Sprint 3"
+harness-init:
+	uv run python -m ensemble.onboarding.wizard --milestone "$(MILESTONE)"

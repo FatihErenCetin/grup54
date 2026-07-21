@@ -1,11 +1,10 @@
 """Ucuz on-yargi kisayolu (#24) — Gemini'ye hic sormadan karar verilebilecek
 durumlari eler (maliyet kontrolu: "yalniz iki esik arasindaki adaylarda cagrilir").
 
-`#22`'nin (engine/radar.py) Jaccard geciditinden farkli/ek: o gecit ayni-actor
-ve overlap-yok ciftlerini path-kor bicimde eler ama uv.lock/openapi.json gibi
-gurultu dosyalarini YAKALAMAZ (tam overlap, Jaccard=1.0). Bu modul o bosluqu
-kapatir + ayni-actor kontrolunu savunma-derinligi olarak burada da tutar
-(JudgePort baska baglamlardan da dogrudan cagrilabilir).
+`#22`'nin (engine/radar.py) Jaccard geciditinden farkli/ek: o gecit overlap-yok
+ciftlerini path-kor bicimde eler ama uv.lock/openapi.json gibi gurultu
+dosyalarini YAKALAMAZ (tam overlap, Jaccard=1.0). Bu modul o boslugu kapatir +
+ayni-actor ciftlerini dusuk-severity uyariya indirger (D-38).
 """
 
 from ensemble.models import Detection, NormalizedEvent
@@ -43,7 +42,12 @@ def cheap_prejudge(
 ) -> Detection | None:
     """Gemini'ye hic sormadan karar verilebiliyorsa Detection doner; belirsizse None."""
     if a.actor == b.actor:
-        return _low_confidence(a, b, overlap, "ayni actor - kendisiyle cakismaz")
+        return _low_confidence(
+            a,
+            b,
+            overlap,
+            "kendi iki branch'in ayni bolgeye dokunuyor",
+        )
     if overlap and all(_is_noise_file(f) for f in overlap):
         return _low_confidence(
             a, b, overlap, "yalnizca uretilmis/kilit dosyasi overlap'i - gurultu"

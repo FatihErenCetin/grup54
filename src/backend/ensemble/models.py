@@ -40,6 +40,24 @@ class BoardCard(BaseModel):
     ref: str | None
 
 
+class ActorRef(BaseModel):
+    """Açık aktör tipi (#32/#52) — kontrat: docs/sprint2-kontratlar.md Ek B1."""
+
+    handle: str
+    type: Literal["human", "agent"]
+    responsible: str | None = None
+
+
+class PresenceEntry(BaseModel):
+    """.harness/active/* projeksiyonu (#32/#52) — kontrat: Ek B1."""
+
+    actor: ActorRef
+    module: str
+    task: str | None
+    branch: str | None
+    since: datetime
+
+
 class GraphNode(BaseModel):
     """GET /graph düğümü (#104) — kontrat: docs/sprint2-kontratlar.md Ek A."""
 

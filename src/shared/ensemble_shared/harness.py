@@ -26,6 +26,10 @@ class HarnessPort(Protocol):
 
     def write_active(self, handle: str, decl: dict[str, Any]) -> None: ...
 
+    def write_task(self, task_id: str, decl: dict[str, Any]) -> None: ...
+
+    def write_scope(self, sprint: str, decl: dict[str, Any]) -> None: ...
+
 
 class HarnessError(Exception):
     """Base error for .harness IO."""
@@ -36,6 +40,13 @@ class HarnessValidationError(HarnessError, ValueError):
 
 
 _SAFE_HANDLE = re.compile(r"^[A-Za-z0-9_.-]+$")
+_SLUG_STRIP = re.compile(r"[^a-z0-9]+")
+
+
+def _slugify(text: str) -> str:
+    """Serbest metni dosya-adı-güvenli slug'a indirger (path traversal kapalı)."""
+    slug = _SLUG_STRIP.sub("-", text.lower()).strip("-")
+    return slug[:40].strip("-")
 
 
 def _coerce_dates(value: Any) -> Any:
@@ -113,6 +124,46 @@ class FileHarnessPort:
 
         self._validate_frontmatter(frontmatter, "active")
         self._atomic_write(active_dir / f"{handle}.md", self._to_markdown(frontmatter, body))
+
+    def write_task(self, task_id: str, decl: dict[str, Any]) -> None:
+        """Atomically write .harness/tasks/<task_id>-<slug>.md (#57 onboarding).
+
+        Filename includes a title slug for human-scannability (dizin_yapisi.md
+        konvansiyonu: `tasks/T-12-auth.md`). Slug PATH-GÜVENLİ karakterlere
+        indirgenir (title şemaya göre serbest metin olabilir - path traversal
+        riskine karşı). task_id şema deseniyle zaten güvenli (`^T-[0-9]+$`).
+        Aynı task_id + değişen title ikinci bir dosya oluşturur (idempotent
+        güncelleme çağıranın sorumluluğu - onboarding tek seferlik yazar).
+        """
+        tasks_dir = self.harness_dir / "tasks"
+        tasks_dir.mkdir(parents=True, exist_ok=True)
+
+        frontmatter = dict(decl)
+        body = str(frontmatter.pop("body", "")).rstrip() + "\n"
+        frontmatter["type"] = "task"
+        frontmatter["task_id"] = task_id
+
+        self._validate_frontmatter(frontmatter, "task")
+        slug = _slugify(str(frontmatter.get("title", "")))
+        filename = f"{task_id}-{slug}.md" if slug else f"{task_id}.md"
+        self._atomic_write(tasks_dir / filename, self._to_markdown(frontmatter, body))
+
+    def write_scope(self, sprint: str, decl: dict[str, Any]) -> None:
+        """Atomically write .harness/scope/sprint-<N>.md (#57 onboarding)."""
+        if not _SAFE_HANDLE.fullmatch(sprint):
+            raise HarnessValidationError(f"Unsafe sprint id: {sprint!r}")
+
+        scope_dir = self.harness_dir / "scope"
+        scope_dir.mkdir(parents=True, exist_ok=True)
+
+        frontmatter = dict(decl)
+        body = str(frontmatter.pop("body", "")).rstrip() + "\n"
+        frontmatter["type"] = "scope"
+        frontmatter["sprint"] = sprint
+
+        self._validate_frontmatter(frontmatter, "scope")
+        name = sprint if sprint.startswith("sprint-") else f"sprint-{sprint}"
+        self._atomic_write(scope_dir / f"{name}.md", self._to_markdown(frontmatter, body))
 
     def _scope_path(self, sprint: str) -> Path:
         scope_dir = self.harness_dir / "scope"

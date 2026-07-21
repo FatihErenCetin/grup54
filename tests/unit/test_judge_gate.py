@@ -11,10 +11,13 @@ def _event(id_: str, actor: str, files: list[str]) -> NormalizedEvent:
 
 
 def test_same_actor_returns_low_confidence_detection():
-    a, b = _event("1", "esma", ["x.py"]), _event("2", "esma", ["x.py"])
+    a = _event("1", "esma", ["x.py"]).model_copy(update={"branch": "T-1"})
+    b = _event("2", "esma", ["x.py"]).model_copy(update={"branch": "T-2"})
     d = cheap_prejudge(a, b, overlap=["x.py"], sim=0.95)
     assert d is not None
     assert d.severity == "low"
+    assert d.branches == ["T-1", "T-2"]
+    assert "kendi iki branch'in ayni bolgeye dokunuyor" in d.rationale
 
 
 def test_lockfile_only_overlap_returns_low_confidence_detection():
