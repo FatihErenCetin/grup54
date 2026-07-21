@@ -39,6 +39,11 @@ from ensemble.integrations.github.errors import (
     GitHubRateLimitError,
     GitHubTransientError,
 )
+from ensemble.integrations.ollama.errors import (
+    OllamaError,
+    OllamaPermanentError,
+    OllamaTransientError,
+)
 
 logger = logging.getLogger("ensemble.errors")
 
@@ -55,7 +60,10 @@ class ErrorEnvelope(BaseModel):
 # OpenAPI beyani — router baglanirken tek parametre (app.py); 500 bilerek
 # beyan edilmez (evrensel varsayilan), 422 FastAPI otomatigi.
 ERROR_RESPONSES = {
-    502: {"model": ErrorEnvelope, "description": "Kalici saglayici hatasi (GitHub/Gemini)"},
+    502: {
+        "model": ErrorEnvelope,
+        "description": "Kalici saglayici hatasi (GitHub/Gemini/Ollama)",
+    },
     503: {
         "model": ErrorEnvelope,
         "description": "Gecici olarak erisilemez",
@@ -76,16 +84,55 @@ ERROR_RESPONSES = {
 # Siralama okunabilirlik icindir: Starlette handler'i type(exc).__mro__
 # yuruyerek bulur — kayit sirasi davranisi ETKILEMEZ.
 _DOMAIN_MAP: list[tuple[type[Exception], int, str, str, bool]] = [
-    (GitHubRateLimitError, 503, "rate_limited", "GitHub istek limiti doldu — birazdan yeniden denenecek.", True),
-    (GitHubConfigError, 503, "github_config", "GitHub yapılandırması eksik — .env'deki GITHUB_* alanlarını kontrol edin.", False),
-    (GitHubAuthError, 502, "github_auth", "GitHub kimlik doğrulaması reddedildi — App kurulumunu kontrol edin.", False),
+    (
+        GitHubRateLimitError,
+        503,
+        "rate_limited",
+        "GitHub istek limiti doldu — birazdan yeniden denenecek.",
+        True,
+    ),
+    (
+        GitHubConfigError,
+        503,
+        "github_config",
+        "GitHub yapılandırması eksik — .env'deki GITHUB_* alanlarını kontrol edin.",
+        False,
+    ),
+    (
+        GitHubAuthError,
+        502,
+        "github_auth",
+        "GitHub kimlik doğrulaması reddedildi — App kurulumunu kontrol edin.",
+        False,
+    ),
     (GitHubTransientError, 503, "github_unavailable", "GitHub geçici olarak erişilemez.", True),
     (GitHubError, 502, "github_error", "GitHub entegrasyonunda hata.", False),
     (GeminiTransientError, 503, "gemini_unavailable", "Gemini geçici olarak erişilemez.", True),
-    (GeminiPermanentError, 502, "gemini_error", "Gemini isteği kalıcı olarak reddedildi — API anahtarını kontrol edin.", False),
+    (
+        GeminiPermanentError,
+        502,
+        "gemini_error",
+        "Gemini isteği kalıcı olarak reddedildi — API anahtarını kontrol edin.",
+        False,
+    ),
     # Taban siniflar da esli: dogrudan taban firlatilirsa 500 fallback'ine
     # dusup (local modda) ic detay sizdirmasin — asimetri bulgusu
     (GeminiError, 502, "gemini_error", "Gemini entegrasyonunda hata.", False),
+    (
+        OllamaTransientError,
+        503,
+        "ollama_unavailable",
+        "Ollama gecici olarak erisilemez.",
+        True,
+    ),
+    (
+        OllamaPermanentError,
+        502,
+        "ollama_error",
+        "Ollama istegi reddedildi - model ve yerel servis ayarlarini kontrol edin.",
+        False,
+    ),
+    (OllamaError, 502, "ollama_error", "Ollama entegrasyonunda hata.", False),
 ]
 
 

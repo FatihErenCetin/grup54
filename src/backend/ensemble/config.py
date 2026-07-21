@@ -1,6 +1,7 @@
 from functools import lru_cache
 from pathlib import Path
 from typing import Annotated, Literal
+from urllib.parse import urlparse
 
 from pydantic import field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
@@ -14,6 +15,11 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=str(_REPO_ROOT / ".env"), extra="ignore")
 
     ENSEMBLE_MODE: Literal["local", "hosted"] = "local"
+
+    # LLM saglayicisi calisma modundan bagimsizdir (#78): local engine Gemini,
+    # hosted engine Ollama (ayni makinede) kullanabilir. Varsayilan, geriye
+    # uyumluluk icin Gemini'dir.
+    LLM_PROVIDER: Literal["gemini", "ollama"] = "gemini"
 
     # Tarayıcı CORS allowlist'i (#45) — asla "*". Env'de virgüllü tek satır
     # (CORS_ORIGINS=https://a.example,https://b.example). NoDecode: pydantic-settings
@@ -42,6 +48,28 @@ class Settings(BaseSettings):
     GEMINI_EMBEDDING_DIMENSIONS: int = 768
     GEMINI_TIMEOUT_S: float = 10.0
     GEMINI_MAX_RETRIES: int = 3
+
+    # Ollama tam-yerel modu (#78). Loopback zorunlulugu repo baglaminin yanlis
+    # yapilandirma ile baska bir makineye tasinmasini engeller.
+    OLLAMA_BASE_URL: str = "http://127.0.0.1:11434"
+    OLLAMA_MODEL: str = "llama3.2"
+    OLLAMA_EMBEDDING_MODEL: str = "nomic-embed-text"
+    OLLAMA_EMBEDDING_DIMENSIONS: int = 768
+    OLLAMA_TIMEOUT_S: float = 60.0
+    OLLAMA_MAX_RETRIES: int = 2
+
+    @field_validator("OLLAMA_BASE_URL")
+    @classmethod
+    def _validate_local_ollama_url(cls, value: str) -> str:
+        normalized = value.rstrip("/")
+        parsed = urlparse(normalized)
+        if parsed.scheme != "http" or parsed.hostname not in {
+            "localhost",
+            "127.0.0.1",
+            "::1",
+        }:
+            raise ValueError("OLLAMA_BASE_URL yerel bir HTTP loopback adresi olmali (#78)")
+        return normalized
 
     # GitHub App (machine auth - ingest, #16). Hepsi opsiyonel - FakeGitHubAdapter
     # gerektirmez; eksikse GitHubAdapter/InstallationTokenCache somutlastirilirken

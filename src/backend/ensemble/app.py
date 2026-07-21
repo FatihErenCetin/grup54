@@ -16,6 +16,7 @@ from ensemble.integrations.gemini.judge import GeminiJudgeAdapter
 from ensemble.integrations.github.adapter import GitHubAdapter
 from ensemble.integrations.github.errors import GitHubConfigError
 from ensemble.integrations.github.fake import FakeGitHubAdapter
+from ensemble.integrations.ollama.adapter import OllamaAdapter
 from ensemble.ports import EmbeddingsPort, GitHubPort, JudgePort
 
 logger = logging.getLogger("ensemble.wiring")
@@ -25,7 +26,10 @@ def _build_github_port(settings: Settings) -> GitHubPort:
     # pem dosyası yoksa GitHubAdapter bunu hemen fark etmez (yalnız token
     # yenilenirken okunur) - istek-anı 500'e düşmeden acilis-anı degradasyona
     # ceviriyoruz (Fatih review notu, PR #159).
-    if settings.GITHUB_APP_PRIVATE_KEY_PATH and not Path(settings.GITHUB_APP_PRIVATE_KEY_PATH).is_file():
+    if (
+        settings.GITHUB_APP_PRIVATE_KEY_PATH
+        and not Path(settings.GITHUB_APP_PRIVATE_KEY_PATH).is_file()
+    ):
         logger.warning(
             "GITHUB_APP_PRIVATE_KEY_PATH (%s) bulunamadı — FakeGitHubAdapter kullanılıyor.",
             settings.GITHUB_APP_PRIVATE_KEY_PATH,
@@ -34,11 +38,15 @@ def _build_github_port(settings: Settings) -> GitHubPort:
     try:
         return GitHubAdapter(settings)
     except GitHubConfigError as exc:
-        logger.warning("GitHub App yapılandırması eksik (%s) — FakeGitHubAdapter kullanılıyor.", exc)
+        logger.warning(
+            "GitHub App yapılandırması eksik (%s) — FakeGitHubAdapter kullanılıyor.", exc
+        )
         return FakeGitHubAdapter()
 
 
 def _build_judge_port(settings: Settings) -> JudgePort:
+    if settings.LLM_PROVIDER == "ollama":
+        return OllamaAdapter(settings)
     if settings.GEMINI_API_KEY:
         return GeminiJudgeAdapter(settings)
     logger.warning("GEMINI_API_KEY tanımlı değil — FakeJudgeAdapter (kural-tabanlı) kullanılıyor.")
@@ -46,6 +54,8 @@ def _build_judge_port(settings: Settings) -> JudgePort:
 
 
 def _build_embeddings_port(settings: Settings) -> EmbeddingsPort:
+    if settings.LLM_PROVIDER == "ollama":
+        return CachedEmbeddings(OllamaAdapter(settings))
     if settings.GEMINI_API_KEY:
         return CachedEmbeddings(GeminiEmbeddingsAdapter(settings))
     logger.warning("GEMINI_API_KEY tanımlı değil — HashEmbeddings kullanılıyor.")
