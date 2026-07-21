@@ -8,8 +8,11 @@
 # NOT — release_command / migration: alembic-on-deploy BİLİNÇLİ OLARAK burada
 # YOK. #179 (psycopg sürücüsü) henüz landing olmadı (bkz. docker-compose.yml
 # yorumu) — hosted mod DATABASE_URL'e henüz gerçekten bağlanamıyor. Otomatik
-# release_command = "alembic upgrade head" bu yüzden #187'de eklenecek
-# (release-migrate dilimi). O güne kadar migration elle `make migrate` ile
+# release_command = "alembic upgrade head" bu yüzden #187'de (sahibi: Enes)
+# eklenecek — self-host pgvector'de ilk migration `CREATE EXTENSION vector` +
+# tabloları kurar; release_command canlıya geçmeden geçici makinede koşar →
+# fail-closed (patlarsa Fly deploy'u iptal eder). O güne kadar migration elle
+# `make migrate` ile
 # (ya da `fly ssh console` + `cd src/backend && alembic upgrade head`) koşulur.
 
 app = "ensemble-backend"
