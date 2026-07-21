@@ -1,0 +1,66 @@
+# İmajı lean tut — build context'e girmesin (kaynak + pyproject + uv.lock +
+# migration'lar KALIR; onlar Dockerfile'da açıkça COPY edilir).
+
+# --- Python ---
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+*.egg-info/
+
+# --- Veritabanı / gizli dosyalar ---
+*.db
+*.sqlite3
+*.faiss
+.env
+.env.*
+*.pem
+*.key
+
+# --- Git / CI ---
+.git/
+.gitattributes
+.github/
+
+# --- Frontend (backend imajına gerekmiyor) ---
+src/frontend/dist/
+src/frontend/node_modules/
+node_modules/
+
+# --- Test / eval / dokümantasyon / ekip-özel ---
+tests/
+eval/
+docs/
+design/
+ProjectManagement/
+internal/
+harness-dashboard/
+scripts/
+OKU.md
+GEMINI.md
+ROADMAP.md
+CONTRIBUTING.md
+CLAUDE.md
+CLAUDE.local.md
+AGENTS.md
+README.md
+
+# --- Editör / OS ---
+.DS_Store
+.idea/
+.vscode/
+.gstack/
+.kiro/
+.claude/
+
+# --- Scratchpad / geçici ---
+scratchpad/
+*.tmp
+
+# --- Docker'ın kendisi ---
+Dockerfile
+docker-compose.yml
+.dockerignore

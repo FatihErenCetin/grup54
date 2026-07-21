@@ -1,7 +1,13 @@
 from datetime import datetime
 from typing import Protocol
 
-from ensemble.models import Detection, NormalizedEvent
+from ensemble.models import (
+    Detection,
+    NormalizedEvent,
+    ScopeCandidate,
+    ScopeJudgement,
+    ScopeSubject,
+)
 
 # HarnessPort, shared paketinde (ensemble_shared.harness) yer alıyor ve
 # oradan import edilecek. Buraya tekrar yazmıyoruz (GATE 1 kuralı).
@@ -26,3 +32,13 @@ class JudgePort(Protocol):
     def judge_conflict(
         self, a: NormalizedEvent, b: NormalizedEvent, overlap: list[str], sim: float | None
     ) -> Detection: ...
+
+
+class ScopeJudgePort(Protocol):
+    def judge_scope(
+        self, ref: str, subject: str, candidates: list[ScopeCandidate]
+    ) -> ScopeJudgement: ...
+
+
+class ScopeSubjectPort(Protocol):
+    def resolve_scope_subject(self, ref: str) -> ScopeSubject: ...
