@@ -130,7 +130,9 @@ GET /scope/current         →  { goal, in_scope[], non_goals[], version, frozen
 GET /scope/verdicts        →  { verdicts: ScopeVerdict[], counts, judged_at }                          # S2 Ek B3
 ```
 - `ScopeVerdict` = S2 Ek B3 (`evidence: str | ScopeItemRef` union · `match_none` · `signals`). Model AYNEN; route donuyor.
-- `check_scope(ref)` motoru **MCP ile paylaşılır** (Ek D ikiz) — `ScopeService(harness_port, judge_port).check_scope(ref) -> ScopeVerdict` (mevcut imza, `engine/scope.py`). #31 dedektörü bu imzayı doldurur; imza değişmez.
+- `check_scope(ref)` motoru **MCP ile paylaşılır** (Ek D ikiz) — `ScopeService(harness_port, judge_port).check_scope(ref) -> ScopeVerdict` (mevcut iki zorunlu parametre AYNEN). #31 dedektörü bu imzayı doldurur.
+- #31'in geriye-uyumlu DI dikişleri keyword-only'dir: `embeddings_port=None` (yoksa lexical retrieval), `subject_port=None` (yoksa `.harness/tasks` + `active` ref çözümleme), `sprint="3"`, `top_k=4`. #59 canlı PR başlık/diff özetini `ScopeSubjectPort.resolve_scope_subject(ref) -> ScopeSubject` ile verir; engine GitHub adapter'ına doğrudan bağlanmaz.
+- Scope judge, çakışma judge'ından ayrı `ScopeJudgePort.judge_scope(ref, subject, candidates) -> ScopeJudgement` sözleşmesidir. Ucuz kesin-eşleşme geçidi engine'de; belirsiz karar fake/Gemini adapter'da tek kez yaşar. Eksik/taslak scope, çözülemeyen ref ve bozuk judge cevabı verdict'e çevrilmez; açık hata verir.
 - **Sahibi:** backend (Esma) · **Tüketicisi:** Scope sayfası + MCP `check_scope`.
 
 ### B5 · `GET /graph` (#104, S2 çekme adayı) — 🔒 aktör×modül dokunma grafı
