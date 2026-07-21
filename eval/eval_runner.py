@@ -17,6 +17,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
 
+from ensemble.engine.radar import file_overlap_candidates, passes_similarity_threshold
 from ensemble.integrations.gemini.fake import FakeJudgeAdapter
 from ensemble.models import Detection
 from ensemble.ports import JudgePort
@@ -32,9 +33,11 @@ _SAME_AUTHOR_TAG = "[ayni-yazar]"
 # Veri yapıları
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class CaseResult:
     """Tek bir vakanın eval sonucu — debug ve kalibrasyon için."""
+
     case_id: str
     dataset: Literal["curated", "backtest"]
     label: Literal["conflict", "no_conflict"]
@@ -52,6 +55,7 @@ class EvalResult:
     F0.5 = precision-ağırlıklı Fβ (β=0.5) — FP #1 risk olduğu için
     operasyon noktası seçiminde birincil metrik (issue #28/#18).
     """
+
     precision: float = 0.0
     recall: float = 0.0
     f1: float = 0.0
@@ -79,6 +83,7 @@ class EvalResult:
 @dataclass
 class EvalReport:
     """Tam eval raporu: kırılımlar + per-case detaylar."""
+
     overall: EvalResult = field(default_factory=EvalResult)
     curated: EvalResult = field(default_factory=EvalResult)
     backtest: EvalResult = field(default_factory=EvalResult)
@@ -109,15 +114,12 @@ class EvalReport:
 # Yardımcılar
 # ---------------------------------------------------------------------------
 
+
 def _compute_metrics(tp: int, fp: int, fn: int, tn: int) -> EvalResult:
     total = tp + fp + fn + tn
     precision = tp / (tp + fp) if (tp + fp) > 0 else 0.0
     recall = tp / (tp + fn) if (tp + fn) > 0 else 0.0
-    f1 = (
-        2 * (precision * recall) / (precision + recall)
-        if (precision + recall) > 0
-        else 0.0
-    )
+    f1 = 2 * (precision * recall) / (precision + recall) if (precision + recall) > 0 else 0.0
     # Fβ (β=0.5): precision'ı 4x ağırlıklandırır — FP = #1 risk (bkz.
     # docs/eval-metodoloji-devir.md §1). Payda yalnız P=R=0'da sıfırlanır.
     f05 = (
@@ -130,7 +132,10 @@ def _compute_metrics(tp: int, fp: int, fn: int, tn: int) -> EvalResult:
         recall=round(recall, 4),
         f1=round(f1, 4),
         f05=round(f05, 4),
-        tp=tp, fp=fp, fn=fn, tn=tn,
+        tp=tp,
+        fp=fp,
+        fn=fn,
+        tn=tn,
         total=total,
     )
 
@@ -148,21 +153,19 @@ def _is_same_author(case: ConflictCase) -> bool:
 # Dataset yükleyiciler
 # ---------------------------------------------------------------------------
 
+
 def load_backtest_corpus() -> list[ConflictCase]:
     """Backtest dataset'ini yükler (sim=None — dedektör hesaplar)."""
     if not _BACKTEST_DATASET.exists():
         return []
     lines = _BACKTEST_DATASET.read_text(encoding="utf-8").splitlines()
-    return [
-        ConflictCase.model_validate(json.loads(line))
-        for line in lines
-        if line.strip()
-    ]
+    return [ConflictCase.model_validate(json.loads(line)) for line in lines if line.strip()]
 
 
 # ---------------------------------------------------------------------------
 # EvalRunner
 # ---------------------------------------------------------------------------
+
 
 class EvalRunner:
     """Eval corpus'larını koşar ve metrikleri hesaplar.
@@ -197,33 +200,26 @@ class EvalRunner:
         return False
 
     def _apply_thresholds(self, case: ConflictCase) -> bool:
-        """Eşik geçitlerini uygular — geçemezse False (skip)."""
-        # Jaccard eşiği: overlap / union
-        if self.min_jaccard is not None and self.min_jaccard > 0:
-            a_files = set(case.event_a.files)
-            b_files = set(case.event_b.files)
-            union = a_files | b_files
-            if union:
-                jaccard = len(a_files & b_files) / len(union)
-            else:
-                jaccard = 0.0
-            if jaccard < self.min_jaccard:
-                return False
+        """Radar aday/eşik yolunu uygular — geçemezse False (skip)."""
+        candidates = file_overlap_candidates(
+            [case.event_a, case.event_b],
+            min_jaccard=self.min_jaccard or 0.0,
+            exclude_same_actor=self.exclude_same_author,
+        )
+        if not candidates:
+            return False
 
-        # Similarity eşiği: sim değeri varsa kontrol
-        if self.min_similarity is not None and self.min_similarity > 0:
-            if case.sim is not None and case.sim < self.min_similarity:
-                return False
-            # sim=None → bilinmiyor, eşik uygulanmaz (dedektöre bırakılır)
-
-        return True
+        return passes_similarity_threshold(case.sim, self.min_similarity or 0.0)
 
     def _evaluate_case(
         self, case: ConflictCase, dataset_tag: Literal["curated", "backtest"]
     ) -> CaseResult:
         """Tek bir vakayı değerlendirir."""
         detection: Detection = self.judge.judge_conflict(
-            case.event_a, case.event_b, case.overlap, case.sim,
+            case.event_a,
+            case.event_b,
+            case.overlap,
+            case.sim,
         )
 
         # Karar: med/high = conflict, low = no_conflict
@@ -274,16 +270,18 @@ class EvalRunner:
                 continue
             if not self._apply_thresholds(case):
                 # Eşik geçilemezse, vakayı "no_conflict" tahmin olarak say
-                all_results.append(CaseResult(
-                    case_id=case.case_id,
-                    dataset="curated",
-                    label=case.label,
-                    predicted="no_conflict",
-                    outcome="tn" if case.label == "no_conflict" else "fn",
-                    same_author=_is_same_author(case),
-                    severity="low",
-                    confidence=0.0,
-                ))
+                all_results.append(
+                    CaseResult(
+                        case_id=case.case_id,
+                        dataset="curated",
+                        label=case.label,
+                        predicted="no_conflict",
+                        outcome="tn" if case.label == "no_conflict" else "fn",
+                        same_author=_is_same_author(case),
+                        severity="low",
+                        confidence=0.0,
+                    )
+                )
                 continue
             all_results.append(self._evaluate_case(case, "curated"))
 
@@ -292,16 +290,18 @@ class EvalRunner:
             if self._should_skip(case):
                 continue
             if not self._apply_thresholds(case):
-                all_results.append(CaseResult(
-                    case_id=case.case_id,
-                    dataset="backtest",
-                    label=case.label,
-                    predicted="no_conflict",
-                    outcome="tn" if case.label == "no_conflict" else "fn",
-                    same_author=_is_same_author(case),
-                    severity="low",
-                    confidence=0.0,
-                ))
+                all_results.append(
+                    CaseResult(
+                        case_id=case.case_id,
+                        dataset="backtest",
+                        label=case.label,
+                        predicted="no_conflict",
+                        outcome="tn" if case.label == "no_conflict" else "fn",
+                        same_author=_is_same_author(case),
+                        severity="low",
+                        confidence=0.0,
+                    )
+                )
                 continue
             all_results.append(self._evaluate_case(case, "backtest"))
 
@@ -341,13 +341,16 @@ class EvalRunner:
 # CLI
 # ---------------------------------------------------------------------------
 
+
 def _print_metrics(name: str, result: EvalResult) -> None:
     print(f"\n  {name}:")
     print(f"    Precision : {result.precision:.4f}")
     print(f"    Recall    : {result.recall:.4f}")
     print(f"    F1        : {result.f1:.4f}")
     print(f"    F0.5      : {result.f05:.4f}")
-    print(f"    TP={result.tp}  FP={result.fp}  FN={result.fn}  TN={result.tn}  (toplam={result.total})")
+    print(
+        f"    TP={result.tp}  FP={result.fp}  FN={result.fn}  TN={result.tn}  (toplam={result.total})"
+    )
 
 
 def main() -> None:

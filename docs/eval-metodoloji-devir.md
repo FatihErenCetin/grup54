@@ -24,14 +24,15 @@ Bu nedenle standart **F1 Skoru** (Precision ve Recall'a eşit ağırlık veren m
 backtest verisi bunu çürüttü: repo tarihimizdeki 3 gerçek çakışmanın **2'si aynı
 kişinin iki branch'i arasında** (pr88↔pr89, pr135↔pr137) — tek kişi + çok branch/ajan
 tam hedef senaryomuz. **PO kararı D-38 (16 Tem):** aynı-yazar çiftleri tamamen
-susturulmak yerine **low-severity uyarıya** dönecek; implementasyon **#164** (S3).
+susturulmak yerine farklı branch'ler için **low-severity uyarıya** döner (**#164**, S3).
 
 Kalibrasyon için pratik sonuç:
-- **S2 operasyon noktası:** mevcut üretim davranışı hâlâ aynı-yazar-eleme olduğundan
-  eşikler **aynı-yazar HARİÇ** tablosundan seçilebilir — ama rapora "D-38/#164 sonrası
-  yeniden değerlendirilecek" şerhi düşülmeli.
-- `sweep.py` her iki ekseni de koşuyor (`include_same_author_axis=True`) — #164
-  geldiğinde DAHİL tablosu doğrudan kullanılabilir olacak.
+- **S3 operasyon noktası:** üretim farklı branch'lerdeki aynı-yazar çiftlerini aday
+  bırakır ve gate bunları `low` uyarıya indirger. Binary eval yalnız `med/high` sonucunu
+  conflict saydığı için **DAHİL** tablo ana binary ölçümdür; warning coverage ayrıca
+  raporlanır.
+- `sweep.py` iki ekseni de koşar (`include_same_author_axis=True`). HARİÇ tablo yalnız
+  karşılaştırma ve metodoloji şerhi içindir; üretim davranışını temsil etmez.
 
 ## 4. Gri Bölge Etiketlemesi
 
@@ -50,7 +51,8 @@ Kaynak: PR #161 review doğrulaması (ölçümler tekrarlanabilir: `make eval-ru
    gücü yok denecek kadar az; **başlık rakamı olarak kullanılamaz**.
 3. **Eşikler FP silmiyor:** 60 grid noktasının 60'ında da precision=1.0/FP=0 —
    sweep'in asıl bulgusu, mevcut korpustaki FP işini eşiklerin değil gate'lerin
-   (aynı-aktör + gürültü-dosyası) yaptığı; eşik artışı yalnız recall düşürüyor.
+   (aynı-aktörü low uyarıya indirme + gürültü-dosyası) yaptığı; eşik artışı yalnız
+   recall düşürüyor.
 4. **FakeJudge kalibrasyonu:** Ölçüm `FakeJudgeAdapter` ile — gate+eşik katmanı
    üretimle birebir aynı, ama kapıyı geçip LLM'e düşen vakalarda gerçek Gemini
    judge ayrışabilir. Canlı judge'la spot-check önerilir (#18 kapsamında).

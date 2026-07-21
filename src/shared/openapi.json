@@ -531,6 +531,57 @@
         ],
         "title": "RadarResponse"
       },
+      "ScopeItemRef": {
+        "properties": {
+          "quote": {
+            "type": "string",
+            "title": "Quote"
+          },
+          "item_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Item Id"
+          },
+          "section": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "goal",
+                  "in_scope",
+                  "non_goals"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Section"
+          },
+          "line": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Line"
+          }
+        },
+        "type": "object",
+        "required": [
+          "quote"
+        ],
+        "title": "ScopeItemRef"
+      },
       "ScopeVerdict": {
         "properties": {
           "ref": {
@@ -551,8 +602,42 @@
             "title": "Confidence"
           },
           "evidence": {
-            "type": "string",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "$ref": "#/components/schemas/ScopeItemRef"
+              }
+            ],
             "title": "Evidence"
+          },
+          "match_none": {
+            "type": "boolean",
+            "title": "Match None",
+            "default": false
+          },
+          "judged_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Judged At"
+          },
+          "signals": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Signals"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",
@@ -563,6 +648,33 @@
           "evidence"
         ],
         "title": "ScopeVerdict"
+      },
+      "Signals": {
+        "properties": {
+          "files": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Files"
+          },
+          "matched_text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Matched Text"
+          }
+        },
+        "type": "object",
+        "required": [
+          "files"
+        ],
+        "title": "Signals"
       },
       "ValidationError": {
         "properties": {
