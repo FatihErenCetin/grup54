@@ -1,4 +1,4 @@
-.PHONY: install dev test lint openapi eval-dataset eval-run eval-sweep eval eval-gate scope-eval harness-init
+.PHONY: install dev test lint openapi eval-dataset eval-run eval-sweep eval eval-gate eval-provider scope-eval harness-init
 
 install:
 	uv sync --all-packages
@@ -37,6 +37,13 @@ eval: eval-run eval-sweep eval-gate
 # veya F0.5 kalibre tabanın altına düşerse exit 1 (dedektör/judge regresyonu).
 eval-gate:
 	uv run python -m eval.gate
+
+# #78 canli provider kalibrasyonu. Ornek:
+#   make eval-provider                 # ikisi
+#   make eval-provider PROVIDER=ollama # yalniz Ollama
+PROVIDER ?= both
+eval-provider:
+	uv run python -m eval.provider_eval --provider "$(PROVIDER)"
 
 # #31 scope-drift DONE kapısı: 3-sınıf backtest + yanlış-alarm precision.
 scope-eval:
