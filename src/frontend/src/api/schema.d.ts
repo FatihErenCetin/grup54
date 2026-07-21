@@ -487,7 +487,7 @@ export interface operations {
             /** @description Gecici olarak erisilemez */
             503: {
                 headers: {
-                    /** @description Saniye â€” yalniz kendiliginden duzelebilir durumlarda */
+                    /** @description Saniye — yalniz kendiliginden duzelebilir durumlarda */
                     "Retry-After"?: number;
                     [name: string]: unknown;
                 };
@@ -527,7 +527,7 @@ export interface operations {
             /** @description Gecici olarak erisilemez */
             503: {
                 headers: {
-                    /** @description Saniye â€” yalniz kendiliginden duzelebilir durumlarda */
+                    /** @description Saniye — yalniz kendiliginden duzelebilir durumlarda */
                     "Retry-After"?: number;
                     [name: string]: unknown;
                 };
