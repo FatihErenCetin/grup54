@@ -1,4 +1,4 @@
-.PHONY: install dev test lint openapi eval-dataset eval-run eval-sweep eval eval-gate scope-eval harness-init
+.PHONY: install dev test lint openapi eval-dataset eval-run eval-sweep eval eval-gate scope-eval harness-init frontend-build-guard
 
 install:
 	uv sync --all-packages
@@ -46,3 +46,8 @@ scope-eval:
 # varsa DOKUNMAZ - fail-safe). Örnek: make harness-init MILESTONE="Sprint 3"
 harness-init:
 	uv run python -m ensemble.onboarding.wizard --milestone "$(MILESTONE)"
+
+# #188 prod build hijyen guard: prod `vite build` (VITE_MOCK kapalı) + dist'te
+# mock-bayrağı/fixture-handle/backend-sır taraması. CI: prod-build-guard.yml.
+frontend-build-guard:
+	cd src/frontend && VITE_MOCK= npm run build && node scripts/prod-build-guard.mjs dist
