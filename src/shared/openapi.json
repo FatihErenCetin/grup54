@@ -237,6 +237,8 @@
             "required": true,
             "schema": {
               "type": "string",
+              "minLength": 1,
+              "maxLength": 500,
               "title": "Q"
             }
           }
@@ -272,6 +274,16 @@
                 }
               }
             },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Geçersiz doğal dil sorgusu",
             "content": {
               "application/json": {
                 "schema": {
@@ -365,6 +377,69 @@
           "cards"
         ],
         "title": "BoardResponse"
+      },
+      "Citation": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "scope",
+              "task",
+              "decision",
+              "event",
+              "pr"
+            ],
+            "title": "Type"
+          },
+          "ref": {
+            "type": "string",
+            "title": "Ref"
+          },
+          "quote": {
+            "type": "string",
+            "title": "Quote"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Url"
+          },
+          "range": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LineRange"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "n": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "N"
+          }
+        },
+        "type": "object",
+        "required": [
+          "type",
+          "ref",
+          "quote"
+        ],
+        "title": "Citation"
       },
       "Detection": {
         "properties": {
@@ -488,6 +563,51 @@
         ],
         "title": "HealthResponse"
       },
+      "LineRange": {
+        "properties": {
+          "start": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Start"
+          },
+          "end": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "End"
+          }
+        },
+        "type": "object",
+        "required": [
+          "start",
+          "end"
+        ],
+        "title": "LineRange"
+      },
+      "NearestRef": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "scope",
+              "task",
+              "decision",
+              "event",
+              "pr"
+            ],
+            "title": "Type"
+          },
+          "ref": {
+            "type": "string",
+            "title": "Ref"
+          }
+        },
+        "type": "object",
+        "required": [
+          "type",
+          "ref"
+        ],
+        "title": "NearestRef"
+      },
       "QueryResponse": {
         "properties": {
           "answer": {
@@ -496,16 +616,80 @@
           },
           "citations": {
             "items": {
-              "type": "string"
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "$ref": "#/components/schemas/Citation"
+                }
+              ]
             },
             "type": "array",
             "title": "Citations"
+          },
+          "as_of": {
+            "type": "string",
+            "format": "date-time",
+            "title": "As Of"
+          },
+          "last_commit": {
+            "type": "string",
+            "title": "Last Commit"
+          },
+          "window": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Window"
+          },
+          "confidence": {
+            "type": "string",
+            "enum": [
+              "low",
+              "medium",
+              "high"
+            ],
+            "title": "Confidence"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "answered",
+              "not_found"
+            ],
+            "title": "Status"
+          },
+          "searched": {
+            "items": {
+              "$ref": "#/components/schemas/SearchReceipt"
+            },
+            "type": "array",
+            "title": "Searched"
+          },
+          "nearest": {
+            "items": {
+              "$ref": "#/components/schemas/NearestRef"
+            },
+            "type": "array",
+            "title": "Nearest"
           }
         },
         "type": "object",
         "required": [
           "answer",
-          "citations"
+          "citations",
+          "as_of",
+          "last_commit",
+          "confidence",
+          "status",
+          "searched",
+          "nearest"
         ],
         "title": "QueryResponse"
       },
@@ -648,6 +832,32 @@
           "evidence"
         ],
         "title": "ScopeVerdict"
+      },
+      "SearchReceipt": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "scope",
+              "task",
+              "decision",
+              "event",
+              "pr"
+            ],
+            "title": "Type"
+          },
+          "count": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Count"
+          }
+        },
+        "type": "object",
+        "required": [
+          "type",
+          "count"
+        ],
+        "title": "SearchReceipt"
       },
       "Signals": {
         "properties": {

@@ -114,6 +114,23 @@ export interface components {
             /** Cards */
             cards: components["schemas"]["BoardCard"][];
         };
+        /** Citation */
+        Citation: {
+            /**
+             * Type
+             * @enum {string}
+             */
+            type: "scope" | "task" | "decision" | "event" | "pr";
+            /** Ref */
+            ref: string;
+            /** Quote */
+            quote: string;
+            /** Url */
+            url?: string | null;
+            range?: components["schemas"]["LineRange"] | null;
+            /** N */
+            n?: number | null;
+        };
         /** Detection */
         Detection: {
             /** Id */
@@ -167,12 +184,52 @@ export interface components {
              */
             mode: "local" | "hosted";
         };
+        /** LineRange */
+        LineRange: {
+            /** Start */
+            start: number;
+            /** End */
+            end: number;
+        };
+        /** NearestRef */
+        NearestRef: {
+            /**
+             * Type
+             * @enum {string}
+             */
+            type: "scope" | "task" | "decision" | "event" | "pr";
+            /** Ref */
+            ref: string;
+        };
         /** QueryResponse */
         QueryResponse: {
             /** Answer */
             answer: string;
             /** Citations */
-            citations: string[];
+            citations: (string | components["schemas"]["Citation"])[];
+            /**
+             * As Of
+             * Format: date-time
+             */
+            as_of: string;
+            /** Last Commit */
+            last_commit: string;
+            /** Window */
+            window?: string | null;
+            /**
+             * Confidence
+             * @enum {string}
+             */
+            confidence: "low" | "medium" | "high";
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "answered" | "not_found";
+            /** Searched */
+            searched: components["schemas"]["SearchReceipt"][];
+            /** Nearest */
+            nearest: components["schemas"]["NearestRef"][];
         };
         /** RadarResponse */
         RadarResponse: {
@@ -216,6 +273,16 @@ export interface components {
             /** Judged At */
             judged_at?: string | null;
             signals?: components["schemas"]["Signals"] | null;
+        };
+        /** SearchReceipt */
+        SearchReceipt: {
+            /**
+             * Type
+             * @enum {string}
+             */
+            type: "scope" | "task" | "decision" | "event" | "pr";
+            /** Count */
+            count: number;
         };
         /** Signals */
         Signals: {
@@ -435,6 +502,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["QueryResponse"];
+                };
+            };
+            /** @description Geçersiz doğal dil sorgusu */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
             /** @description Validation Error */

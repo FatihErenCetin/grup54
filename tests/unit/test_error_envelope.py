@@ -7,10 +7,11 @@ detay sizdirmadigi (hosted) / ozet verdigi (local); Retry-After vatandasligi.
 import pytest
 from fastapi.testclient import TestClient
 
-from ensemble.api.deps import get_radar_service
+from ensemble.api.deps import get_query_service, get_radar_service
 from ensemble.api.errors import ErrorEnvelope
 from ensemble.app import create_app
 from ensemble.config import Settings
+from ensemble.engine.query import QueryInputError, QueryJudgeError, QueryRetrievalError
 from ensemble.integrations.gemini.errors import (
     GeminiError,
     GeminiPermanentError,
@@ -32,6 +33,14 @@ class _Boom:
         self.exc = exc
 
     def get_detections(self):
+        raise self.exc
+
+
+class _BoomQuery:
+    def __init__(self, exc: Exception):
+        self.exc = exc
+
+    def ask(self, question: str):
         raise self.exc
 
 
@@ -146,3 +155,33 @@ def test_preflight_calisiyor():
     assert resp.status_code == 200
     assert resp.headers.get("access-control-allow-origin") == _ORIGIN
     assert "GET" in resp.headers.get("access-control-allow-methods", "")
+
+
+@pytest.mark.parametrize(
+    ("exc", "status", "code", "retry_after"),
+    [
+        (QueryInputError(_SENTINEL), 400, "query_invalid", False),
+        (
+            QueryRetrievalError(_SENTINEL),
+            503,
+            "query_retrieval_unavailable",
+            True,
+        ),
+        (QueryJudgeError(_SENTINEL), 502, "query_judge_error", False),
+    ],
+)
+def test_query_hatalari_acik_ama_ic_detaysiz_zarfla_doner(
+    exc,
+    status,
+    code,
+    retry_after,
+):
+    app = create_app(Settings(_env_file=None))
+    app.dependency_overrides[get_query_service] = lambda: _BoomQuery(exc)
+
+    response = TestClient(app).get("/query", params={"q": "scope nedir"})
+
+    assert response.status_code == status
+    assert response.json()["error"] == code
+    assert _SENTINEL not in response.text
+    assert ("retry-after" in response.headers) is retry_after
