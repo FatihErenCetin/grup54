@@ -1,7 +1,7 @@
 ## Ne / Neden
 <!-- 1-3 cümle: bu PR ne yapıyor, neden? -->
 
-Closes #<id>
+Closes #<id> <!-- tek issue — birden coksa ayri PR -->
 
 ## Kanıt
 <!-- CI yeşil mi? UI işiyse ekran görüntüsü. Çekirdek (dedektör/judge) işiyse eval sonucu. -->
