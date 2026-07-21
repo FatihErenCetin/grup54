@@ -89,7 +89,10 @@ def test_fake_adapter_backfill_limits_per_type_and_is_idempotent():
 # ---------------------------------------------------------------------------
 
 
-def test_client_returns_none_on_304_with_matching_etag():
+def test_client_replays_last_body_on_304_with_matching_etag():
+    """304 = 'degisiklik yok', 'veri yok' degil - onceki govde replay edilmeli
+    (Fatih'in #204 re-review'inda buldugu regresyon: eskiden None donuyordu,
+    steady-state pollarda ust katman veriyi sessizce kaybediyordu)."""
     calls = []
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -107,8 +110,23 @@ def test_client_returns_none_on_304_with_matching_etag():
     second = client.get("/x", cache_key="x")
 
     assert first == {"ok": True}
-    assert second is None
+    assert second == {"ok": True}
     assert len(calls) == 2
+
+
+def test_client_304_without_prior_body_returns_none():
+    """Hic 200 gormeden 304 gelirse (beklenmedik sunucu davranisi) - cache bos,
+    replay edilecek bir sey yok, None guvenli deger."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(304)
+
+    client = GitHubRestClient(
+        token_provider=lambda: "fake-token",
+        http_client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+
+    assert client.get("/x", cache_key="x") is None
 
 
 # ---------------------------------------------------------------------------
@@ -192,6 +210,35 @@ def test_adapter_get_diff_uses_separate_cache_key_from_compare():
     diffs = adapter.get_diff("base", "head")
 
     assert diffs["src/backend/ensemble/engine/radar.py"] == "@@ -1 +1 @@\n-old\n+new"
+
+
+def test_adapter_get_diff_steady_state_304_replays_previous_patch():
+    """Fatih'in #204 re-review'i: ayni branch cifti art arda pollandiginda
+    (yeni commit yok -> ETag esler -> 304) get_diff eskiden sessizce {} donup
+    semantik sinyali coken - ilk poll'dan SONRAKI HER poll'da. Gercek adapter +
+    MockTransport (200 sonra 304) ile reprodukte edip kilitliyoruz."""
+    compare_body = _load("compare_response.json")
+    etag = '"diff-etag"'
+    calls = {"n": 0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls["n"] += 1
+        if request.headers.get("if-none-match") == etag:
+            return httpx.Response(304)
+        return httpx.Response(200, json=compare_body, headers={"ETag": etag})
+
+    client = GitHubRestClient(
+        token_provider=lambda: "fake-token",
+        http_client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+    adapter = GitHubAdapter(_settings(), client=client)
+
+    poll1 = adapter.get_diff("base", "head")
+    poll2 = adapter.get_diff("base", "head")  # ayni ETag -> 304
+
+    assert poll1 == poll2
+    assert poll2["src/backend/ensemble/engine/radar.py"] == "@@ -1 +1 @@\n-old\n+new"
+    assert calls["n"] == 2
 
 
 def test_adapter_fetch_events_normalizes_and_filters_by_since():

@@ -765,7 +765,10 @@ def test_radar_service_keeps_radar_up_when_get_diff_fails():
     detections = service.get_detections()
 
     assert len(detections) == 1
-    assert judge.calls[0][3] == 0.0
+    # main'den gelen #163 ile "bilinmeyen benzerlik" artik 0.0 degil None (path
+    # skoru yok -> known_scores bos -> max(default=None)) - get_diff basarisiz
+    # olup bos diff donduğunde de bu bilinmeyen yola dusuyor.
+    assert judge.calls[0][3] is None
 
 
 def test_radar_service_skips_get_diff_when_no_branch():

@@ -39,9 +39,12 @@ class GitHubRestClient:
         self._token_provider = token_provider
         self._http = http_client or httpx.Client(timeout=15.0)
         self._etags: dict[str, str] = {}
+        self._last_body: dict[str, dict] = {}
 
     def get(self, path: str, *, params: dict | None = None, cache_key: str | None = None):
-        """304 donerse None (degisiklik yok). Aksi halde parse edilmis JSON."""
+        """304 donerse son bilinen govdeyi replay eder (degisiklik yok, veri
+        kaybolmaz). Hic govde gormemisken 304 gelirse (beklenmedik sunucu
+        davranisi) None doner. Aksi halde parse edilmis JSON."""
         key = cache_key or path
         headers = {
             "Authorization": f"Bearer {self._token_provider()}",
@@ -52,10 +55,12 @@ class GitHubRestClient:
 
         resp = self._http.get(f"{_BASE}{path}", params=params, headers=headers)
         if resp.status_code == 304:
-            return None
+            return self._last_body.get(key)
         raise_for_status(resp)
 
         etag = resp.headers.get("ETag")
         if etag:
             self._etags[key] = etag
-        return resp.json()
+        body = resp.json()
+        self._last_body[key] = body
+        return body
