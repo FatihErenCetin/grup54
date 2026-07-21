@@ -7,10 +7,11 @@ detay sizdirmadigi (hosted) / ozet verdigi (local); Retry-After vatandasligi.
 import pytest
 from fastapi.testclient import TestClient
 
-from ensemble.api.deps import get_radar_service
+from ensemble.api.deps import get_radar_service, get_scope_service
 from ensemble.api.errors import ErrorEnvelope
 from ensemble.app import create_app
 from ensemble.config import Settings
+from ensemble.engine.scope import ScopeJudgeError, ScopeReferenceError, ScopeUnavailableError
 from ensemble.integrations.gemini.errors import (
     GeminiError,
     GeminiPermanentError,
@@ -32,6 +33,14 @@ class _Boom:
         self.exc = exc
 
     def get_detections(self):
+        raise self.exc
+
+
+class _BoomScope:
+    def __init__(self, exc: Exception):
+        self.exc = exc
+
+    def check_scope(self, ref: str):
         raise self.exc
 
 
@@ -146,3 +155,22 @@ def test_preflight_calisiyor():
     assert resp.status_code == 200
     assert resp.headers.get("access-control-allow-origin") == _ORIGIN
     assert "GET" in resp.headers.get("access-control-allow-methods", "")
+
+
+@pytest.mark.parametrize(
+    ("exc", "status", "code"),
+    [
+        (ScopeReferenceError(_SENTINEL), 404, "scope_ref_not_found"),
+        (ScopeUnavailableError(_SENTINEL), 503, "scope_unavailable"),
+        (ScopeJudgeError(_SENTINEL), 502, "scope_judge_error"),
+    ],
+)
+def test_scope_hatalari_acik_ama_ic_detaysiz_zarfla_doner(exc, status, code):
+    app = create_app(Settings(_env_file=None))
+    app.dependency_overrides[get_scope_service] = lambda: _BoomScope(exc)
+
+    response = TestClient(app).get("/scope/check", params={"ref": "PR-42"})
+
+    assert response.status_code == status
+    assert response.json()["error"] == code
+    assert _SENTINEL not in response.text

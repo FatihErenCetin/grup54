@@ -39,6 +39,7 @@ from ensemble.integrations.github.errors import (
     GitHubRateLimitError,
     GitHubTransientError,
 )
+from ensemble.engine.scope import ScopeJudgeError, ScopeReferenceError, ScopeUnavailableError
 
 logger = logging.getLogger("ensemble.errors")
 
@@ -76,13 +77,52 @@ ERROR_RESPONSES = {
 # Siralama okunabilirlik icindir: Starlette handler'i type(exc).__mro__
 # yuruyerek bulur — kayit sirasi davranisi ETKILEMEZ.
 _DOMAIN_MAP: list[tuple[type[Exception], int, str, str, bool]] = [
-    (GitHubRateLimitError, 503, "rate_limited", "GitHub istek limiti doldu — birazdan yeniden denenecek.", True),
-    (GitHubConfigError, 503, "github_config", "GitHub yapılandırması eksik — .env'deki GITHUB_* alanlarını kontrol edin.", False),
-    (GitHubAuthError, 502, "github_auth", "GitHub kimlik doğrulaması reddedildi — App kurulumunu kontrol edin.", False),
+    (ScopeReferenceError, 404, "scope_ref_not_found", "Scope referansı bulunamadı.", False),
+    (
+        ScopeUnavailableError,
+        503,
+        "scope_unavailable",
+        "Donmuş scope belgesi kullanılamıyor.",
+        False,
+    ),
+    (
+        ScopeJudgeError,
+        502,
+        "scope_judge_error",
+        "Scope kararı güvenilir kanıta bağlanamadı.",
+        False,
+    ),
+    (
+        GitHubRateLimitError,
+        503,
+        "rate_limited",
+        "GitHub istek limiti doldu — birazdan yeniden denenecek.",
+        True,
+    ),
+    (
+        GitHubConfigError,
+        503,
+        "github_config",
+        "GitHub yapılandırması eksik — .env'deki GITHUB_* alanlarını kontrol edin.",
+        False,
+    ),
+    (
+        GitHubAuthError,
+        502,
+        "github_auth",
+        "GitHub kimlik doğrulaması reddedildi — App kurulumunu kontrol edin.",
+        False,
+    ),
     (GitHubTransientError, 503, "github_unavailable", "GitHub geçici olarak erişilemez.", True),
     (GitHubError, 502, "github_error", "GitHub entegrasyonunda hata.", False),
     (GeminiTransientError, 503, "gemini_unavailable", "Gemini geçici olarak erişilemez.", True),
-    (GeminiPermanentError, 502, "gemini_error", "Gemini isteği kalıcı olarak reddedildi — API anahtarını kontrol edin.", False),
+    (
+        GeminiPermanentError,
+        502,
+        "gemini_error",
+        "Gemini isteği kalıcı olarak reddedildi — API anahtarını kontrol edin.",
+        False,
+    ),
     # Taban siniflar da esli: dogrudan taban firlatilirsa 500 fallback'ine
     # dusup (local modda) ic detay sizdirmasin — asimetri bulgusu
     (GeminiError, 502, "gemini_error", "Gemini entegrasyonunda hata.", False),

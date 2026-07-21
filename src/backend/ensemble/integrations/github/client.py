@@ -5,6 +5,7 @@ import httpx
 from ensemble.integrations.github.errors import (
     GitHubAuthError,
     GitHubError,
+    GitHubNotFoundError,
     GitHubRateLimitError,
     GitHubTransientError,
 )
@@ -23,6 +24,8 @@ def raise_for_status(resp: httpx.Response) -> None:
         raise GitHubAuthError(f"403 izin hatasi: {resp.text}")
     if resp.status_code == 429:
         raise GitHubRateLimitError(f"429 secondary rate limit: {resp.headers.get('Retry-After')}")
+    if resp.status_code == 404:
+        raise GitHubNotFoundError(f"404 kaynak bulunamadi: {resp.text}")
     if resp.status_code >= 500:
         raise GitHubTransientError(f"{resp.status_code} sunucu hatasi: {resp.text}")
     raise GitHubError(f"{resp.status_code} beklenmeyen hata: {resp.text}")

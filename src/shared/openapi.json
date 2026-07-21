@@ -161,12 +161,120 @@
               }
             }
           },
+          "404": {
+            "description": "Scope referansı bulunamadı",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
           "422": {
             "description": "Validation Error",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/scope/current": {
+      "get": {
+        "tags": [
+          "scope"
+        ],
+        "summary": "Current Scope",
+        "operationId": "current_scope_scope_current_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScopeCurrent"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Kalici saglayici hatasi (GitHub/Gemini)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Gecici olarak erisilemez",
+            "headers": {
+              "Retry-After": {
+                "description": "Saniye — yalniz kendiliginden duzelebilir durumlarda",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/scope/verdicts": {
+      "get": {
+        "tags": [
+          "scope"
+        ],
+        "summary": "Scope Verdicts",
+        "operationId": "scope_verdicts_scope_verdicts_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScopeVerdictsResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Kalici saglayici hatasi (GitHub/Gemini)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Gecici olarak erisilemez",
+            "headers": {
+              "Retry-After": {
+                "description": "Saniye — yalniz kendiliginden duzelebilir durumlarda",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
                 }
               }
             }
@@ -531,6 +639,61 @@
         ],
         "title": "RadarResponse"
       },
+      "ScopeCurrent": {
+        "properties": {
+          "goal": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Goal"
+          },
+          "in_scope": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "minItems": 1,
+            "title": "In Scope"
+          },
+          "non_goals": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Non Goals"
+          },
+          "version": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Version"
+          },
+          "frozen_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Frozen At"
+          },
+          "ref": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Ref"
+          },
+          "commit_sha": {
+            "type": "string",
+            "pattern": "^[0-9a-fA-F]{7,64}$",
+            "title": "Commit Sha"
+          }
+        },
+        "type": "object",
+        "required": [
+          "goal",
+          "in_scope",
+          "non_goals",
+          "version",
+          "frozen_at",
+          "ref",
+          "commit_sha"
+        ],
+        "title": "ScopeCurrent"
+      },
       "ScopeItemRef": {
         "properties": {
           "quote": {
@@ -648,6 +811,62 @@
           "evidence"
         ],
         "title": "ScopeVerdict"
+      },
+      "ScopeVerdictCounts": {
+        "properties": {
+          "in_scope": {
+            "type": "integer",
+            "title": "In Scope"
+          },
+          "drift": {
+            "type": "integer",
+            "title": "Drift"
+          },
+          "non_goal_violation": {
+            "type": "integer",
+            "title": "Non Goal Violation"
+          }
+        },
+        "type": "object",
+        "required": [
+          "in_scope",
+          "drift",
+          "non_goal_violation"
+        ],
+        "title": "ScopeVerdictCounts"
+      },
+      "ScopeVerdictsResponse": {
+        "properties": {
+          "verdicts": {
+            "items": {
+              "$ref": "#/components/schemas/ScopeVerdict"
+            },
+            "type": "array",
+            "title": "Verdicts"
+          },
+          "counts": {
+            "$ref": "#/components/schemas/ScopeVerdictCounts"
+          },
+          "judged_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Judged At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "verdicts",
+          "counts",
+          "judged_at"
+        ],
+        "title": "ScopeVerdictsResponse"
       },
       "Signals": {
         "properties": {

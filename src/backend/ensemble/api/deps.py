@@ -15,8 +15,7 @@ def get_radar_service(request: Request) -> RadarService:
 
 
 def get_scope_service(request: Request) -> ScopeService:
-    # return request.app.state.scope_service
-    return ScopeService(harness_port=None, judge_port=None)  # type: ignore
+    return request.app.state.scope_service
 
 
 def get_board_service(request: Request) -> BoardService:
