@@ -24,3 +24,8 @@ ensemble-mcp = { workspace = true }
 [tool.ruff]
 line-length = 100
 target-version = "py312"
+
+[tool.pytest.ini_options]
+markers = [
+    "integration: dış servis gerektiren ve varsayılan CI'da skip edilebilen testler",
+]
