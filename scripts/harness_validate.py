@@ -63,7 +63,9 @@ def validate_harness(root: Path) -> list[str]:
                 # _read_markdown = üretimdeki TEK parse+validate yolu (bkz. modül docstring).
                 port._read_markdown(path, doc_type)
             except HarnessError as exc:
-                errors.append(f"{path.relative_to(root)}: {exc}")
+                # .as_posix() → hata mesajı cross-platform '/' kullansın
+                # (Windows '\' üretmesin; testler ve okunabilirlik için).
+                errors.append(f"{path.relative_to(root).as_posix()}: {exc}")
     return errors
 
 
