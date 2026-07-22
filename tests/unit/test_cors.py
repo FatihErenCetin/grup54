@@ -21,13 +21,17 @@ def make_client() -> TestClient:
 
 
 def test_izinli_origin_cors_basligi_alir():
-    r = make_client().get("/health", headers={"Origin": ALLOWED})
+    # /health artik RadarServiceDep gerektiriyor (#53) - lifespan'in
+    # app.state.radar_service'i kurmasi icin context manager sart.
+    with make_client() as client:
+        r = client.get("/health", headers={"Origin": ALLOWED})
     assert r.status_code == 200
     assert r.headers.get("access-control-allow-origin") == ALLOWED
 
 
 def test_izinsiz_origin_cors_basligi_almaz():
-    r = make_client().get("/health", headers={"Origin": "https://kotu.example"})
+    with make_client() as client:
+        r = client.get("/health", headers={"Origin": "https://kotu.example"})
     # İstek 200 döner (CORS'u tarayıcı keser) ama izin başlığı YOK olmalı.
     assert r.status_code == 200
     assert "access-control-allow-origin" not in r.headers

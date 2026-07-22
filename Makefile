@@ -1,4 +1,4 @@
-.PHONY: install dev test lint openapi eval-dataset eval-run eval-sweep eval eval-gate
+.PHONY: install dev test lint openapi eval-dataset eval-run eval-sweep eval eval-gate scope-eval harness-init frontend-build-guard deploy
 
 install:
 	uv sync --all-packages
@@ -37,3 +37,24 @@ eval: eval-run eval-sweep eval-gate
 # veya F0.5 kalibre tabanın altına düşerse exit 1 (dedektör/judge regresyonu).
 eval-gate:
 	uv run python -m eval.gate
+
+# #31 scope-drift DONE kapısı: 3-sınıf backtest + yanlış-alarm precision.
+scope-eval:
+	uv run python -m eval.scope_eval
+
+# Onboarding sihirbazı (#57): ilk .harness/ iskeletini yazar (.harness/ zaten
+# varsa DOKUNMAZ - fail-safe). Örnek: make harness-init MILESTONE="Sprint 3"
+harness-init:
+	uv run python -m ensemble.onboarding.wizard --milestone "$(MILESTONE)"
+
+# #188 prod build hijyen guard: prod `vite build` (VITE_MOCK kapalı) + dist'te
+# mock-bayrağı/backend-sır taraması (takım handle'ları serbest, PO kararı #214).
+# CI: prod-build-guard.yml.
+frontend-build-guard:
+	cd src/frontend && VITE_MOCK= npm run build && node scripts/prod-build-guard.mjs dist
+
+# Fly.io'ya deploy (#181, fly.toml). Secret'lar önceden `fly secrets set` ile
+# ayrı set edilmiş olmalı (bkz. fly.toml başlığı + PR gövdesi). Release/migrate
+# adımı henüz YOK (#187) — bugün yalnız imaj build+deploy eder.
+deploy:
+	flyctl deploy --config fly.toml

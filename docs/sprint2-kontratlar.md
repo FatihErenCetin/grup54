@@ -88,6 +88,8 @@ class HarnessPort(Protocol):            # impl: #13 (GATE 1)
     def read_tasks(self) -> list[dict]: ...      # board'ın tek kaynağı (#13 ile eklendi)
     def read_active(self) -> list[dict]: ...
     def write_active(self, handle: str, decl: dict) -> None: ...   # yazar başına 1 dosya
+    def write_task(self, task_id: str, decl: dict) -> None: ...    # #57 onboarding
+    def write_scope(self, sprint: str, decl: dict) -> None: ...    # #57 onboarding
 ```
 
 ---
@@ -96,7 +98,7 @@ class HarnessPort(Protocol):            # impl: #13 (GATE 1)
 
 | Method · Path | Girdi | Çıktı (JSON) | Issue |
 |---|---|---|---|
-| `GET /health` | — | `{status, mode}` | #14 |
+| `GET /health` | — | `{status, mode, github_auth, gemini}` | #14, zenginleştirme #53 |
 | `GET /radar` | — | `{detections: Detection[], updated_at}` | #17, #25 |
 | `GET /scope/check?ref=<pr>` | query | `ScopeVerdict` | #31 (S3) |
 | `GET /board` | — | `{cards: BoardCard[]}` | S3 |

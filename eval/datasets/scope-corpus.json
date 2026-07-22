@@ -1,0 +1,148 @@
+{
+  "scope": {
+    "status": "frozen",
+    "body": "G-1: AI çağında ekip koordinasyonunu görünür ve güvenilir kıl",
+    "goals": [
+      "IS-1: Semantik çakışma radarı ve scope-drift dedektörünü kalibre et",
+      "IS-2: Board, Ask ve read-only MCP araçlarını tamamla",
+      "IS-3: Fly backend ve Vercel frontend ile tek hosted demo yayınla",
+      "IS-4: Local-first GitHub App ingest ve webhook akışını çalıştır",
+      "IS-5: Ollama ile yerel embeddings ve judge gizlilik modu sağla"
+    ],
+    "non_goals": [
+      "NG-1: Kullanıcı login, OAuth, session ve hesap sistemi yazma",
+      "NG-2: Multi-tenant organizasyon, rol ve yetki sistemi kurma",
+      "NG-3: Slack, email veya bildirim servisi ekleme",
+      "NG-4: Kubernetes, Terraform ve ağır observability altyapısı kurma",
+      "NG-5: Billing, abonelik veya Stripe entegrasyonu yazma"
+    ]
+  },
+  "cases": [
+    {
+      "id": "in-scope-scope-judge",
+      "title": "Scope-drift için Gemini judge ve false-positive eval",
+      "body": "Kapsam kanıtını alıntılayıp drift kararını kalibre et",
+      "paths": ["src/backend/ensemble/engine/scope.py"],
+      "expected": "in_scope"
+    },
+    {
+      "id": "in-scope-radar-calibration",
+      "title": "Semantik çakışma radarı yanlış alarm kalibrasyonu",
+      "body": "Eval korpusunda precision ve F0.5 ölç",
+      "paths": ["eval/eval_runner.py"],
+      "expected": "in_scope"
+    },
+    {
+      "id": "in-scope-board",
+      "title": "Kendiliğinden dolan board read router",
+      "body": "Harness task kartlarını salt okunur döndür",
+      "paths": ["src/backend/ensemble/api/routers/board.py"],
+      "expected": "in_scope"
+    },
+    {
+      "id": "in-scope-ask",
+      "title": "Ask endpoint için vector retrieval ve alıntılar",
+      "body": "Projeye sor yanıtında citation döndür",
+      "paths": ["src/backend/ensemble/api/routers/query.py"],
+      "expected": "in_scope"
+    },
+    {
+      "id": "in-scope-mcp",
+      "title": "Read-only MCP check_scope aracı",
+      "body": "ScopeService motoruna delege et",
+      "paths": ["src/mcp/ensemble_mcp/server.py"],
+      "expected": "in_scope"
+    },
+    {
+      "id": "in-scope-hosted",
+      "title": "Fly backend ve Vercel frontend hosted demo",
+      "body": "Tek repo için canlı demo linkini yayınla",
+      "paths": ["fly.toml", "vercel.json"],
+      "expected": "in_scope"
+    },
+    {
+      "id": "in-scope-ingest",
+      "title": "GitHub App webhook ingest akışı",
+      "body": "İmzalı GitHub olaylarını normalize et",
+      "paths": ["src/backend/ensemble/integrations/github/adapter.py"],
+      "expected": "in_scope"
+    },
+    {
+      "id": "in-scope-ollama",
+      "title": "Ollama yerel embeddings ve judge adapteri",
+      "body": "Repo bağlamını makineden çıkarmayan gizlilik modu",
+      "paths": ["src/backend/ensemble/integrations/ollama.py"],
+      "expected": "in_scope"
+    },
+    {
+      "id": "non-goal-oauth",
+      "title": "Kullanıcı login ve GitHub OAuth session sistemi",
+      "body": "Her geliştirici için hesap aç",
+      "paths": ["src/backend/ensemble/auth/oauth.py"],
+      "expected": "non_goal_violation"
+    },
+    {
+      "id": "non-goal-tenant",
+      "title": "Multi-tenant organizasyon rol ve yetki sistemi",
+      "body": "Her tenant için RBAC uygula",
+      "paths": ["src/backend/ensemble/tenants.py"],
+      "expected": "non_goal_violation"
+    },
+    {
+      "id": "non-goal-notifications",
+      "title": "Slack ve email bildirim servisi",
+      "body": "Her radar uyarısını kanallara gönder",
+      "paths": ["src/backend/ensemble/notifications.py"],
+      "expected": "non_goal_violation"
+    },
+    {
+      "id": "non-goal-infra",
+      "title": "Kubernetes Terraform ve observability altyapısı",
+      "body": "Prometheus ve Grafana cluster kur",
+      "paths": ["infra/main.tf"],
+      "expected": "non_goal_violation"
+    },
+    {
+      "id": "non-goal-billing",
+      "title": "Stripe abonelik ve billing entegrasyonu",
+      "body": "Kullanıcı başına ücret tahsil et",
+      "paths": ["src/backend/ensemble/billing.py"],
+      "expected": "non_goal_violation"
+    },
+    {
+      "id": "drift-mobile",
+      "title": "iOS ve Android mobil uygulama",
+      "body": "Radar ekranını native uygulamaya taşı",
+      "paths": ["mobile/App.swift"],
+      "expected": "drift"
+    },
+    {
+      "id": "drift-editor",
+      "title": "VS Code editör eklentisi",
+      "body": "Radar sonuçlarını IDE içinde göster",
+      "paths": ["extensions/vscode/index.ts"],
+      "expected": "drift"
+    },
+    {
+      "id": "drift-warehouse",
+      "title": "Analitik veri ambarı",
+      "body": "Uzun dönem ekip metriklerini BigQuery üzerinde raporla",
+      "paths": ["analytics/warehouse.sql"],
+      "expected": "drift"
+    },
+    {
+      "id": "drift-jira",
+      "title": "Jira çift yönlü senkronizasyon",
+      "body": "Issue durumlarını harici takip aracına yaz",
+      "paths": ["src/backend/ensemble/integrations/jira.py"],
+      "expected": "drift"
+    },
+    {
+      "id": "drift-multirepo",
+      "title": "Çok-repo federasyonu",
+      "body": "Birden fazla organizasyon reposunu ortak grafikte birleştir",
+      "paths": ["src/backend/ensemble/federation.py"],
+      "expected": "drift"
+    }
+  ]
+}

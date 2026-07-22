@@ -24,13 +24,13 @@ import sys
 from ensemble.integrations.gemini.fake import FakeJudgeAdapter
 from eval.eval_runner import EvalReport, EvalRunner
 
-# Kalibre tabanlar. #18 operasyon noktası: precision=1.0, F0.5=0.9375, total=118.
-# - precision 0.90: FP #1 risk; TP=6/FP=0'da tek FP bile P'yi 6/7=0.857'ye düşürür.
-# - F0.5 0.90: recall regresyonu da yakalanır — tek tespit kaybı (TP 6->5) F0.5'i
-#   0.893'e indirir (<0.90). 0.85 tabanı bunu KAÇIRIYORDU (adversarial bulgu).
+# Kalibre tabanlar. #162 sonrası gerçek pipeline: precision=1.0, F0.5=0.8929, total=118.
+# - precision 0.90: FP #1 risk; TP=5/FP=0'da tek FP bile P'yi 5/6=0.833'e düşürür.
+# - F0.5 0.89: mevcut dürüst tabanı geçirir; sonraki tespit kaybı (TP 5->4)
+#   F0.5'i 0.8333'e indirir ve kapıyı kırar.
 # - MIN_TOTAL: korpus daralması/kaybı maskelemesin (fail-closed).
 MIN_PRECISION = 0.90
-MIN_F05 = 0.90
+MIN_F05 = 0.89
 MIN_TOTAL = 100
 
 

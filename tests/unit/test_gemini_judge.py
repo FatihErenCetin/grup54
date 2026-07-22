@@ -6,7 +6,7 @@ from ensemble.config import Settings
 from ensemble.integrations.gemini.client import ResilientGeminiClient
 from ensemble.integrations.gemini.errors import GeminiPermanentError, GeminiTransientError
 from ensemble.integrations.gemini.fake import FakeJudgeAdapter
-from ensemble.integrations.gemini.judge import GeminiJudgeAdapter
+from ensemble.integrations.gemini.judge import GeminiJudgeAdapter, _build_prompt
 from ensemble.models import NormalizedEvent
 
 
@@ -112,6 +112,14 @@ def test_judge_passes_response_schema_to_client():
     a, b = _event("1", "esma", ["x.py"]), _event("2", "fatih", ["x.py"])
     adapter.judge_conflict(a, b, overlap=["x.py"], sim=0.5)
     assert stub.last_response_schema is not None
+
+
+def test_judge_prompt_marks_unknown_similarity():
+    a, b = _event("1", "esma", ["x.py"]), _event("2", "fatih", ["x.py"])
+
+    prompt = _build_prompt(a, b, overlap=["x.py"], sim=None)
+
+    assert "Bilinmiyor (yalnızca dosya kesişimi mevcut)" in prompt
 
 
 def test_judge_same_actor_skips_gemini_call_entirely():

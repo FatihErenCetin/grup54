@@ -12,12 +12,21 @@ from typing import Literal
 
 from pydantic import BaseModel
 
-from ensemble.models import BoardCard, Detection
+from ensemble.models import BoardCard, Detection, QueryResult, ScopeVerdict
 
 
 class HealthResponse(BaseModel):
     status: Literal["ok"]
     mode: Literal["local", "hosted"]
+    # #53: acilis-anindaki WIRING sonucu — Fake* adaptere degil gercek
+    # adapter sinifina mi dusuldu (Fly health-check + local-first "token/key
+    # ayarli mi?" sinyali). Canli ag cagrisi YOK (Fly health-check flaky
+    # olmasin). "configured" = gercek kimlik bilgisi SET EDILMIS ve adapter
+    # kuruldu — GECERLI/DOGRULANMIS anlamina GELMEZ (review bulgusu, Semih:
+    # gecersiz PEM/anahtarla da adapter kurulur, ilk gercek API cagrisinda
+    # patlar). Canli dogrulama icin: #58/spot-check (kalibrasyon-raporu §4).
+    github_auth: Literal["configured", "missing"]
+    gemini: Literal["configured", "missing"]
 
 
 class RadarResponse(BaseModel):
@@ -29,6 +38,17 @@ class BoardResponse(BaseModel):
     cards: list[BoardCard]
 
 
-class QueryResponse(BaseModel):
-    answer: str
-    citations: list[str]
+class QueryResponse(QueryResult):
+    pass
+
+
+class ScopeVerdictCounts(BaseModel):
+    in_scope: int
+    drift: int
+    non_goal_violation: int
+
+
+class ScopeVerdictsResponse(BaseModel):
+    verdicts: list[ScopeVerdict]
+    counts: ScopeVerdictCounts
+    judged_at: datetime | None

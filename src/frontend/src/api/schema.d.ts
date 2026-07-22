@@ -55,6 +55,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/scope/current": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Current Scope */
+        get: operations["current_scope_scope_current_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/scope/verdicts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Scope Verdicts */
+        get: operations["scope_verdicts_scope_verdicts_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/board": {
         parameters: {
             query?: never;
@@ -131,6 +165,23 @@ export interface components {
             /** Cards */
             cards: components["schemas"]["BoardCard"][];
         };
+        /** Citation */
+        Citation: {
+            /**
+             * Type
+             * @enum {string}
+             */
+            type: "scope" | "task" | "decision" | "event" | "pr";
+            /** Ref */
+            ref: string;
+            /** Quote */
+            quote: string;
+            /** Url */
+            url?: string | null;
+            range?: components["schemas"]["LineRange"] | null;
+            /** N */
+            n?: number | null;
+        };
         /** Detection */
         Detection: {
             /** Id */
@@ -183,13 +234,63 @@ export interface components {
              * @enum {string}
              */
             mode: "local" | "hosted";
+            /**
+             * Github Auth
+             * @enum {string}
+             */
+            github_auth: "configured" | "missing";
+            /**
+             * Gemini
+             * @enum {string}
+             */
+            gemini: "configured" | "missing";
+        };
+        /** LineRange */
+        LineRange: {
+            /** Start */
+            start: number;
+            /** End */
+            end: number;
+        };
+        /** NearestRef */
+        NearestRef: {
+            /**
+             * Type
+             * @enum {string}
+             */
+            type: "scope" | "task" | "decision" | "event" | "pr";
+            /** Ref */
+            ref: string;
         };
         /** QueryResponse */
         QueryResponse: {
             /** Answer */
             answer: string;
             /** Citations */
-            citations: string[];
+            citations: (string | components["schemas"]["Citation"])[];
+            /**
+             * As Of
+             * Format: date-time
+             */
+            as_of: string;
+            /** Last Commit */
+            last_commit: string;
+            /** Window */
+            window?: string | null;
+            /**
+             * Confidence
+             * @enum {string}
+             */
+            confidence: "low" | "medium" | "high";
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "answered" | "not_found";
+            /** Searched */
+            searched: components["schemas"]["SearchReceipt"][];
+            /** Nearest */
+            nearest: components["schemas"]["NearestRef"][];
         };
         /** RadarResponse */
         RadarResponse: {
@@ -200,6 +301,37 @@ export interface components {
              * Format: date-time
              */
             updated_at: string;
+        };
+        /** ScopeCurrent */
+        ScopeCurrent: {
+            /** Goal */
+            goal: string;
+            /** In Scope */
+            in_scope: string[];
+            /** Non Goals */
+            non_goals: string[];
+            /** Version */
+            version: string;
+            /**
+             * Frozen At
+             * Format: date-time
+             */
+            frozen_at: string;
+            /** Ref */
+            ref: string;
+            /** Commit Sha */
+            commit_sha: string;
+        };
+        /** ScopeItemRef */
+        ScopeItemRef: {
+            /** Quote */
+            quote: string;
+            /** Item Id */
+            item_id?: string | null;
+            /** Section */
+            section?: ("goal" | "in_scope" | "non_goals") | null;
+            /** Line */
+            line?: number | null;
         };
         /** ScopeVerdict */
         ScopeVerdict: {
@@ -213,7 +345,49 @@ export interface components {
             /** Confidence */
             confidence: number;
             /** Evidence */
-            evidence: string;
+            evidence: string | components["schemas"]["ScopeItemRef"];
+            /**
+             * Match None
+             * @default false
+             */
+            match_none: boolean;
+            /** Judged At */
+            judged_at?: string | null;
+            signals?: components["schemas"]["Signals"] | null;
+        };
+        /** ScopeVerdictCounts */
+        ScopeVerdictCounts: {
+            /** In Scope */
+            in_scope: number;
+            /** Drift */
+            drift: number;
+            /** Non Goal Violation */
+            non_goal_violation: number;
+        };
+        /** ScopeVerdictsResponse */
+        ScopeVerdictsResponse: {
+            /** Verdicts */
+            verdicts: components["schemas"]["ScopeVerdict"][];
+            counts: components["schemas"]["ScopeVerdictCounts"];
+            /** Judged At */
+            judged_at: string | null;
+        };
+        /** SearchReceipt */
+        SearchReceipt: {
+            /**
+             * Type
+             * @enum {string}
+             */
+            type: "scope" | "task" | "decision" | "event" | "pr";
+            /** Count */
+            count: number;
+        };
+        /** Signals */
+        Signals: {
+            /** Files */
+            files: string[];
+            /** Matched Text */
+            matched_text?: string | null;
         };
         /** ValidationError */
         ValidationError: {
@@ -337,6 +511,15 @@ export interface operations {
                     "application/json": components["schemas"]["ScopeVerdict"];
                 };
             };
+            /** @description Scope referansı bulunamadı */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -344,6 +527,86 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Kalici saglayici hatasi (GitHub/Gemini) */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Gecici olarak erisilemez */
+            503: {
+                headers: {
+                    /** @description Saniye — yalniz kendiliginden duzelebilir durumlarda */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    current_scope_scope_current_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScopeCurrent"];
+                };
+            };
+            /** @description Kalici saglayici hatasi (GitHub/Gemini) */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Gecici olarak erisilemez */
+            503: {
+                headers: {
+                    /** @description Saniye — yalniz kendiliginden duzelebilir durumlarda */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    scope_verdicts_scope_verdicts_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScopeVerdictsResponse"];
                 };
             };
             /** @description Kalici saglayici hatasi (GitHub/Gemini) */
@@ -426,6 +689,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["QueryResponse"];
+                };
+            };
+            /** @description Geçersiz doğal dil sorgusu */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
             /** @description Validation Error */

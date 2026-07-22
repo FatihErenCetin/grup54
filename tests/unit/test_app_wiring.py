@@ -16,13 +16,18 @@ from ensemble.engine.embeddings import CachedEmbeddings, HashEmbeddings
 from ensemble.integrations.gemini.embeddings import GeminiEmbeddingsAdapter
 from ensemble.integrations.gemini.fake import FakeJudgeAdapter
 from ensemble.integrations.gemini.judge import GeminiJudgeAdapter
+from ensemble.integrations.gemini.query_judge import FakeQueryJudgeAdapter
+from ensemble.integrations.gemini.scope_judge import FakeScopeJudgeAdapter
 from ensemble.integrations.github.adapter import GitHubAdapter
 from ensemble.integrations.github.fake import FakeGitHubAdapter
+from ensemble.integrations.query_source import HarnessEventQuerySource
+from ensemble.store.vector_store import LocalVectorIndex
 
 _ENV_KEYS = [
     "GEMINI_API_KEY",
     "GITHUB_APP_ID",
     "GITHUB_APP_PRIVATE_KEY_PATH",
+    "GITHUB_APP_PRIVATE_KEY",
     "GITHUB_APP_INSTALLATION_ID",
     "GITHUB_REPO_OWNER",
     "GITHUB_REPO_NAME",
@@ -67,6 +72,21 @@ def test_github_config_eksikse_fakeye_duser_ve_loglar(caplog):
         service = _build_radar_service(settings)
     assert isinstance(service.github_port, FakeGitHubAdapter)
     assert "GitHub App yapılandırması eksik" in caplog.text
+
+
+def test_pem_icerigi_ile_diskte_pem_olmadan_gercek_adapter_secilir():
+    """#186: yalnız GITHUB_APP_PRIVATE_KEY (içerik) ile, diskte .pem olmadan bile
+    hosted engine gerçek GitHubAdapter'ı kurar."""
+    settings = _settings(
+        GEMINI_API_KEY="fake-key",
+        GITHUB_APP_ID="123",
+        GITHUB_APP_PRIVATE_KEY="fake-pem-icerigi",
+        GITHUB_APP_INSTALLATION_ID="456",
+        GITHUB_REPO_OWNER="FatihErenCetin",
+        GITHUB_REPO_NAME="grup54",
+    )
+    service = _build_radar_service(settings)
+    assert isinstance(service.github_port, GitHubAdapter)
 
 
 def test_pem_dosyasi_yoksa_fakeye_duser_ve_loglar(tmp_path, caplog):
@@ -125,3 +145,22 @@ def test_app_state_lifespan_ile_radar_service_kurulur():
         resp = client.get("/radar")
     assert resp.status_code == 200
     assert resp.json()["detections"] == []
+
+
+def test_app_state_lifespan_ile_query_service_kurulur():
+    app = create_app(_settings())
+
+    with TestClient(app):
+        service = app.state.query_service
+        assert isinstance(service.source_port, HarnessEventQuerySource)
+        assert service.source_port.session_factory is not None
+        assert isinstance(service.vector_index, LocalVectorIndex)
+        assert isinstance(service.judge_port, FakeQueryJudgeAdapter)
+
+
+def test_app_state_lifespan_ile_scope_service_kurulur():
+    app = create_app(_settings())
+
+    with TestClient(app):
+        assert app.state.scope_service.harness_port is not None
+        assert isinstance(app.state.scope_service.judge_port, FakeScopeJudgeAdapter)

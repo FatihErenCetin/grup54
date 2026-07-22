@@ -48,6 +48,10 @@ class Settings(BaseSettings):
     # GitHubConfigError firlatilir.
     GITHUB_APP_ID: str | None = None
     GITHUB_APP_PRIVATE_KEY_PATH: str | None = None
+    # Hosted alternatifi (#186) - Fly/Render secret'lari env-STRING, mount'lu
+    # dosya degil. PATH varsa PATH kazanir (mevcut local akis); PATH yoksa bu
+    # alanin (PEM icerigi, ham metin) kullanilir.
+    GITHUB_APP_PRIVATE_KEY: str | None = None
     GITHUB_APP_INSTALLATION_ID: str | None = None
     GITHUB_REPO_OWNER: str | None = None
     GITHUB_REPO_NAME: str | None = None

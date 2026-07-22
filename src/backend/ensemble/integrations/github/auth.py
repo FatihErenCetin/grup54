@@ -30,11 +30,12 @@ class InstallationTokenCache:
     ) -> None:
         if not (
             settings.GITHUB_APP_ID
-            and settings.GITHUB_APP_PRIVATE_KEY_PATH
             and settings.GITHUB_APP_INSTALLATION_ID
+            and (settings.GITHUB_APP_PRIVATE_KEY_PATH or settings.GITHUB_APP_PRIVATE_KEY)
         ):
             raise GitHubConfigError(
-                "GITHUB_APP_ID/GITHUB_APP_PRIVATE_KEY_PATH/GITHUB_APP_INSTALLATION_ID eksik"
+                "GITHUB_APP_ID/GITHUB_APP_INSTALLATION_ID/"
+                "(GITHUB_APP_PRIVATE_KEY_PATH veya GITHUB_APP_PRIVATE_KEY) eksik"
             )
         self._settings = settings
         self._http = http_client or httpx.Client(timeout=15.0)
@@ -51,7 +52,12 @@ class InstallationTokenCache:
             return self._token
 
     def _build_app_jwt(self) -> str:
-        pem = Path(self._settings.GITHUB_APP_PRIVATE_KEY_PATH).read_text()
+        # PATH varsa dosyadan (mevcut local akis); yoksa PEM icerigi dogrudan
+        # env'den (#186, hosted - Fly/Render secret'lari dosya degil string).
+        if self._settings.GITHUB_APP_PRIVATE_KEY_PATH:
+            pem = Path(self._settings.GITHUB_APP_PRIVATE_KEY_PATH).read_text()
+        else:
+            pem = self._settings.GITHUB_APP_PRIVATE_KEY
         now = int(self._clock())
         return jwt.encode(
             {"iat": now - 60, "exp": now + 540, "iss": self._settings.GITHUB_APP_ID},
