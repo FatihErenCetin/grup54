@@ -13,6 +13,10 @@ class GitHubAuthError(GitHubError):
     """401/403 (kimlik/izin) - kalici, retry edilmez."""
 
 
+class GitHubNotFoundError(GitHubError):
+    """404 - istenen GitHub kaynagi bulunamadi."""
+
+
 class GitHubTransientError(GitHubError):
     """5xx / baglanti hatasi."""
 

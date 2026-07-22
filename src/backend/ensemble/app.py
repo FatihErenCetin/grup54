@@ -1,22 +1,32 @@
 import logging
+from collections.abc import Callable
 from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy.orm import Session
 
 from ensemble.api.errors import ERROR_RESPONSES, register_exception_handlers
 from ensemble.api.routers import board, health, query, radar, scope
 from ensemble.config import Settings, get_settings
 from ensemble.engine.embeddings import CachedEmbeddings, HashEmbeddings
+from ensemble.engine.query import QueryService
 from ensemble.engine.radar import RadarService
+from ensemble.engine.scope import ScopeService
 from ensemble.integrations.gemini.embeddings import GeminiEmbeddingsAdapter
 from ensemble.integrations.gemini.fake import FakeJudgeAdapter
 from ensemble.integrations.gemini.judge import GeminiJudgeAdapter
+from ensemble.integrations.gemini.query_judge import build_query_judge
+from ensemble.integrations.gemini.scope_judge import build_scope_judge
 from ensemble.integrations.github.adapter import GitHubAdapter
 from ensemble.integrations.github.errors import GitHubConfigError
 from ensemble.integrations.github.fake import FakeGitHubAdapter
-from ensemble.ports import EmbeddingsPort, GitHubPort, JudgePort
+from ensemble.integrations.query_source import HarnessEventQuerySource
+from ensemble.ports import EmbeddingsPort, GitHubPort, JudgePort, VectorIndexPort
+from ensemble.store.engine import get_engine, get_session_factory
+from ensemble.store.vector_store import LocalVectorIndex, build_vector_index
+from ensemble_shared.harness import FileHarnessPort
 
 logger = logging.getLogger("ensemble.wiring")
 
@@ -25,7 +35,10 @@ def _build_github_port(settings: Settings) -> GitHubPort:
     # pem dosyası yoksa GitHubAdapter bunu hemen fark etmez (yalnız token
     # yenilenirken okunur) - istek-anı 500'e düşmeden acilis-anı degradasyona
     # ceviriyoruz (Fatih review notu, PR #159).
-    if settings.GITHUB_APP_PRIVATE_KEY_PATH and not Path(settings.GITHUB_APP_PRIVATE_KEY_PATH).is_file():
+    if (
+        settings.GITHUB_APP_PRIVATE_KEY_PATH
+        and not Path(settings.GITHUB_APP_PRIVATE_KEY_PATH).is_file()
+    ):
         logger.warning(
             "GITHUB_APP_PRIVATE_KEY_PATH (%s) bulunamadı — FakeGitHubAdapter kullanılıyor.",
             settings.GITHUB_APP_PRIVATE_KEY_PATH,
@@ -34,7 +47,9 @@ def _build_github_port(settings: Settings) -> GitHubPort:
     try:
         return GitHubAdapter(settings)
     except GitHubConfigError as exc:
-        logger.warning("GitHub App yapılandırması eksik (%s) — FakeGitHubAdapter kullanılıyor.", exc)
+        logger.warning(
+            "GitHub App yapılandırması eksik (%s) — FakeGitHubAdapter kullanılıyor.", exc
+        )
         return FakeGitHubAdapter()
 
 
@@ -65,10 +80,58 @@ def _build_radar_service(settings: Settings) -> RadarService:
     )
 
 
+def _build_query_service(
+    settings: Settings,
+    radar_service: RadarService,
+    *,
+    session_factory: Callable[[], Session] | None = None,
+    vector_index: VectorIndexPort | None = None,
+) -> QueryService:
+    if session_factory is None and settings.ENSEMBLE_MODE == "local":
+        session_factory = get_session_factory(get_engine(settings))
+    if vector_index is None:
+        if settings.ENSEMBLE_MODE == "local":
+            vector_index = build_vector_index(settings)
+        else:
+            logger.warning("Hosted vector index henüz bağlı değil — local index kullanılıyor.")
+            vector_index = LocalVectorIndex()
+    source = HarnessEventQuerySource(
+        FileHarnessPort(),
+        session_factory=session_factory,
+        github_owner=settings.GITHUB_REPO_OWNER,
+        github_repo=settings.GITHUB_REPO_NAME,
+    )
+    return QueryService(
+        source_port=source,
+        embeddings_port=radar_service.embeddings_port,
+        vector_index=vector_index,
+        judge_port=build_query_judge(settings),
+    )
+
+
+def _build_scope_service(settings: Settings, radar_service: RadarService) -> ScopeService:
+    subject_port = (
+        radar_service.github_port if isinstance(radar_service.github_port, GitHubAdapter) else None
+    )
+    return ScopeService(
+        harness_port=FileHarnessPort(),
+        judge_port=build_scope_judge(settings),
+        embeddings_port=radar_service.embeddings_port,
+        subject_port=subject_port,
+    )
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     app.state.radar_service = _build_radar_service(app.state.settings)
-    # TODO: ScopeService/BoardService gercek DI (Issue #15/#16 disinda, ayri kapsam)
+    app.state.query_service = _build_query_service(
+        app.state.settings,
+        app.state.radar_service,
+        session_factory=getattr(app.state, "session_factory", None),
+        vector_index=getattr(app.state, "vector_index", None),
+    )
+    app.state.scope_service = _build_scope_service(app.state.settings, app.state.radar_service)
+    # TODO: BoardService gercek DI (#51)
     yield
     # TODO: Kapanışta kaynakları temizle
 

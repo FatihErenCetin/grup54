@@ -4,6 +4,7 @@ from fastapi import Depends, Request
 
 from ensemble.config import Settings
 from ensemble.engine import BoardService, RadarService, ScopeService
+from ensemble.engine.query import QueryService
 
 
 def get_settings(request: Request) -> Settings:
@@ -15,8 +16,11 @@ def get_radar_service(request: Request) -> RadarService:
 
 
 def get_scope_service(request: Request) -> ScopeService:
-    # return request.app.state.scope_service
-    return ScopeService(harness_port=None, judge_port=None)  # type: ignore
+    return request.app.state.scope_service
+
+
+def get_query_service(request: Request) -> QueryService:
+    return request.app.state.query_service
 
 
 def get_board_service(request: Request) -> BoardService:
@@ -29,4 +33,5 @@ def get_board_service(request: Request) -> BoardService:
 SettingsDep = Annotated[Settings, Depends(get_settings)]
 RadarServiceDep = Annotated[RadarService, Depends(get_radar_service)]
 ScopeServiceDep = Annotated[ScopeService, Depends(get_scope_service)]
+QueryServiceDep = Annotated[QueryService, Depends(get_query_service)]
 BoardServiceDep = Annotated[BoardService, Depends(get_board_service)]

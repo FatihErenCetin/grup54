@@ -3,12 +3,14 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import httpx
+import pytest
 
 from ensemble.config import Settings
 from ensemble.integrations.github.adapter import GitHubAdapter
 from ensemble.integrations.github.client import GitHubRestClient
 from ensemble.integrations.github.fake import FakeGitHubAdapter
 from ensemble.models import NormalizedEvent
+from ensemble.ports import ScopeSubjectNotFoundError
 
 _FIXTURES = Path(__file__).parent.parent / "fixtures" / "github_api"
 
@@ -190,7 +192,9 @@ def _fixture_handler(*, with_etag: bool):
 def _adapter(*, with_etag: bool) -> GitHubAdapter:
     client = GitHubRestClient(
         token_provider=lambda: "fake-token",
-        http_client=httpx.Client(transport=httpx.MockTransport(_fixture_handler(with_etag=with_etag))),
+        http_client=httpx.Client(
+            transport=httpx.MockTransport(_fixture_handler(with_etag=with_etag))
+        ),
     )
     return GitHubAdapter(_settings(), client=client)
 
@@ -334,3 +338,60 @@ def test_adapter_fetch_backfill_events_uses_recent_limit_without_since():
     ]
     assert all(request.url.params.get("per_page") == "2" for request in list_requests)
     assert all("since" not in request.url.params for request in list_requests)
+
+
+def test_adapter_scope_subject_pr_baslik_govde_ve_dosyalarini_tasir():
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        if request.headers.get("If-None-Match") == '"scope-42"':
+            return httpx.Response(304)
+        if request.url.path.endswith("/pulls/42"):
+            return httpx.Response(
+                200,
+                headers={"ETag": '"scope-42"'},
+                json={"title": "Scope router", "body": "Closes #59"},
+            )
+        if request.url.path.endswith("/pulls/42/files"):
+            return httpx.Response(
+                200,
+                headers={"ETag": '"scope-42"'},
+                json=[{"filename": "src/backend/ensemble/api/routers/scope.py"}],
+            )
+        return httpx.Response(404)
+
+    client = GitHubRestClient(
+        token_provider=lambda: "fake-token",
+        http_client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+    adapter = GitHubAdapter(_settings(), client=client)
+
+    first = adapter.resolve_scope_subject("PR-42")
+    second = adapter.resolve_scope_subject("PR-42")
+
+    assert first == second
+    assert first.text == "Scope router\nCloses #59"
+    assert first.files == ["src/backend/ensemble/api/routers/scope.py"]
+    assert len(requests) == 4
+    assert all(request.headers.get("If-None-Match") == '"scope-42"' for request in requests[2:])
+
+
+def test_adapter_bulunamayan_pr_refini_scope_hatasina_cevirir():
+    client = GitHubRestClient(
+        token_provider=lambda: "fake-token",
+        http_client=httpx.Client(
+            transport=httpx.MockTransport(lambda request: httpx.Response(404))
+        ),
+    )
+    adapter = GitHubAdapter(_settings(), client=client)
+
+    with pytest.raises(ScopeSubjectNotFoundError):
+        adapter.resolve_scope_subject("PR-404")
+
+
+def test_adapter_scope_subject_pr_olmayan_refi_harnessa_birakir():
+    adapter = _adapter(with_etag=False)
+
+    with pytest.raises(ScopeSubjectNotFoundError):
+        adapter.resolve_scope_subject("T-59-scope-router")
