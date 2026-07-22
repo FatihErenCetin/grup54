@@ -7,8 +7,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 
-from ensemble.api.errors import ERROR_RESPONSES, register_exception_handlers
-from ensemble.api.routers import board, graph, health, query, radar, scope
+from ensemble.api.errors import ERROR_RESPONSES, ErrorEnvelope, register_exception_handlers
+from ensemble.api.routers import board, graph, health, query, radar, scope, webhook
 from ensemble.config import Settings, get_settings
 from ensemble.engine.embeddings import CachedEmbeddings, HashEmbeddings
 from ensemble.engine.graph import GraphService
@@ -130,11 +130,14 @@ async def lifespan(app: FastAPI):
     # override'sız istekte TypeError veriyordu - store/engine.py'deki gercek
     # engine'e baglandi (radar_service ile ayni desen). Tablolar Alembic'le
     # onceden kurulu varsayilir (make migrate) - burasi sema kurmaz.
-    app.state.graph_service = GraphService(get_session_factory(get_engine(settings)))
+    # #62 webhook receiver: Projector'un yazacagi gercek DB session factory,
+    # graph_service ile aynisi paylasilir.
+    app.state.session_factory = get_session_factory(get_engine(settings))
+    app.state.graph_service = GraphService(app.state.session_factory)
     app.state.query_service = _build_query_service(
         settings,
         app.state.radar_service,
-        session_factory=getattr(app.state, "session_factory", None),
+        session_factory=app.state.session_factory,
         vector_index=getattr(app.state, "vector_index", None),
     )
     app.state.scope_service = _build_scope_service(settings, app.state.radar_service)
@@ -173,5 +176,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(board.router, responses=ERROR_RESPONSES)
     app.include_router(query.router, responses=ERROR_RESPONSES)
     app.include_router(graph.router, responses=ERROR_RESPONSES)
+    # #62 hata sözleşmesi: framework HTTPException'ları da Ek D zarfını taşır
+    # (errors.py::http_exception) ama bunu ERROR_RESPONSES'a genel eklemedik -
+    # 400/401 diğer (GET) router'lara uymuyor. Webhook'a özel bildiriliyor ki
+    # üretilen client (#20 zinciri) gerçek hata gövdesini tipleyebilsin
+    # (Semih review, #62: openapi 401'i gövdesiz ilan ediyordu).
+    _webhook_responses = {
+        **ERROR_RESPONSES,
+        400: {"model": ErrorEnvelope, "description": "Geçersiz JSON gövdesi"},
+        401: {"model": ErrorEnvelope, "description": "Eksik/geçersiz webhook imzası"},
+    }
+    app.include_router(webhook.router, responses=_webhook_responses)
 
     return app
