@@ -62,3 +62,35 @@ def issue_to_event(issue: dict) -> NormalizedEvent:
         ts=datetime.fromisoformat(updated_at),
         ref=str(number),
     )
+
+
+def webhook_push_to_events(payload: dict) -> list[NormalizedEvent]:
+    """Webhook `push` event payload'ı -> NormalizedEvent listesi (#62).
+
+    REST commits API'den FARKLI şekil (webhook `commits[]` alanı): `sha` yerine
+    `id`, `commit.author.date` yerine `timestamp`, ayrı `files` çağrısı yerine
+    `added`/`removed`/`modified` dizileri gövdede zaten var — bu yüzden
+    `commit_to_event` (REST şekli) yeniden kullanılamaz, ayrı bir mapper gerekir.
+    """
+    ref = payload.get("ref", "")
+    branch = ref.removeprefix("refs/heads/") if ref.startswith("refs/heads/") else None
+    events = []
+    for commit in payload.get("commits", []):
+        author = commit.get("author") or {}
+        files = [
+            *commit.get("added", []),
+            *commit.get("removed", []),
+            *commit.get("modified", []),
+        ]
+        events.append(
+            NormalizedEvent(
+                id=f"commit:{commit['id']}",
+                type="commit",
+                actor=author.get("username") or author.get("name", ""),
+                branch=branch,
+                files=files,
+                ts=datetime.fromisoformat(commit["timestamp"]),
+                ref=commit["id"],
+            )
+        )
+    return events

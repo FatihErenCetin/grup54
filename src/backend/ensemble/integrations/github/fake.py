@@ -46,9 +46,11 @@ class FakeGitHubAdapter:
         self,
         events: list[NormalizedEvent] | None = None,
         compare_files: dict[tuple[str, str], list[str]] | None = None,
+        diffs: dict[tuple[str, str], dict[str, str]] | None = None,
     ) -> None:
         self._events = events if events is not None else _DEFAULT_EVENTS
         self._compare_files = compare_files or {}
+        self._diffs = diffs or {}
         self._seen_backfill_ids: set[str] = set()
 
     def fetch_events(self, since: datetime) -> list[NormalizedEvent]:
@@ -71,6 +73,9 @@ class FakeGitHubAdapter:
 
     def compare(self, base: str, head: str) -> list[str]:
         return self._compare_files.get((base, head), [])
+
+    def get_diff(self, base: str, head: str) -> dict[str, str]:
+        return self._diffs.get((base, head), {})
 
 
 def _datetime_key(value: datetime) -> datetime:

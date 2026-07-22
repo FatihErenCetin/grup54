@@ -4,7 +4,7 @@ import re
 from typing import Any
 
 from ensemble.models import ScopeItemRef, ScopeSubject
-from ensemble.ports import ScopeSubjectPort
+from ensemble.ports import ScopeSubjectNotFoundError, ScopeSubjectPort
 from ensemble_shared.harness import HarnessPort
 
 _TASK_ID_RE = re.compile(r"\bT-(\d+)\b", re.IGNORECASE)
@@ -34,18 +34,22 @@ def resolve_scope_subject(
     if not clean_ref:
         raise ScopeReferenceError("scope ref boş olamaz")
     if subject_port is not None:
-        subject = subject_port.resolve_scope_subject(clean_ref)
-        if not subject.text.strip() and not subject.files:
-            raise ScopeReferenceError(
-                f"scope ref için değerlendirilebilir içerik yok: {clean_ref}"
+        try:
+            subject = subject_port.resolve_scope_subject(clean_ref)
+        except ScopeSubjectNotFoundError:
+            subject = None
+        if subject is not None:
+            if not subject.text.strip() and not subject.files:
+                raise ScopeReferenceError(
+                    f"scope ref için değerlendirilebilir içerik yok: {clean_ref}"
+                )
+            return subject.model_copy(
+                update={
+                    "ref": clean_ref,
+                    "text": subject.text.strip() or "\n".join(sorted(subject.files)),
+                    "files": sorted(set(subject.files)),
+                }
             )
-        return subject.model_copy(
-            update={
-                "ref": clean_ref,
-                "text": subject.text.strip() or "\n".join(sorted(subject.files)),
-                "files": sorted(set(subject.files)),
-            }
-        )
 
     tasks = harness_port.read_tasks()
     active = harness_port.read_active()
@@ -54,9 +58,7 @@ def resolve_scope_subject(
         (task for task in tasks if _record_matches(task, clean_ref, task_id)),
         None,
     )
-    matched_active = [
-        decl for decl in active if _record_matches(decl, clean_ref, task_id)
-    ]
+    matched_active = [decl for decl in active if _record_matches(decl, clean_ref, task_id)]
 
     if matched_task is None and matched_active:
         active_task_id = str(matched_active[0].get("task_id") or "")
@@ -105,9 +107,7 @@ def scope_items(scope: dict[str, Any]) -> list[ScopeItemRef]:
     if body:
         items.append(_scope_item(body, "goal"))
     items.extend(_scope_item(str(value), "in_scope") for value in scope.get("goals") or [])
-    items.extend(
-        _scope_item(str(value), "non_goals") for value in scope.get("non_goals") or []
-    )
+    items.extend(_scope_item(str(value), "non_goals") for value in scope.get("non_goals") or [])
     if not any(item.section == "in_scope" for item in items):
         raise ScopeUnavailableError("scope belgesinde en az bir in_scope/goals maddesi gerekli")
     return items
@@ -125,10 +125,7 @@ def _task_id_from_ref(ref: str) -> str | None:
 
 def _record_matches(record: dict[str, Any], ref: str, task_id: str | None) -> bool:
     wanted = ref.casefold()
-    values = {
-        str(record.get(key) or "").strip().casefold()
-        for key in ("task_id", "branch", "ref")
-    }
+    values = {str(record.get(key) or "").strip().casefold() for key in ("task_id", "branch", "ref")}
     if wanted in values:
         return True
     return task_id is not None and task_id.casefold() in values

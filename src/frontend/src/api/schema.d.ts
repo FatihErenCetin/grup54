@@ -55,6 +55,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/scope/current": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Current Scope */
+        get: operations["current_scope_scope_current_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/scope/verdicts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Scope Verdicts */
+        get: operations["scope_verdicts_scope_verdicts_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/board": {
         parameters: {
             query?: never;
@@ -89,6 +123,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/graph": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Graph */
+        get: operations["get_graph_graph_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/webhooks/github": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Github Webhook */
+        post: operations["github_webhook_webhooks_github_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -113,6 +181,23 @@ export interface components {
         BoardResponse: {
             /** Cards */
             cards: components["schemas"]["BoardCard"][];
+        };
+        /** Citation */
+        Citation: {
+            /**
+             * Type
+             * @enum {string}
+             */
+            type: "scope" | "task" | "decision" | "event" | "pr";
+            /** Ref */
+            ref: string;
+            /** Quote */
+            quote: string;
+            /** Url */
+            url?: string | null;
+            range?: components["schemas"]["LineRange"] | null;
+            /** N */
+            n?: number | null;
         };
         /** Detection */
         Detection: {
@@ -149,6 +234,40 @@ export interface components {
             /** Status */
             status: number;
         };
+        /**
+         * GraphEdge
+         * @description Aktör -> modül kenarı (#104). module = path'in ilk 2 segmenti (HESAPLANIR).
+         */
+        GraphEdge: {
+            /** Actor */
+            actor: string;
+            /** Module */
+            module: string;
+            /** Count */
+            count: number;
+            /**
+             * Last Ts
+             * Format: date-time
+             */
+            last_ts: string;
+            /** Is Active Declared */
+            is_active_declared: boolean;
+        };
+        /**
+         * GraphNode
+         * @description GET /graph düğümü (#104) — kontrat: docs/sprint2-kontratlar.md Ek A.
+         */
+        GraphNode: {
+            /** Id */
+            id: string;
+            /**
+             * Type
+             * @enum {string}
+             */
+            type: "actor" | "module";
+            /** Weight */
+            weight: number;
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -166,13 +285,63 @@ export interface components {
              * @enum {string}
              */
             mode: "local" | "hosted";
+            /**
+             * Github Auth
+             * @enum {string}
+             */
+            github_auth: "configured" | "missing";
+            /**
+             * Gemini
+             * @enum {string}
+             */
+            gemini: "configured" | "missing";
+        };
+        /** LineRange */
+        LineRange: {
+            /** Start */
+            start: number;
+            /** End */
+            end: number;
+        };
+        /** NearestRef */
+        NearestRef: {
+            /**
+             * Type
+             * @enum {string}
+             */
+            type: "scope" | "task" | "decision" | "event" | "pr";
+            /** Ref */
+            ref: string;
         };
         /** QueryResponse */
         QueryResponse: {
             /** Answer */
             answer: string;
             /** Citations */
-            citations: string[];
+            citations: (string | components["schemas"]["Citation"])[];
+            /**
+             * As Of
+             * Format: date-time
+             */
+            as_of: string;
+            /** Last Commit */
+            last_commit: string;
+            /** Window */
+            window?: string | null;
+            /**
+             * Confidence
+             * @enum {string}
+             */
+            confidence: "low" | "medium" | "high";
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "answered" | "not_found";
+            /** Searched */
+            searched: components["schemas"]["SearchReceipt"][];
+            /** Nearest */
+            nearest: components["schemas"]["NearestRef"][];
         };
         /** RadarResponse */
         RadarResponse: {
@@ -183,6 +352,26 @@ export interface components {
              * Format: date-time
              */
             updated_at: string;
+        };
+        /** ScopeCurrent */
+        ScopeCurrent: {
+            /** Goal */
+            goal: string;
+            /** In Scope */
+            in_scope: string[];
+            /** Non Goals */
+            non_goals: string[];
+            /** Version */
+            version: string;
+            /**
+             * Frozen At
+             * Format: date-time
+             */
+            frozen_at: string;
+            /** Ref */
+            ref: string;
+            /** Commit Sha */
+            commit_sha: string;
         };
         /** ScopeItemRef */
         ScopeItemRef: {
@@ -217,12 +406,51 @@ export interface components {
             judged_at?: string | null;
             signals?: components["schemas"]["Signals"] | null;
         };
+        /** ScopeVerdictCounts */
+        ScopeVerdictCounts: {
+            /** In Scope */
+            in_scope: number;
+            /** Drift */
+            drift: number;
+            /** Non Goal Violation */
+            non_goal_violation: number;
+        };
+        /** ScopeVerdictsResponse */
+        ScopeVerdictsResponse: {
+            /** Verdicts */
+            verdicts: components["schemas"]["ScopeVerdict"][];
+            counts: components["schemas"]["ScopeVerdictCounts"];
+            /** Judged At */
+            judged_at: string | null;
+        };
+        /** SearchReceipt */
+        SearchReceipt: {
+            /**
+             * Type
+             * @enum {string}
+             */
+            type: "scope" | "task" | "decision" | "event" | "pr";
+            /** Count */
+            count: number;
+        };
         /** Signals */
         Signals: {
             /** Files */
             files: string[];
             /** Matched Text */
             matched_text?: string | null;
+        };
+        /**
+         * TouchGraph
+         * @description GET /graph çıktısı (#104) — sıfır LLM, saf NormalizedEvent + active/ aggregation.
+         */
+        TouchGraph: {
+            /** Window Days */
+            window_days: number;
+            /** Nodes */
+            nodes: components["schemas"]["GraphNode"][];
+            /** Edges */
+            edges: components["schemas"]["GraphEdge"][];
         };
         /** ValidationError */
         ValidationError: {
@@ -264,7 +492,7 @@ export interface operations {
                     "application/json": components["schemas"]["HealthResponse"];
                 };
             };
-            /** @description Kalici saglayici hatasi (GitHub/Gemini) */
+            /** @description Kalici saglayici hatasi (GitHub/Gemini/Ollama) */
             502: {
                 headers: {
                     [name: string]: unknown;
@@ -304,7 +532,7 @@ export interface operations {
                     "application/json": components["schemas"]["RadarResponse"];
                 };
             };
-            /** @description Kalici saglayici hatasi (GitHub/Gemini) */
+            /** @description Kalici saglayici hatasi (GitHub/Gemini/Ollama) */
             502: {
                 headers: {
                     [name: string]: unknown;
@@ -346,6 +574,15 @@ export interface operations {
                     "application/json": components["schemas"]["ScopeVerdict"];
                 };
             };
+            /** @description Scope referansı bulunamadı */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -355,7 +592,87 @@ export interface operations {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
-            /** @description Kalici saglayici hatasi (GitHub/Gemini) */
+            /** @description Kalici saglayici hatasi (GitHub/Gemini/Ollama) */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Gecici olarak erisilemez */
+            503: {
+                headers: {
+                    /** @description Saniye — yalniz kendiliginden duzelebilir durumlarda */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    current_scope_scope_current_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScopeCurrent"];
+                };
+            };
+            /** @description Kalici saglayici hatasi (GitHub/Gemini/Ollama) */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Gecici olarak erisilemez */
+            503: {
+                headers: {
+                    /** @description Saniye — yalniz kendiliginden duzelebilir durumlarda */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    scope_verdicts_scope_verdicts_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScopeVerdictsResponse"];
+                };
+            };
+            /** @description Kalici saglayici hatasi (GitHub/Gemini/Ollama) */
             502: {
                 headers: {
                     [name: string]: unknown;
@@ -395,7 +712,7 @@ export interface operations {
                     "application/json": components["schemas"]["BoardResponse"];
                 };
             };
-            /** @description Kalici saglayici hatasi (GitHub/Gemini) */
+            /** @description Kalici saglayici hatasi (GitHub/Gemini/Ollama) */
             502: {
                 headers: {
                     [name: string]: unknown;
@@ -437,6 +754,66 @@ export interface operations {
                     "application/json": components["schemas"]["QueryResponse"];
                 };
             };
+            /** @description Geçersiz doğal dil sorgusu */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Kalici saglayici hatasi (GitHub/Gemini/Ollama) */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Gecici olarak erisilemez */
+            503: {
+                headers: {
+                    /** @description Saniye — yalniz kendiliginden duzelebilir durumlarda */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    get_graph_graph_get: {
+        parameters: {
+            query?: {
+                window_days?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TouchGraph"];
+                };
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -447,6 +824,78 @@ export interface operations {
                 };
             };
             /** @description Kalici saglayici hatasi (GitHub/Gemini) */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Gecici olarak erisilemez */
+            503: {
+                headers: {
+                    /** @description Saniye — yalniz kendiliginden duzelebilir durumlarda */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    github_webhook_webhooks_github_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-hub-signature-256"?: string | null;
+                "x-github-event"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Geçersiz JSON gövdesi */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Eksik/geçersiz webhook imzası */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Kalici saglayici hatasi (GitHub/Gemini/Ollama) */
             502: {
                 headers: {
                     [name: string]: unknown;

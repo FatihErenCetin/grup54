@@ -1,5 +1,6 @@
 from .board import BoardService
+from .graph import GraphService
 from .radar import RadarService
 from .scope import ScopeService
 
-__all__ = ["RadarService", "ScopeService", "BoardService"]
+__all__ = ["RadarService", "ScopeService", "BoardService", "GraphService"]

@@ -4,6 +4,9 @@ from typing import Protocol
 from ensemble.models import (
     Detection,
     NormalizedEvent,
+    QueryCorpus,
+    QueryDocument,
+    QueryJudgement,
     ScopeCandidate,
     ScopeJudgement,
     ScopeSubject,
@@ -17,6 +20,7 @@ class GitHubPort(Protocol):
     def fetch_events(self, since: datetime) -> list[NormalizedEvent]: ...
     def fetch_backfill_events(self, limit_per_type: int = 50) -> list[NormalizedEvent]: ...
     def compare(self, base: str, head: str) -> list[str]: ...
+    def get_diff(self, base: str, head: str) -> dict[str, str]: ...
 
 
 class EmbeddingsPort(Protocol):
@@ -34,6 +38,14 @@ class JudgePort(Protocol):
     ) -> Detection: ...
 
 
+class QuerySourcePort(Protocol):
+    def load_query_corpus(self) -> QueryCorpus: ...
+
+
+class QueryJudgePort(Protocol):
+    def answer_query(self, question: str, documents: list[QueryDocument]) -> QueryJudgement: ...
+
+
 class ScopeJudgePort(Protocol):
     def judge_scope(
         self, ref: str, subject: str, candidates: list[ScopeCandidate]
@@ -42,3 +54,7 @@ class ScopeJudgePort(Protocol):
 
 class ScopeSubjectPort(Protocol):
     def resolve_scope_subject(self, ref: str) -> ScopeSubject: ...
+
+
+class ScopeSubjectNotFoundError(LookupError):
+    """ScopeSubjectPort verilen ref'i kendi kaynağında çözemedi."""

@@ -71,6 +71,7 @@ class GitHubPort(Protocol):             # impl: #16 · fake: fixtures
     def fetch_events(self, since: datetime) -> list[NormalizedEvent]: ...
     def fetch_backfill_events(self, limit_per_type: int = 50) -> list[NormalizedEvent]: ...  # #49 ilk radar dolumu
     def compare(self, base: str, head: str) -> list[str]: ...   # değişen dosyalar
+    def get_diff(self, base: str, head: str) -> dict[str, str]: ...  # #152 path->hunk metni
 
 class EmbeddingsPort(Protocol):         # impl: #15 (Gemini) · fake: hash-vector
     def embed(self, texts: list[str], task_type: str) -> list[list[float]]: ...
@@ -98,7 +99,7 @@ class HarnessPort(Protocol):            # impl: #13 (GATE 1)
 
 | Method · Path | Girdi | Çıktı (JSON) | Issue |
 |---|---|---|---|
-| `GET /health` | — | `{status, mode}` | #14 |
+| `GET /health` | — | `{status, mode, github_auth, gemini}` | #14, zenginleştirme #53 |
 | `GET /radar` | — | `{detections: Detection[], updated_at}` | #17, #25 |
 | `GET /scope/check?ref=<pr>` | query | `ScopeVerdict` | #31 (S3) |
 | `GET /board` | — | `{cards: BoardCard[]}` | S3 |
