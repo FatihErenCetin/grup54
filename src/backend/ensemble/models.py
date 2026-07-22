@@ -103,6 +103,32 @@ class PresenceEntry(BaseModel):
     since: datetime
 
 
+class GraphNode(BaseModel):
+    """GET /graph düğümü (#104) — kontrat: docs/sprint2-kontratlar.md Ek A."""
+
+    id: str
+    type: Literal["actor", "module"]
+    weight: int
+
+
+class GraphEdge(BaseModel):
+    """Aktör -> modül kenarı (#104). module = path'in ilk 2 segmenti (HESAPLANIR)."""
+
+    actor: str
+    module: str
+    count: int
+    last_ts: datetime
+    is_active_declared: bool
+
+
+class TouchGraph(BaseModel):
+    """GET /graph çıktısı (#104) — sıfır LLM, saf NormalizedEvent + active/ aggregation."""
+
+    window_days: int
+    nodes: list[GraphNode]
+    edges: list[GraphEdge]
+
+
 CitationType = Literal["scope", "task", "decision", "event", "pr"]
 
 

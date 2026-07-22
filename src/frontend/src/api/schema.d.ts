@@ -123,6 +123,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/graph": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Graph */
+        get: operations["get_graph_graph_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/webhooks/github": {
         parameters: {
             query?: never;
@@ -216,6 +233,40 @@ export interface components {
             message: string;
             /** Status */
             status: number;
+        };
+        /**
+         * GraphEdge
+         * @description Aktör -> modül kenarı (#104). module = path'in ilk 2 segmenti (HESAPLANIR).
+         */
+        GraphEdge: {
+            /** Actor */
+            actor: string;
+            /** Module */
+            module: string;
+            /** Count */
+            count: number;
+            /**
+             * Last Ts
+             * Format: date-time
+             */
+            last_ts: string;
+            /** Is Active Declared */
+            is_active_declared: boolean;
+        };
+        /**
+         * GraphNode
+         * @description GET /graph düğümü (#104) — kontrat: docs/sprint2-kontratlar.md Ek A.
+         */
+        GraphNode: {
+            /** Id */
+            id: string;
+            /**
+             * Type
+             * @enum {string}
+             */
+            type: "actor" | "module";
+            /** Weight */
+            weight: number;
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -388,6 +439,18 @@ export interface components {
             files: string[];
             /** Matched Text */
             matched_text?: string | null;
+        };
+        /**
+         * TouchGraph
+         * @description GET /graph çıktısı (#104) — sıfır LLM, saf NormalizedEvent + active/ aggregation.
+         */
+        TouchGraph: {
+            /** Window Days */
+            window_days: number;
+            /** Nodes */
+            nodes: components["schemas"]["GraphNode"][];
+            /** Edges */
+            edges: components["schemas"]["GraphEdge"][];
         };
         /** ValidationError */
         ValidationError: {
@@ -698,6 +761,57 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Kalici saglayici hatasi (GitHub/Gemini) */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Gecici olarak erisilemez */
+            503: {
+                headers: {
+                    /** @description Saniye — yalniz kendiliginden duzelebilir durumlarda */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    get_graph_graph_get: {
+        parameters: {
+            query?: {
+                window_days?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TouchGraph"];
                 };
             };
             /** @description Validation Error */
