@@ -615,6 +615,39 @@ def test_radar_service_memoizes_compare_for_same_branch():
     assert github.compare_calls == [("main", "T-a")]
 
 
+def test_radar_service_ikinci_pollde_guncel_compare_dosyalarini_gorur():
+    """#207: `_compare_cache` servis-omru boyunca yasarsa, bir branch'e ikinci
+    pollde yeni commit gelip dosya listesi degisse bile ilk gorulen listeye
+    kilitleniyordu. Cache artik tek get_detections() cagrisiyla sinirli -
+    ikinci poll GUNCEL dosya listesini gormeli (ayni servis, ayni branch)."""
+    first = event("a", "semih", [])
+    second = event("b", "enes", ["src/radar.py"])
+    github = StaticGitHub(
+        [first, second],
+        compare_files={("main", "T-a"): ["src/other.py"]},
+    )
+    service = RadarService(
+        github_port=github,
+        judge_port=RecordingJudge(),
+        embeddings_port=KeywordEmbeddings(),
+        diffs_by_event={
+            "a": {"src/radar.py": "@@ -1 +1 @@\n-old\n+same intent"},
+            "b": {"src/radar.py": "@@ -1 +1 @@\n-old\n+same intent"},
+        },
+        window_days=100_000,
+    )
+
+    first_poll = service.get_detections()
+    assert first_poll == []  # T-a henuz src/radar.py'a dokunmuyor - ortusme yok
+
+    # T-a branch'ine yeni bir commit geldi, artik src/radar.py'a da dokunuyor.
+    github.compare_files[("main", "T-a")] = ["src/radar.py"]
+    second_poll = service.get_detections()
+
+    assert len(second_poll) == 1  # ikinci poll GUNCEL dosya listesini gormeli, bayat degil
+    assert second_poll[0].files == ["src/radar.py"]
+
+
 def test_radar_service_keeps_radar_up_when_compare_fails():
     first = event("a", "semih", [])
     second = event("b", "enes", ["src/radar.py"])

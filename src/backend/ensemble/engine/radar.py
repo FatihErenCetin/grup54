@@ -205,7 +205,6 @@ class RadarService:
         self.include_low_severity = include_low_severity
         self.backfill_limit = backfill_limit
         self.default_base = default_base
-        self._compare_cache: dict[tuple[str, str], list[str]] = {}
         self._known_events: dict[str, NormalizedEvent] = {}
         self._backfill_done = False
 
@@ -268,6 +267,11 @@ class RadarService:
         return datetime.now(timezone.utc) - timedelta(days=self.window_days)
 
     def _events_with_compare_files(self, events: list[NormalizedEvent]) -> list[NormalizedEvent]:
+        """#207: cache TEK BİR çağrıyla sınırlı yerel değişken (`_diff_cache` ile
+        aynı desen) - `self`'te kalıcı olsaydı bir branch'e yeni commit
+        atıldığında İLK gördüğü dosya listesine kilitlenip yeni değişen
+        dosyaları radar'ın görüş alanına hiç sokmazdı."""
+        compare_cache: dict[tuple[str, str], list[str]] = {}
         enriched: list[NormalizedEvent] = []
         for event in events:
             if event.files or not event.branch:
@@ -275,12 +279,12 @@ class RadarService:
                 continue
 
             key = (self.default_base, event.branch)
-            if key not in self._compare_cache:
+            if key not in compare_cache:
                 try:
-                    self._compare_cache[key] = self.github_port.compare(*key)
+                    compare_cache[key] = self.github_port.compare(*key)
                 except Exception:
-                    self._compare_cache[key] = []
-            files = self._compare_cache[key]
+                    compare_cache[key] = []
+            files = compare_cache[key]
             enriched.append(event.model_copy(update={"files": files}))
         return enriched
 
