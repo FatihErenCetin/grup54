@@ -13,6 +13,8 @@ from ensemble.engine.scope import (
 )
 from ensemble.integrations.gemini.scope_judge import FakeScopeJudgeAdapter
 from ensemble.models import ScopeCandidate, ScopeJudgement, ScopeSubject
+from ensemble.ports import ScopeSubjectNotFoundError
+from ensemble_shared.harness import HarnessError
 
 
 class _Harness:
@@ -144,9 +146,7 @@ def test_exact_in_scope_ucuz_gecitte_in_scope_doner():
 
 
 def test_belirsiz_is_judgea_retrieval_adaylariyla_gider():
-    judge = _RecordingJudge(
-        ScopeJudgement(verdict="in_scope", confidence=0.82, evidence_index=0)
-    )
+    judge = _RecordingJudge(ScopeJudgement(verdict="in_scope", confidence=0.82, evidence_index=0))
     service, _ = _service(
         task=_task(title="Takım bağlamını ajanlara göster"),
         judge=judge,
@@ -227,9 +227,7 @@ def test_embeddings_verilirse_semantik_retrieval_kullanilir():
             [0.0, -1.0],
         ]
     )
-    judge = _RecordingJudge(
-        ScopeJudgement(verdict="in_scope", confidence=0.8, evidence_index=0)
-    )
+    judge = _RecordingJudge(ScopeJudgement(verdict="in_scope", confidence=0.8, evidence_index=0))
     service, _ = _service(
         task=_task(title="Bilinmeyen ama semantik iş"),
         judge=judge,
@@ -274,3 +272,80 @@ def test_hatalı_embedding_adedi_sessizce_devam_etmez():
 
     with pytest.raises(ValueError, match="one vector"):
         service.check_scope("T-31")
+
+
+def test_frozen_scope_snapshot_kontrat_alanlarini_doner():
+    scope = _scope()
+    scope.update(
+        {
+            "status": "frozen",
+            "version": "3",
+            "frozen_at": "2026-07-20T12:00:00+00:00",
+            "path": ".harness/scope/sprint-3.md",
+            "commit_sha": "a" * 40,
+        }
+    )
+    service, _ = _service(scope=scope)
+
+    current = service.get_current_scope()
+
+    assert current.goal.startswith("G-1:")
+    assert current.in_scope == scope["goals"]
+    assert current.non_goals == scope["non_goals"]
+    assert current.ref == ".harness/scope/sprint-3.md"
+    assert current.commit_sha == "a" * 40
+
+
+def test_frozen_scope_metadata_eksikse_varsayilan_uydurmaz():
+    scope = _scope()
+    scope["status"] = "frozen"
+    service, _ = _service(scope=scope)
+
+    with pytest.raises(ScopeUnavailableError, match="metadata eksik"):
+        service.get_current_scope()
+
+
+def test_scope_dosyasi_yoksa_acik_unavailable_hatasi_verir():
+    service, _ = _service()
+
+    def missing_scope(sprint: str) -> dict[str, Any]:
+        raise HarnessError(sprint)
+
+    service.harness_port.read_scope = missing_scope
+
+    with pytest.raises(ScopeUnavailableError, match="kullanılamıyor"):
+        service.get_current_scope()
+
+
+def test_verdict_gecmisi_sinirli_ve_counts_sifirlari_tasir():
+    original, _ = _service()
+    service = ScopeService(
+        original.harness_port,
+        original.judge_port,
+        verdict_history_limit=1,
+    )
+
+    service.check_scope("T-31")
+    service.check_scope("T-31-scope-drift")
+
+    assert len(service.list_verdicts()) == 1
+    assert service.verdict_counts() == {
+        "in_scope": 1,
+        "drift": 0,
+        "non_goal_violation": 0,
+    }
+
+
+def test_subject_port_refi_tanimazsa_harness_cozumune_doner():
+    class _MissingSubjectPort:
+        def resolve_scope_subject(self, ref: str) -> ScopeSubject:
+            raise ScopeSubjectNotFoundError(ref)
+
+    harness = _Harness(tasks=[_task()], scopes={"3": _scope()})
+    service = ScopeService(
+        harness,
+        FakeScopeJudgeAdapter(),
+        subject_port=_MissingSubjectPort(),
+    )
+
+    assert service.check_scope("T-31").verdict == "in_scope"

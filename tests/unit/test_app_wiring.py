@@ -16,6 +16,7 @@ from ensemble.engine.embeddings import CachedEmbeddings, HashEmbeddings
 from ensemble.integrations.gemini.embeddings import GeminiEmbeddingsAdapter
 from ensemble.integrations.gemini.fake import FakeJudgeAdapter
 from ensemble.integrations.gemini.judge import GeminiJudgeAdapter
+from ensemble.integrations.gemini.scope_judge import FakeScopeJudgeAdapter
 from ensemble.integrations.github.adapter import GitHubAdapter
 from ensemble.integrations.github.fake import FakeGitHubAdapter
 
@@ -141,3 +142,11 @@ def test_app_state_lifespan_ile_radar_service_kurulur():
         resp = client.get("/radar")
     assert resp.status_code == 200
     assert resp.json()["detections"] == []
+
+
+def test_app_state_lifespan_ile_scope_service_kurulur():
+    app = create_app(_settings())
+
+    with TestClient(app):
+        assert app.state.scope_service.harness_port is not None
+        assert isinstance(app.state.scope_service.judge_port, FakeScopeJudgeAdapter)

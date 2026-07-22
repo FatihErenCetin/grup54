@@ -67,6 +67,16 @@ class ScopeSubject(BaseModel):
     sprint: str | None = None
 
 
+class ScopeCurrent(BaseModel):
+    goal: str = Field(min_length=1)
+    in_scope: list[str] = Field(min_length=1)
+    non_goals: list[str]
+    version: str = Field(min_length=1)
+    frozen_at: datetime
+    ref: str = Field(min_length=1)
+    commit_sha: str = Field(pattern=r"^[0-9a-fA-F]{7,64}$")
+
+
 class BoardCard(BaseModel):
     task_id: str
     title: str

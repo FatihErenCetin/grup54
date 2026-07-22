@@ -10,13 +10,16 @@ from ensemble.api.routers import board, health, query, radar, scope
 from ensemble.config import Settings, get_settings
 from ensemble.engine.embeddings import CachedEmbeddings, HashEmbeddings
 from ensemble.engine.radar import RadarService
+from ensemble.engine.scope import ScopeService
 from ensemble.integrations.gemini.embeddings import GeminiEmbeddingsAdapter
 from ensemble.integrations.gemini.fake import FakeJudgeAdapter
 from ensemble.integrations.gemini.judge import GeminiJudgeAdapter
+from ensemble.integrations.gemini.scope_judge import build_scope_judge
 from ensemble.integrations.github.adapter import GitHubAdapter
 from ensemble.integrations.github.errors import GitHubConfigError
 from ensemble.integrations.github.fake import FakeGitHubAdapter
 from ensemble.ports import EmbeddingsPort, GitHubPort, JudgePort
+from ensemble_shared.harness import FileHarnessPort
 
 logger = logging.getLogger("ensemble.wiring")
 
@@ -25,7 +28,10 @@ def _build_github_port(settings: Settings) -> GitHubPort:
     # pem dosyası yoksa GitHubAdapter bunu hemen fark etmez (yalnız token
     # yenilenirken okunur) - istek-anı 500'e düşmeden acilis-anı degradasyona
     # ceviriyoruz (Fatih review notu, PR #159).
-    if settings.GITHUB_APP_PRIVATE_KEY_PATH and not Path(settings.GITHUB_APP_PRIVATE_KEY_PATH).is_file():
+    if (
+        settings.GITHUB_APP_PRIVATE_KEY_PATH
+        and not Path(settings.GITHUB_APP_PRIVATE_KEY_PATH).is_file()
+    ):
         logger.warning(
             "GITHUB_APP_PRIVATE_KEY_PATH (%s) bulunamadı — FakeGitHubAdapter kullanılıyor.",
             settings.GITHUB_APP_PRIVATE_KEY_PATH,
@@ -34,7 +40,9 @@ def _build_github_port(settings: Settings) -> GitHubPort:
     try:
         return GitHubAdapter(settings)
     except GitHubConfigError as exc:
-        logger.warning("GitHub App yapılandırması eksik (%s) — FakeGitHubAdapter kullanılıyor.", exc)
+        logger.warning(
+            "GitHub App yapılandırması eksik (%s) — FakeGitHubAdapter kullanılıyor.", exc
+        )
         return FakeGitHubAdapter()
 
 
@@ -65,10 +73,23 @@ def _build_radar_service(settings: Settings) -> RadarService:
     )
 
 
+def _build_scope_service(settings: Settings, radar_service: RadarService) -> ScopeService:
+    subject_port = (
+        radar_service.github_port if isinstance(radar_service.github_port, GitHubAdapter) else None
+    )
+    return ScopeService(
+        harness_port=FileHarnessPort(),
+        judge_port=build_scope_judge(settings),
+        embeddings_port=radar_service.embeddings_port,
+        subject_port=subject_port,
+    )
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     app.state.radar_service = _build_radar_service(app.state.settings)
-    # TODO: ScopeService/BoardService gercek DI (Issue #15/#16 disinda, ayri kapsam)
+    app.state.scope_service = _build_scope_service(app.state.settings, app.state.radar_service)
+    # TODO: BoardService gercek DI (#51)
     yield
     # TODO: Kapanışta kaynakları temizle
 
