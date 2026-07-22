@@ -42,9 +42,14 @@ class GitHubAdapter:
         Aynı compare API'yi kullanır ama BİLEREK ayrı `cache_key` taşır
         (`compare()`'inkiyle aynı olsaydı, `compare()` önce çağrılınca ETag
         kaydedilir; hemen ardından aynı key ile gelen bu çağrı 304 alır ve
-        `GitHubRestClient.get()` `None` döner — `patch` verisi sessizce
-        kaybolurdu). Büyük diff'lerde GitHub `patch` alanını hiç göndermez
-        (dosya bazlı, sessizce atlanır — chunk_diff boş metinle no-op döner).
+        `GitHubRestClient.get()` — 304'te artık `None` değil, ilgili
+        `cache_key`'in SON BİLİNEN gövdesini replay eder — bu durumda
+        `compare()`'in gövdesini `get_diff()` adına replay ederdi. `compare()`
+        yalnızca dosya adlarına bakar, `get_diff()` `patch` alanını okur; aynı
+        gövde ikisi için de "doğru şekilde" parse olur ama farklı zamanlarda
+        pollandıklarında birbirinin BAYAT verisini sessizce döndürebilirler).
+        Büyük diff'lerde GitHub `patch` alanını hiç göndermez (dosya bazlı,
+        sessizce atlanır — chunk_diff boş metinle no-op döner).
         """
         data = self._client.get(
             f"/repos/{self._owner}/{self._repo}/compare/{base}...{head}",
