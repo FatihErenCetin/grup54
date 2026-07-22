@@ -85,6 +85,9 @@ class Settings(BaseSettings):
     GITHUB_REPO_NAME: str | None = None
     GITHUB_DEFAULT_BRANCH: str = "main"
     GITHUB_BACKFILL_LIMIT: int = 50
+    # Webhook receiver (#62) - X-Hub-Signature-256 HMAC dogrulamasi icin.
+    # Yoksa receiver 503 doner (dogrulanamayan webhook kabul edilmez).
+    GITHUB_WEBHOOK_SECRET: str | None = None
 
     # Store — local: SQLite (repo kökünde, gitignored) · hosted: PostgreSQL DSN.
     # Varsayılan SQLite yolu: ensemble.db (repo kökü, .gitignore'da).
