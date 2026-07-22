@@ -217,6 +217,16 @@ export interface components {
              * @enum {string}
              */
             mode: "local" | "hosted";
+            /**
+             * Github Auth
+             * @enum {string}
+             */
+            github_auth: "configured" | "missing";
+            /**
+             * Gemini
+             * @enum {string}
+             */
+            gemini: "configured" | "missing";
         };
         /** LineRange */
         LineRange: {

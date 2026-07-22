@@ -662,12 +662,30 @@
               "hosted"
             ],
             "title": "Mode"
+          },
+          "github_auth": {
+            "type": "string",
+            "enum": [
+              "configured",
+              "missing"
+            ],
+            "title": "Github Auth"
+          },
+          "gemini": {
+            "type": "string",
+            "enum": [
+              "configured",
+              "missing"
+            ],
+            "title": "Gemini"
           }
         },
         "type": "object",
         "required": [
           "status",
-          "mode"
+          "mode",
+          "github_auth",
+          "gemini"
         ],
         "title": "HealthResponse"
       },
