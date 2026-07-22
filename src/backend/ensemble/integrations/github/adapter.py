@@ -1,11 +1,15 @@
+import re
 from datetime import datetime
 
 from ensemble.config import Settings
 from ensemble.integrations.github.auth import InstallationTokenCache
 from ensemble.integrations.github.client import GitHubRestClient
-from ensemble.integrations.github.errors import GitHubConfigError
+from ensemble.integrations.github.errors import GitHubConfigError, GitHubNotFoundError
 from ensemble.integrations.github.normalize import commit_to_event, issue_to_event, pr_to_event
-from ensemble.models import NormalizedEvent
+from ensemble.models import NormalizedEvent, ScopeSubject
+from ensemble.ports import ScopeSubjectNotFoundError
+
+_PR_REF_RE = re.compile(r"(?:^PR[-# ]?|/pull/|^#)(\d+)$", re.IGNORECASE)
 
 
 class GitHubAdapter:
@@ -26,6 +30,7 @@ class GitHubAdapter:
             token_provider=InstallationTokenCache(settings).get_token
         )
         self._seen_ids: set[str] = set()
+        self._scope_subject_cache: dict[int, ScopeSubject] = {}
 
     def compare(self, base: str, head: str) -> list[str]:
         data = self._client.get(
@@ -35,6 +40,59 @@ class GitHubAdapter:
         if data is None:
             return []
         return [f["filename"] for f in data.get("files", [])]
+
+    def resolve_scope_subject(self, ref: str) -> ScopeSubject:
+        """Canlı PR başlık/gövde/dosya bilgisini scope motoruna taşır."""
+        match = _PR_REF_RE.search(ref.strip())
+        if match is None:
+            raise ScopeSubjectNotFoundError(ref)
+
+        number = int(match.group(1))
+        cached = self._scope_subject_cache.get(number)
+        try:
+            pull = self._client.get(
+                f"/repos/{self._owner}/{self._repo}/pulls/{number}",
+                cache_key=f"scope:pull:{number}",
+            )
+            files = self._client.get(
+                f"/repos/{self._owner}/{self._repo}/pulls/{number}/files",
+                params={"per_page": 100},
+                cache_key=f"scope:pull_files:{number}",
+            )
+        except GitHubNotFoundError as exc:
+            raise ScopeSubjectNotFoundError(ref) from exc
+
+        if pull is None and files is None and cached is not None:
+            return cached
+        if pull is not None and not isinstance(pull, dict):
+            raise ScopeSubjectNotFoundError(ref)
+        if files is not None and not isinstance(files, list):
+            raise ScopeSubjectNotFoundError(ref)
+        if cached is None and (pull is None or files is None):
+            raise ScopeSubjectNotFoundError(ref)
+
+        text_parts = (
+            [str(pull.get("title") or "").strip(), str(pull.get("body") or "").strip()]
+            if pull is not None
+            else [cached.text]
+        )
+        subject = ScopeSubject(
+            ref=ref.strip(),
+            text="\n".join(part for part in text_parts if part),
+            files=(
+                sorted(
+                    {
+                        str(item.get("filename") or "").strip()
+                        for item in files
+                        if str(item.get("filename") or "").strip()
+                    }
+                )
+                if files is not None
+                else cached.files
+            ),
+        )
+        self._scope_subject_cache[number] = subject
+        return subject
 
     def fetch_events(self, since: datetime) -> list[NormalizedEvent]:
         events = [
@@ -106,9 +164,7 @@ class GitHubAdapter:
         )
         if not prs:
             return []
-        return [
-            pr_to_event(pr) for pr in prs if datetime.fromisoformat(pr["updated_at"]) >= since
-        ]
+        return [pr_to_event(pr) for pr in prs if datetime.fromisoformat(pr["updated_at"]) >= since]
 
     def _fetch_recent_pr_events(self, limit: int) -> list[NormalizedEvent]:
         prs = self._client.get(

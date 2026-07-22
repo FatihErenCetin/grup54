@@ -161,12 +161,120 @@
               }
             }
           },
+          "404": {
+            "description": "Scope referansı bulunamadı",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
           "422": {
             "description": "Validation Error",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/scope/current": {
+      "get": {
+        "tags": [
+          "scope"
+        ],
+        "summary": "Current Scope",
+        "operationId": "current_scope_scope_current_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScopeCurrent"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Kalici saglayici hatasi (GitHub/Gemini)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Gecici olarak erisilemez",
+            "headers": {
+              "Retry-After": {
+                "description": "Saniye — yalniz kendiliginden duzelebilir durumlarda",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/scope/verdicts": {
+      "get": {
+        "tags": [
+          "scope"
+        ],
+        "summary": "Scope Verdicts",
+        "operationId": "scope_verdicts_scope_verdicts_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScopeVerdictsResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Kalici saglayici hatasi (GitHub/Gemini)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Gecici olarak erisilemez",
+            "headers": {
+              "Retry-After": {
+                "description": "Saniye — yalniz kendiliginden duzelebilir durumlarda",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
                 }
               }
             }
@@ -237,6 +345,8 @@
             "required": true,
             "schema": {
               "type": "string",
+              "minLength": 1,
+              "maxLength": 500,
               "title": "Q"
             }
           }
@@ -272,6 +382,16 @@
                 }
               }
             },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Geçersiz doğal dil sorgusu",
             "content": {
               "application/json": {
                 "schema": {
@@ -436,6 +556,69 @@
           "cards"
         ],
         "title": "BoardResponse"
+      },
+      "Citation": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "scope",
+              "task",
+              "decision",
+              "event",
+              "pr"
+            ],
+            "title": "Type"
+          },
+          "ref": {
+            "type": "string",
+            "title": "Ref"
+          },
+          "quote": {
+            "type": "string",
+            "title": "Quote"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Url"
+          },
+          "range": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LineRange"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "n": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "N"
+          }
+        },
+        "type": "object",
+        "required": [
+          "type",
+          "ref",
+          "quote"
+        ],
+        "title": "Citation"
       },
       "Detection": {
         "properties": {
@@ -622,6 +805,51 @@
         ],
         "title": "HealthResponse"
       },
+      "LineRange": {
+        "properties": {
+          "start": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Start"
+          },
+          "end": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "End"
+          }
+        },
+        "type": "object",
+        "required": [
+          "start",
+          "end"
+        ],
+        "title": "LineRange"
+      },
+      "NearestRef": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "scope",
+              "task",
+              "decision",
+              "event",
+              "pr"
+            ],
+            "title": "Type"
+          },
+          "ref": {
+            "type": "string",
+            "title": "Ref"
+          }
+        },
+        "type": "object",
+        "required": [
+          "type",
+          "ref"
+        ],
+        "title": "NearestRef"
+      },
       "QueryResponse": {
         "properties": {
           "answer": {
@@ -630,16 +858,80 @@
           },
           "citations": {
             "items": {
-              "type": "string"
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "$ref": "#/components/schemas/Citation"
+                }
+              ]
             },
             "type": "array",
             "title": "Citations"
+          },
+          "as_of": {
+            "type": "string",
+            "format": "date-time",
+            "title": "As Of"
+          },
+          "last_commit": {
+            "type": "string",
+            "title": "Last Commit"
+          },
+          "window": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Window"
+          },
+          "confidence": {
+            "type": "string",
+            "enum": [
+              "low",
+              "medium",
+              "high"
+            ],
+            "title": "Confidence"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "answered",
+              "not_found"
+            ],
+            "title": "Status"
+          },
+          "searched": {
+            "items": {
+              "$ref": "#/components/schemas/SearchReceipt"
+            },
+            "type": "array",
+            "title": "Searched"
+          },
+          "nearest": {
+            "items": {
+              "$ref": "#/components/schemas/NearestRef"
+            },
+            "type": "array",
+            "title": "Nearest"
           }
         },
         "type": "object",
         "required": [
           "answer",
-          "citations"
+          "citations",
+          "as_of",
+          "last_commit",
+          "confidence",
+          "status",
+          "searched",
+          "nearest"
         ],
         "title": "QueryResponse"
       },
@@ -664,6 +956,61 @@
           "updated_at"
         ],
         "title": "RadarResponse"
+      },
+      "ScopeCurrent": {
+        "properties": {
+          "goal": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Goal"
+          },
+          "in_scope": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "minItems": 1,
+            "title": "In Scope"
+          },
+          "non_goals": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Non Goals"
+          },
+          "version": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Version"
+          },
+          "frozen_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Frozen At"
+          },
+          "ref": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Ref"
+          },
+          "commit_sha": {
+            "type": "string",
+            "pattern": "^[0-9a-fA-F]{7,64}$",
+            "title": "Commit Sha"
+          }
+        },
+        "type": "object",
+        "required": [
+          "goal",
+          "in_scope",
+          "non_goals",
+          "version",
+          "frozen_at",
+          "ref",
+          "commit_sha"
+        ],
+        "title": "ScopeCurrent"
       },
       "ScopeItemRef": {
         "properties": {
@@ -782,6 +1129,88 @@
           "evidence"
         ],
         "title": "ScopeVerdict"
+      },
+      "ScopeVerdictCounts": {
+        "properties": {
+          "in_scope": {
+            "type": "integer",
+            "title": "In Scope"
+          },
+          "drift": {
+            "type": "integer",
+            "title": "Drift"
+          },
+          "non_goal_violation": {
+            "type": "integer",
+            "title": "Non Goal Violation"
+          }
+        },
+        "type": "object",
+        "required": [
+          "in_scope",
+          "drift",
+          "non_goal_violation"
+        ],
+        "title": "ScopeVerdictCounts"
+      },
+      "ScopeVerdictsResponse": {
+        "properties": {
+          "verdicts": {
+            "items": {
+              "$ref": "#/components/schemas/ScopeVerdict"
+            },
+            "type": "array",
+            "title": "Verdicts"
+          },
+          "counts": {
+            "$ref": "#/components/schemas/ScopeVerdictCounts"
+          },
+          "judged_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Judged At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "verdicts",
+          "counts",
+          "judged_at"
+        ],
+        "title": "ScopeVerdictsResponse"
+      },
+      "SearchReceipt": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "scope",
+              "task",
+              "decision",
+              "event",
+              "pr"
+            ],
+            "title": "Type"
+          },
+          "count": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Count"
+          }
+        },
+        "type": "object",
+        "required": [
+          "type",
+          "count"
+        ],
+        "title": "SearchReceipt"
       },
       "Signals": {
         "properties": {

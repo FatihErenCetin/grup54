@@ -4,6 +4,9 @@ from typing import Protocol
 from ensemble.models import (
     Detection,
     NormalizedEvent,
+    QueryCorpus,
+    QueryDocument,
+    QueryJudgement,
     ScopeCandidate,
     ScopeJudgement,
     ScopeSubject,
@@ -34,6 +37,14 @@ class JudgePort(Protocol):
     ) -> Detection: ...
 
 
+class QuerySourcePort(Protocol):
+    def load_query_corpus(self) -> QueryCorpus: ...
+
+
+class QueryJudgePort(Protocol):
+    def answer_query(self, question: str, documents: list[QueryDocument]) -> QueryJudgement: ...
+
+
 class ScopeJudgePort(Protocol):
     def judge_scope(
         self, ref: str, subject: str, candidates: list[ScopeCandidate]
@@ -42,3 +53,7 @@ class ScopeJudgePort(Protocol):
 
 class ScopeSubjectPort(Protocol):
     def resolve_scope_subject(self, ref: str) -> ScopeSubject: ...
+
+
+class ScopeSubjectNotFoundError(LookupError):
+    """ScopeSubjectPort verilen ref'i kendi kaynağında çözemedi."""

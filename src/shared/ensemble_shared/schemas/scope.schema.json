@@ -10,6 +10,10 @@
     "title": { "type": "string", "minLength": 1 },
     "status": { "type": "string" },
     "owner": { "type": "string" },
+    "version": { "type": "string", "minLength": 1 },
+    "frozen_at": { "type": "string", "format": "date-time" },
+    "ref": { "type": "string", "minLength": 1 },
+    "commit_sha": { "type": "string", "pattern": "^[0-9a-fA-F]{7,64}$" },
     "goals": { "type": "array", "items": { "type": "string" } },
     "non_goals": { "type": "array", "items": { "type": "string" } }
   },
