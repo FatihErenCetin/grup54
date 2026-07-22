@@ -23,10 +23,11 @@ import logging
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from ensemble.config import Settings
 from ensemble.engine.query import QueryInputError, QueryJudgeError, QueryRetrievalError
-from starlette.exceptions import HTTPException as StarletteHTTPException
+from ensemble.engine.scope import ScopeJudgeError, ScopeReferenceError, ScopeUnavailableError
 
 from ensemble.integrations.gemini.errors import (
     GeminiError,
@@ -40,7 +41,6 @@ from ensemble.integrations.github.errors import (
     GitHubRateLimitError,
     GitHubTransientError,
 )
-
 logger = logging.getLogger("ensemble.errors")
 
 # Rate-limit'te GitHub reset zamani tasinmiyorsa uydurma sure YOK — konservatif sabit
@@ -90,6 +90,21 @@ _DOMAIN_MAP: list[tuple[type[Exception], int, str, str, bool]] = [
         502,
         "query_judge_error",
         "Ask cevabı güvenilir kanıta bağlanamadı.",
+        False,
+    ),
+    (ScopeReferenceError, 404, "scope_ref_not_found", "Scope referansı bulunamadı.", False),
+    (
+        ScopeUnavailableError,
+        503,
+        "scope_unavailable",
+        "Donmuş scope belgesi kullanılamıyor.",
+        False,
+    ),
+    (
+        ScopeJudgeError,
+        502,
+        "scope_judge_error",
+        "Scope kararı güvenilir kanıta bağlanamadı.",
         False,
     ),
     (

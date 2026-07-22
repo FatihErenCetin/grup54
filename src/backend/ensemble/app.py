@@ -13,10 +13,12 @@ from ensemble.config import Settings, get_settings
 from ensemble.engine.embeddings import CachedEmbeddings, HashEmbeddings
 from ensemble.engine.query import QueryService
 from ensemble.engine.radar import RadarService
+from ensemble.engine.scope import ScopeService
 from ensemble.integrations.gemini.embeddings import GeminiEmbeddingsAdapter
 from ensemble.integrations.gemini.fake import FakeJudgeAdapter
 from ensemble.integrations.gemini.judge import GeminiJudgeAdapter
 from ensemble.integrations.gemini.query_judge import build_query_judge
+from ensemble.integrations.gemini.scope_judge import build_scope_judge
 from ensemble.integrations.github.adapter import GitHubAdapter
 from ensemble.integrations.github.errors import GitHubConfigError
 from ensemble.integrations.github.fake import FakeGitHubAdapter
@@ -107,6 +109,18 @@ def _build_query_service(
     )
 
 
+def _build_scope_service(settings: Settings, radar_service: RadarService) -> ScopeService:
+    subject_port = (
+        radar_service.github_port if isinstance(radar_service.github_port, GitHubAdapter) else None
+    )
+    return ScopeService(
+        harness_port=FileHarnessPort(),
+        judge_port=build_scope_judge(settings),
+        embeddings_port=radar_service.embeddings_port,
+        subject_port=subject_port,
+    )
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     app.state.radar_service = _build_radar_service(app.state.settings)
@@ -116,7 +130,8 @@ async def lifespan(app: FastAPI):
         session_factory=getattr(app.state, "session_factory", None),
         vector_index=getattr(app.state, "vector_index", None),
     )
-    # TODO: ScopeService/BoardService gercek DI (Issue #15/#16 disinda, ayri kapsam)
+    app.state.scope_service = _build_scope_service(app.state.settings, app.state.radar_service)
+    # TODO: BoardService gercek DI (#51)
     yield
     # TODO: Kapanışta kaynakları temizle
 

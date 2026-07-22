@@ -53,3 +53,7 @@ class ScopeJudgePort(Protocol):
 
 class ScopeSubjectPort(Protocol):
     def resolve_scope_subject(self, ref: str) -> ScopeSubject: ...
+
+
+class ScopeSubjectNotFoundError(LookupError):
+    """ScopeSubjectPort verilen ref'i kendi kaynağında çözemedi."""

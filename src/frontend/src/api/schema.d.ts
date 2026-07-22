@@ -55,6 +55,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/scope/current": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Current Scope */
+        get: operations["current_scope_scope_current_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/scope/verdicts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Scope Verdicts */
+        get: operations["scope_verdicts_scope_verdicts_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/board": {
         parameters: {
             query?: never;
@@ -241,6 +275,26 @@ export interface components {
              */
             updated_at: string;
         };
+        /** ScopeCurrent */
+        ScopeCurrent: {
+            /** Goal */
+            goal: string;
+            /** In Scope */
+            in_scope: string[];
+            /** Non Goals */
+            non_goals: string[];
+            /** Version */
+            version: string;
+            /**
+             * Frozen At
+             * Format: date-time
+             */
+            frozen_at: string;
+            /** Ref */
+            ref: string;
+            /** Commit Sha */
+            commit_sha: string;
+        };
         /** ScopeItemRef */
         ScopeItemRef: {
             /** Quote */
@@ -273,6 +327,23 @@ export interface components {
             /** Judged At */
             judged_at?: string | null;
             signals?: components["schemas"]["Signals"] | null;
+        };
+        /** ScopeVerdictCounts */
+        ScopeVerdictCounts: {
+            /** In Scope */
+            in_scope: number;
+            /** Drift */
+            drift: number;
+            /** Non Goal Violation */
+            non_goal_violation: number;
+        };
+        /** ScopeVerdictsResponse */
+        ScopeVerdictsResponse: {
+            /** Verdicts */
+            verdicts: components["schemas"]["ScopeVerdict"][];
+            counts: components["schemas"]["ScopeVerdictCounts"];
+            /** Judged At */
+            judged_at: string | null;
         };
         /** SearchReceipt */
         SearchReceipt: {
@@ -413,6 +484,15 @@ export interface operations {
                     "application/json": components["schemas"]["ScopeVerdict"];
                 };
             };
+            /** @description Scope referansı bulunamadı */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -420,6 +500,86 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Kalici saglayici hatasi (GitHub/Gemini) */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Gecici olarak erisilemez */
+            503: {
+                headers: {
+                    /** @description Saniye — yalniz kendiliginden duzelebilir durumlarda */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    current_scope_scope_current_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScopeCurrent"];
+                };
+            };
+            /** @description Kalici saglayici hatasi (GitHub/Gemini) */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Gecici olarak erisilemez */
+            503: {
+                headers: {
+                    /** @description Saniye — yalniz kendiliginden duzelebilir durumlarda */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    scope_verdicts_scope_verdicts_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScopeVerdictsResponse"];
                 };
             };
             /** @description Kalici saglayici hatasi (GitHub/Gemini) */

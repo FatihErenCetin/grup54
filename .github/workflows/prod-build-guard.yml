@@ -1,0 +1,39 @@
+name: Prod build guard
+
+# #188 — prod build hijyen guard: mock kapalı + dist'te fixture/gerçek-isim/sır
+# sızıntısı yok. AYRI job/dosya (ci.yml'in "frontend" job'unu düzenlemez) —
+# ci.yml'in build adımı gen:api/vitest'e odaklı; bu job dist ÇIKTISINI tarar.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  prod-build-guard:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: src/frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: src/frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      # VITE_MOCK bilinçli olarak BOŞ — prod'un gerçek deploy koşulunu taklit
+      # eder (Vercel'de de boş, bkz. docs/sprint3-kontratlar.md Ek A). Değer
+      # "1" olsaydı vite.config.ts derlemeyi kendi kırar (build guard, #188).
+      - name: Prod build (VITE_MOCK kapalı)
+        run: npm run build
+        env:
+          VITE_MOCK: ""
+
+      - name: Dist hijyen taraması (mock/fixture/sır sızıntısı)
+        run: node scripts/prod-build-guard.mjs dist

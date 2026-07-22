@@ -17,6 +17,7 @@ from ensemble.integrations.gemini.embeddings import GeminiEmbeddingsAdapter
 from ensemble.integrations.gemini.fake import FakeJudgeAdapter
 from ensemble.integrations.gemini.judge import GeminiJudgeAdapter
 from ensemble.integrations.gemini.query_judge import FakeQueryJudgeAdapter
+from ensemble.integrations.gemini.scope_judge import FakeScopeJudgeAdapter
 from ensemble.integrations.github.adapter import GitHubAdapter
 from ensemble.integrations.github.fake import FakeGitHubAdapter
 from ensemble.integrations.query_source import HarnessEventQuerySource
@@ -155,3 +156,11 @@ def test_app_state_lifespan_ile_query_service_kurulur():
         assert service.source_port.session_factory is not None
         assert isinstance(service.vector_index, LocalVectorIndex)
         assert isinstance(service.judge_port, FakeQueryJudgeAdapter)
+
+
+def test_app_state_lifespan_ile_scope_service_kurulur():
+    app = create_app(_settings())
+
+    with TestClient(app):
+        assert app.state.scope_service.harness_port is not None
+        assert isinstance(app.state.scope_service.judge_port, FakeScopeJudgeAdapter)
