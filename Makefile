@@ -1,4 +1,4 @@
-.PHONY: install dev test lint openapi eval-dataset eval-run eval-sweep eval eval-gate scope-eval harness-init
+.PHONY: install dev test lint openapi eval-dataset eval-run eval-sweep eval eval-gate scope-eval harness-init deploy
 
 install:
 	uv sync --all-packages
@@ -46,3 +46,9 @@ scope-eval:
 # varsa DOKUNMAZ - fail-safe). Örnek: make harness-init MILESTONE="Sprint 3"
 harness-init:
 	uv run python -m ensemble.onboarding.wizard --milestone "$(MILESTONE)"
+
+# Fly.io'ya deploy (#181, fly.toml). Secret'lar önceden `fly secrets set` ile
+# ayrı set edilmiş olmalı (bkz. fly.toml başlığı + PR gövdesi). Release/migrate
+# adımı henüz YOK (#187) — bugün yalnız imaj build+deploy eder.
+deploy:
+	flyctl deploy --config fly.toml
