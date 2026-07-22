@@ -41,6 +41,29 @@ class GitHubAdapter:
             return []
         return [f["filename"] for f in data.get("files", [])]
 
+    def get_diff(self, base: str, head: str) -> dict[str, str]:
+        """Semantik hunk aşaması (#23/#152) için path->hunk metni.
+
+        Aynı compare API'yi kullanır ama BİLEREK ayrı `cache_key` taşır
+        (`compare()`'inkiyle aynı olsaydı, `compare()` önce çağrılınca ETag
+        kaydedilir; hemen ardından aynı key ile gelen bu çağrı 304 alır ve
+        `GitHubRestClient.get()` — 304'te artık `None` değil, ilgili
+        `cache_key`'in SON BİLİNEN gövdesini replay eder — bu durumda
+        `compare()`'in gövdesini `get_diff()` adına replay ederdi. `compare()`
+        yalnızca dosya adlarına bakar, `get_diff()` `patch` alanını okur; aynı
+        gövde ikisi için de "doğru şekilde" parse olur ama farklı zamanlarda
+        pollandıklarında birbirinin BAYAT verisini sessizce döndürebilirler).
+        Büyük diff'lerde GitHub `patch` alanını hiç göndermez (dosya bazlı,
+        sessizce atlanır — chunk_diff boş metinle no-op döner).
+        """
+        data = self._client.get(
+            f"/repos/{self._owner}/{self._repo}/compare/{base}...{head}",
+            cache_key=f"diff:{base}:{head}",
+        )
+        if data is None:
+            return {}
+        return {f["filename"]: f.get("patch", "") for f in data.get("files", [])}
+
     def resolve_scope_subject(self, ref: str) -> ScopeSubject:
         """Canlı PR başlık/gövde/dosya bilgisini scope motoruna taşır."""
         match = _PR_REF_RE.search(ref.strip())

@@ -1,6 +1,6 @@
 {
   "files": [
-    {"filename": "src/backend/ensemble/engine/radar.py"},
+    {"filename": "src/backend/ensemble/engine/radar.py", "patch": "@@ -1 +1 @@\n-old\n+new"},
     {"filename": "src/backend/ensemble/engine/board.py"}
   ]
 }
