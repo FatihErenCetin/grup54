@@ -25,7 +25,7 @@
             }
           },
           "502": {
-            "description": "Kalici saglayici hatasi (GitHub/Gemini)",
+            "description": "Kalici saglayici hatasi (GitHub/Gemini/Ollama)",
             "content": {
               "application/json": {
                 "schema": {
@@ -74,7 +74,7 @@
             }
           },
           "502": {
-            "description": "Kalici saglayici hatasi (GitHub/Gemini)",
+            "description": "Kalici saglayici hatasi (GitHub/Gemini/Ollama)",
             "content": {
               "application/json": {
                 "schema": {
@@ -134,7 +134,7 @@
             }
           },
           "502": {
-            "description": "Kalici saglayici hatasi (GitHub/Gemini)",
+            "description": "Kalici saglayici hatasi (GitHub/Gemini/Ollama)",
             "content": {
               "application/json": {
                 "schema": {
@@ -203,7 +203,7 @@
             }
           },
           "502": {
-            "description": "Kalici saglayici hatasi (GitHub/Gemini)",
+            "description": "Kalici saglayici hatasi (GitHub/Gemini/Ollama)",
             "content": {
               "application/json": {
                 "schema": {
@@ -252,7 +252,7 @@
             }
           },
           "502": {
-            "description": "Kalici saglayici hatasi (GitHub/Gemini)",
+            "description": "Kalici saglayici hatasi (GitHub/Gemini/Ollama)",
             "content": {
               "application/json": {
                 "schema": {
@@ -301,7 +301,7 @@
             }
           },
           "502": {
-            "description": "Kalici saglayici hatasi (GitHub/Gemini)",
+            "description": "Kalici saglayici hatasi (GitHub/Gemini/Ollama)",
             "content": {
               "application/json": {
                 "schema": {
@@ -363,7 +363,7 @@
             }
           },
           "502": {
-            "description": "Kalici saglayici hatasi (GitHub/Gemini)",
+            "description": "Kalici saglayici hatasi (GitHub/Gemini/Ollama)",
             "content": {
               "application/json": {
                 "schema": {
@@ -539,7 +539,7 @@
             }
           },
           "502": {
-            "description": "Kalici saglayici hatasi (GitHub/Gemini)",
+            "description": "Kalici saglayici hatasi (GitHub/Gemini/Ollama)",
             "content": {
               "application/json": {
                 "schema": {

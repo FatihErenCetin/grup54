@@ -23,6 +23,7 @@ from ensemble.integrations.gemini.scope_judge import build_scope_judge
 from ensemble.integrations.github.adapter import GitHubAdapter
 from ensemble.integrations.github.errors import GitHubConfigError
 from ensemble.integrations.github.fake import FakeGitHubAdapter
+from ensemble.integrations.ollama.adapter import OllamaAdapter
 from ensemble.integrations.query_source import HarnessEventQuerySource
 from ensemble.ports import EmbeddingsPort, GitHubPort, JudgePort, VectorIndexPort
 from ensemble.store.engine import get_engine, get_session_factory
@@ -55,6 +56,8 @@ def _build_github_port(settings: Settings) -> GitHubPort:
 
 
 def _build_judge_port(settings: Settings) -> JudgePort:
+    if settings.LLM_PROVIDER == "ollama":
+        return OllamaAdapter(settings)
     if settings.GEMINI_API_KEY:
         return GeminiJudgeAdapter(settings)
     logger.warning("GEMINI_API_KEY tanımlı değil — FakeJudgeAdapter (kural-tabanlı) kullanılıyor.")
@@ -62,6 +65,8 @@ def _build_judge_port(settings: Settings) -> JudgePort:
 
 
 def _build_embeddings_port(settings: Settings) -> EmbeddingsPort:
+    if settings.LLM_PROVIDER == "ollama":
+        return CachedEmbeddings(OllamaAdapter(settings))
     if settings.GEMINI_API_KEY:
         return CachedEmbeddings(GeminiEmbeddingsAdapter(settings))
     logger.warning("GEMINI_API_KEY tanımlı değil — HashEmbeddings kullanılıyor.")

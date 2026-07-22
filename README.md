@@ -12,7 +12,7 @@
 
 ![Ensemble — ilk prototip panosu](harness-dashboard/docs/dashboard.png)
 
-> **İlk prototip:** [`harness-dashboard/`](harness-dashboard/) — vizyonun çalışan bir kesiti. Ensemble'ın tam mimarisi (FastAPI engine · Gemini "judge" · MCP · `.harness/`) geliştiriliyor.
+> **İlk prototip:** [`harness-dashboard/`](harness-dashboard/) — vizyonun çalışan bir kesiti. Ensemble'ın tam mimarisi (FastAPI engine · Gemini/Ollama "judge" · MCP · `.harness/`) geliştiriliyor.
 
 </div>
 
@@ -81,13 +81,34 @@ Ensemble, **insanların** (web pano) ve **her üyenin AI aracının** aynı payl
 |---|---|
 | FastAPI engine iskeleti — `/health` · `/radar` · `/scope` · `/board` · `/query` endpoint'leri + port/adapter katmanı | 🟢 iskelet çalışıyor (22 test, CI) — **iş mantığı henüz yok, S2'de** |
 | `.harness/` IO — `HarnessPort` (şema doğrulamalı okuma/yazma) | 🟢 çalışıyor |
-| **Semantik çakışma + scope-drift** — embeddings + Gemini **"judge"** + eşik kalibrasyonu/eval | 🔨 Sprint 2 (geliştiriliyor — ürünün kalbi) |
+| **Semantik çakışma + scope-drift** — embeddings + Gemini/Ollama **"judge"** + eşik kalibrasyonu/eval | 🔨 Sprint 2 (geliştiriliyor — ürünün kalbi) |
 | GitHub ingest — App auth + polling | 🔨 Sprint 2 |
 | React web pano (Radar · Board · Ask) | 🔨 Sprint 2 |
 | **MCP arayüzü** — AI araçları ortak bağlamı okur/yazar | 🟡 Sprint 3 |
 | Hosted demo (+ long-reach: üyelik) | 🟡 Sprint 3 |
 
-Hedeflenen motor: **Python + FastAPI** (engine) · **Gemini** (embeddings + judge) · **MCP server** · **GitHub App** (webhook). Çalışma modu local-first; demo için tek hosted örnek.
+Hedeflenen motor: **Python + FastAPI** (engine) · **Gemini veya Ollama** (embeddings + judge) · **MCP server** · **GitHub App** (webhook). Çalışma modu local-first; demo için tek hosted örnek.
+
+### Tam-yerel gizlilik modu (Ollama)
+
+`LLM_PROVIDER=ollama` seçildiğinde hem embeddings hem judge yerel Ollama API'sini
+kullanır; Gemini anahtarı tanımlı olsa bile buluta geri düşmez. `ENSEMBLE_MODE`
+ayrı bir ayardır: local modda Gemini, hosted modda aynı makinedeki Ollama da
+seçilebilir.
+
+Yerel judge hibrittir: kalibre actor/dosya-kesişimi/semantic similarity sinyalleri
+açık vakaları deterministik sonuçlandırır; yalnız gri vakalar `llama3.2` structured
+output yoluna gider. Her iki yol da yereldir ve repo bağlamı makineden çıkmaz.
+
+```bash
+ollama pull nomic-embed-text
+ollama pull llama3.2
+```
+
+Ardından `.env` içinde `LLM_PROVIDER=ollama` ayarla ve normal şekilde `make dev`
+çalıştır. Varsayılan endpoint `http://127.0.0.1:11434` ile loopback'e sabittir;
+repo bağlamı makineden çıkmaz. Canlı provider kalibrasyonu aynı fixture'larla
+`make eval-provider PROVIDER=ollama` komutundan koşar.
 
 ---
 

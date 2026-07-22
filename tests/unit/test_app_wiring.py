@@ -20,11 +20,13 @@ from ensemble.integrations.gemini.query_judge import FakeQueryJudgeAdapter
 from ensemble.integrations.gemini.scope_judge import FakeScopeJudgeAdapter
 from ensemble.integrations.github.adapter import GitHubAdapter
 from ensemble.integrations.github.fake import FakeGitHubAdapter
+from ensemble.integrations.ollama.adapter import OllamaAdapter
 from ensemble.integrations.query_source import HarnessEventQuerySource
 from ensemble.store.vector_store import LocalVectorIndex
 
 _ENV_KEYS = [
     "GEMINI_API_KEY",
+    "LLM_PROVIDER",
     "GITHUB_APP_ID",
     "GITHUB_APP_PRIVATE_KEY_PATH",
     "GITHUB_APP_PRIVATE_KEY",
@@ -121,6 +123,21 @@ def test_gemini_key_varsa_cached_gemini_embeddings_secilir(tmp_path):
 def test_gemini_key_eksikse_hash_embeddings_secilir():
     service = _build_radar_service(_settings())
     assert isinstance(service.embeddings_port, HashEmbeddings)
+
+
+@pytest.mark.parametrize("mode", ["local", "hosted"])
+def test_ollama_provider_mode_ve_gemini_keyinden_bagimsiz_secilir(mode):
+    settings = _settings(
+        ENSEMBLE_MODE=mode,
+        LLM_PROVIDER="ollama",
+        GEMINI_API_KEY="bulunsa-bile-kullanma",
+    )
+
+    service = _build_radar_service(settings)
+
+    assert isinstance(service.judge_port, OllamaAdapter)
+    assert isinstance(service.embeddings_port, CachedEmbeddings)
+    assert isinstance(service.embeddings_port.inner, OllamaAdapter)
 
 
 def test_esikler_ve_default_base_settingsten_akar():

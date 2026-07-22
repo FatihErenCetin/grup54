@@ -25,6 +25,11 @@ from ensemble.integrations.github.errors import (
     GitHubRateLimitError,
     GitHubTransientError,
 )
+from ensemble.integrations.ollama.errors import (
+    OllamaError,
+    OllamaPermanentError,
+    OllamaTransientError,
+)
 
 _ORIGIN = "http://localhost:5173"  # varsayilan CORS allowlist'inde
 
@@ -76,6 +81,9 @@ _SENTINEL = "SENTINEL-IC-DETAY-9x7"
         (GeminiTransientError(_SENTINEL), 503, "gemini_unavailable", True),
         (GeminiPermanentError(_SENTINEL), 502, "gemini_error", False),
         (GeminiError(_SENTINEL), 502, "gemini_error", False),  # taban asimetrisi kapali
+        (OllamaTransientError(_SENTINEL), 503, "ollama_unavailable", True),
+        (OllamaPermanentError(_SENTINEL), 502, "ollama_error", False),
+        (OllamaError(_SENTINEL), 502, "ollama_error", False),
     ],
 )
 def test_domain_hatalari_zarfla_doner(exc, status, code, retry_after):

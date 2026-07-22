@@ -41,6 +41,12 @@ from ensemble.integrations.github.errors import (
     GitHubRateLimitError,
     GitHubTransientError,
 )
+from ensemble.integrations.ollama.errors import (
+    OllamaError,
+    OllamaPermanentError,
+    OllamaTransientError,
+)
+
 logger = logging.getLogger("ensemble.errors")
 
 # Rate-limit'te GitHub reset zamani tasinmiyorsa uydurma sure YOK — konservatif sabit
@@ -56,7 +62,10 @@ class ErrorEnvelope(BaseModel):
 # OpenAPI beyani — router baglanirken tek parametre (app.py); 500 bilerek
 # beyan edilmez (evrensel varsayilan), 422 FastAPI otomatigi.
 ERROR_RESPONSES = {
-    502: {"model": ErrorEnvelope, "description": "Kalici saglayici hatasi (GitHub/Gemini)"},
+    502: {
+        "model": ErrorEnvelope,
+        "description": "Kalici saglayici hatasi (GitHub/Gemini/Ollama)",
+    },
     503: {
         "model": ErrorEnvelope,
         "description": "Gecici olarak erisilemez",
@@ -141,6 +150,21 @@ _DOMAIN_MAP: list[tuple[type[Exception], int, str, str, bool]] = [
     # Taban siniflar da esli: dogrudan taban firlatilirsa 500 fallback'ine
     # dusup (local modda) ic detay sizdirmasin — asimetri bulgusu
     (GeminiError, 502, "gemini_error", "Gemini entegrasyonunda hata.", False),
+    (
+        OllamaTransientError,
+        503,
+        "ollama_unavailable",
+        "Ollama gecici olarak erisilemez.",
+        True,
+    ),
+    (
+        OllamaPermanentError,
+        502,
+        "ollama_error",
+        "Ollama istegi reddedildi - model ve yerel servis ayarlarini kontrol edin.",
+        False,
+    ),
+    (OllamaError, 502, "ollama_error", "Ollama entegrasyonunda hata.", False),
 ]
 
 

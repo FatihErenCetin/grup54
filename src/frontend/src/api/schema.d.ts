@@ -492,7 +492,7 @@ export interface operations {
                     "application/json": components["schemas"]["HealthResponse"];
                 };
             };
-            /** @description Kalici saglayici hatasi (GitHub/Gemini) */
+            /** @description Kalici saglayici hatasi (GitHub/Gemini/Ollama) */
             502: {
                 headers: {
                     [name: string]: unknown;
@@ -532,7 +532,7 @@ export interface operations {
                     "application/json": components["schemas"]["RadarResponse"];
                 };
             };
-            /** @description Kalici saglayici hatasi (GitHub/Gemini) */
+            /** @description Kalici saglayici hatasi (GitHub/Gemini/Ollama) */
             502: {
                 headers: {
                     [name: string]: unknown;
@@ -592,7 +592,7 @@ export interface operations {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
-            /** @description Kalici saglayici hatasi (GitHub/Gemini) */
+            /** @description Kalici saglayici hatasi (GitHub/Gemini/Ollama) */
             502: {
                 headers: {
                     [name: string]: unknown;
@@ -632,7 +632,7 @@ export interface operations {
                     "application/json": components["schemas"]["ScopeCurrent"];
                 };
             };
-            /** @description Kalici saglayici hatasi (GitHub/Gemini) */
+            /** @description Kalici saglayici hatasi (GitHub/Gemini/Ollama) */
             502: {
                 headers: {
                     [name: string]: unknown;
@@ -672,7 +672,7 @@ export interface operations {
                     "application/json": components["schemas"]["ScopeVerdictsResponse"];
                 };
             };
-            /** @description Kalici saglayici hatasi (GitHub/Gemini) */
+            /** @description Kalici saglayici hatasi (GitHub/Gemini/Ollama) */
             502: {
                 headers: {
                     [name: string]: unknown;
@@ -712,7 +712,7 @@ export interface operations {
                     "application/json": components["schemas"]["BoardResponse"];
                 };
             };
-            /** @description Kalici saglayici hatasi (GitHub/Gemini) */
+            /** @description Kalici saglayici hatasi (GitHub/Gemini/Ollama) */
             502: {
                 headers: {
                     [name: string]: unknown;
@@ -772,7 +772,7 @@ export interface operations {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
-            /** @description Kalici saglayici hatasi (GitHub/Gemini) */
+            /** @description Kalici saglayici hatasi (GitHub/Gemini/Ollama) */
             502: {
                 headers: {
                     [name: string]: unknown;
@@ -895,7 +895,7 @@ export interface operations {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
-            /** @description Kalici saglayici hatasi (GitHub/Gemini) */
+            /** @description Kalici saglayici hatasi (GitHub/Gemini/Ollama) */
             502: {
                 headers: {
                     [name: string]: unknown;
