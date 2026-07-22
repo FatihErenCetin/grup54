@@ -1,4 +1,4 @@
-.PHONY: install dev test lint openapi eval-dataset eval-run eval-sweep eval eval-gate scope-eval harness-init frontend-build-guard
+.PHONY: install dev test lint openapi eval-dataset eval-run eval-sweep eval eval-gate scope-eval harness-init frontend-build-guard deploy
 
 install:
 	uv sync --all-packages
@@ -52,3 +52,9 @@ harness-init:
 # CI: prod-build-guard.yml.
 frontend-build-guard:
 	cd src/frontend && VITE_MOCK= npm run build && node scripts/prod-build-guard.mjs dist
+
+# Fly.io'ya deploy (#181, fly.toml). Secret'lar önceden `fly secrets set` ile
+# ayrı set edilmiş olmalı (bkz. fly.toml başlığı + PR gövdesi). Release/migrate
+# adımı henüz YOK (#187) — bugün yalnız imaj build+deploy eder.
+deploy:
+	flyctl deploy --config fly.toml
