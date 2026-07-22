@@ -96,6 +96,10 @@ kullanır; Gemini anahtarı tanımlı olsa bile buluta geri düşmez. `ENSEMBLE_
 ayrı bir ayardır: local modda Gemini, hosted modda aynı makinedeki Ollama da
 seçilebilir.
 
+Yerel judge hibrittir: kalibre actor/dosya-kesişimi/semantic similarity sinyalleri
+açık vakaları deterministik sonuçlandırır; yalnız gri vakalar `llama3.2` structured
+output yoluna gider. Her iki yol da yereldir ve repo bağlamı makineden çıkmaz.
+
 ```bash
 ollama pull nomic-embed-text
 ollama pull llama3.2

@@ -40,6 +40,12 @@ class _StaticJudgeClient:
         return '{"severity":"high","confidence":0.9,"rationale":"fixture"}'
 
 
+class _ConservativeLocalClient(_StaticJudgeClient):
+    def generate_content(self, _prompt, *, response_schema):
+        assert response_schema is not None
+        return '{"severity":"low","confidence":0.5,"rationale":"gri fixture"}'
+
+
 @pytest.mark.parametrize("provider", ["gemini", "ollama"])
 def test_same_calibration_fixture_runs_through_both_providers(provider, monkeypatch):
     import eval.eval_runner as runner_module
@@ -61,6 +67,23 @@ def test_same_calibration_fixture_runs_through_both_providers(provider, monkeypa
     assert report.overall.tp == 1
     assert report.overall.fp == 0
     assert any("toplam vaka" in violation for violation in violations)
+
+
+def test_ollama_hybrid_baseline_meets_provider_gate(monkeypatch):
+    import eval.provider_eval as provider_module
+
+    settings = Settings(_env_file=None, LLM_PROVIDER="ollama")
+    judge = OllamaAdapter(settings, client=_ConservativeLocalClient())
+    monkeypatch.setattr(provider_module, "build_provider_judge", lambda *_args: judge)
+
+    report, violations = run_provider_eval("ollama", settings)
+
+    assert report.overall.tp == 5
+    assert report.overall.fp == 0
+    assert report.overall.fn == 3
+    assert report.overall.tn == 110
+    assert report.overall.f05 == 0.8929
+    assert violations == []
 
 
 def test_provider_threshold_profiles_are_independent_objects():

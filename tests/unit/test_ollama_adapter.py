@@ -88,7 +88,7 @@ def test_chat_requests_structured_non_streaming_output():
         _event("a", "esma"),
         _event("b", "fatih"),
         ["src/core.py"],
-        0.9,
+        0.45,
     )
 
     assert result.severity == "high"
@@ -98,6 +98,35 @@ def test_chat_requests_structured_non_streaming_output():
     assert seen["format"]["properties"]["severity"]["type"] == "string"
     assert seen["format"]["properties"]["severity"]["enum"] == ["low", "med", "high"]
     assert seen["messages"][0]["role"] == "user"
+
+
+@pytest.mark.parametrize(
+    ("overlap", "sim", "expected_severity", "expected_confidence"),
+    [
+        (["src/core.py"], 0.92, "high", 0.96),
+        (["src/core.py"], 0.60, "med", 0.55),
+        (["src/a.py", "src/b.py", "src/c.py"], 0.40, "high", 0.70),
+        (["src/core.py"], None, "med", 0.40),
+    ],
+)
+def test_calibrated_signal_policy_skips_unreliable_model_decision(
+    overlap, sim, expected_severity, expected_confidence
+):
+    def handler(_request: httpx.Request) -> httpx.Response:
+        raise AssertionError("Kalibre sinyalde Ollama judge cagrilmamali")
+
+    adapter = OllamaAdapter(_settings(), client=_client(handler))
+
+    result = adapter.judge_conflict(
+        _event("a", "esma"),
+        _event("b", "fatih"),
+        overlap,
+        sim,
+    )
+
+    assert result.severity == expected_severity
+    assert result.confidence == expected_confidence
+    assert "Ollama yerel sinyal politikasi" in result.rationale
 
 
 def test_transient_http_error_is_explicit_after_retry_budget():
@@ -138,7 +167,7 @@ def test_judge_failure_fails_low_without_cloud_fallback():
         _event("a", "esma"),
         _event("b", "fatih"),
         ["src/core.py"],
-        0.7,
+        0.45,
     )
 
     assert result.severity == "low"
