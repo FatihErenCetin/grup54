@@ -16,9 +16,12 @@ from ensemble.engine.embeddings import CachedEmbeddings, HashEmbeddings
 from ensemble.integrations.gemini.embeddings import GeminiEmbeddingsAdapter
 from ensemble.integrations.gemini.fake import FakeJudgeAdapter
 from ensemble.integrations.gemini.judge import GeminiJudgeAdapter
+from ensemble.integrations.gemini.query_judge import FakeQueryJudgeAdapter
 from ensemble.integrations.gemini.scope_judge import FakeScopeJudgeAdapter
 from ensemble.integrations.github.adapter import GitHubAdapter
 from ensemble.integrations.github.fake import FakeGitHubAdapter
+from ensemble.integrations.query_source import HarnessEventQuerySource
+from ensemble.store.vector_store import LocalVectorIndex
 
 _ENV_KEYS = [
     "GEMINI_API_KEY",
@@ -142,6 +145,17 @@ def test_app_state_lifespan_ile_radar_service_kurulur():
         resp = client.get("/radar")
     assert resp.status_code == 200
     assert resp.json()["detections"] == []
+
+
+def test_app_state_lifespan_ile_query_service_kurulur():
+    app = create_app(_settings())
+
+    with TestClient(app):
+        service = app.state.query_service
+        assert isinstance(service.source_port, HarnessEventQuerySource)
+        assert service.source_port.session_factory is not None
+        assert isinstance(service.vector_index, LocalVectorIndex)
+        assert isinstance(service.judge_port, FakeQueryJudgeAdapter)
 
 
 def test_app_state_lifespan_ile_scope_service_kurulur():

@@ -4,6 +4,9 @@ from typing import Protocol
 from ensemble.models import (
     Detection,
     NormalizedEvent,
+    QueryCorpus,
+    QueryDocument,
+    QueryJudgement,
     ScopeCandidate,
     ScopeJudgement,
     ScopeSubject,
@@ -32,6 +35,14 @@ class JudgePort(Protocol):
     def judge_conflict(
         self, a: NormalizedEvent, b: NormalizedEvent, overlap: list[str], sim: float | None
     ) -> Detection: ...
+
+
+class QuerySourcePort(Protocol):
+    def load_query_corpus(self) -> QueryCorpus: ...
+
+
+class QueryJudgePort(Protocol):
+    def answer_query(self, question: str, documents: list[QueryDocument]) -> QueryJudgement: ...
 
 
 class ScopeJudgePort(Protocol):

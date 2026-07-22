@@ -12,7 +12,7 @@ from typing import Literal
 
 from pydantic import BaseModel
 
-from ensemble.models import BoardCard, Detection, ScopeVerdict
+from ensemble.models import BoardCard, Detection, QueryResult, ScopeVerdict
 
 
 class HealthResponse(BaseModel):
@@ -29,9 +29,8 @@ class BoardResponse(BaseModel):
     cards: list[BoardCard]
 
 
-class QueryResponse(BaseModel):
-    answer: str
-    citations: list[str]
+class QueryResponse(QueryResult):
+    pass
 
 
 class ScopeVerdictCounts(BaseModel):

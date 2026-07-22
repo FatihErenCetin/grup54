@@ -101,3 +101,64 @@ class PresenceEntry(BaseModel):
     task: str | None
     branch: str | None
     since: datetime
+
+
+CitationType = Literal["scope", "task", "decision", "event", "pr"]
+
+
+class LineRange(BaseModel):
+    start: int = Field(ge=1)
+    end: int = Field(ge=1)
+
+
+class Citation(BaseModel):
+    type: CitationType
+    ref: str
+    quote: str
+    url: str | None = None
+    range: LineRange | None = None
+    n: int | None = Field(default=None, ge=1)
+
+
+class SearchReceipt(BaseModel):
+    type: CitationType
+    count: int = Field(ge=0)
+
+
+class NearestRef(BaseModel):
+    type: CitationType
+    ref: str
+
+
+class QueryResult(BaseModel):
+    answer: str
+    citations: list[str | Citation]
+    as_of: datetime
+    last_commit: str
+    window: str | None = None
+    confidence: Literal["low", "medium", "high"]
+    status: Literal["answered", "not_found"]
+    searched: list[SearchReceipt]
+    nearest: list[NearestRef]
+
+
+class QueryDocument(BaseModel):
+    id: str
+    type: CitationType
+    ref: str
+    quote: str
+    text: str
+    url: str | None = None
+    range: LineRange | None = None
+    occurred_at: datetime | None = None
+
+
+class QueryCorpus(BaseModel):
+    documents: list[QueryDocument]
+    last_commit: str
+
+
+class QueryJudgement(BaseModel):
+    answer: str
+    citation_refs: list[str]
+    confidence: Literal["low", "medium", "high"]
