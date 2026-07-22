@@ -209,3 +209,170 @@ Milestone'daki **47 issue** (tümü açık). "Bağımlı olduğu" / "kilitlediğ
 4. **Erken demo linki:** Web kabuğunu (#185) `sample-data` ile backend'i beklemeden gün-2'de canlıya alalım mı (jüriye erken görünür link), yoksa #184 gerçek-API wiring'ini bekleyip tek seferde mi yayınlayalım?
 
 > Güncelleme kuralı: sıra/bağımlılık değişirse bu dosyaya PR — kanonik issue durumu (atama dahil) her zaman GitHub'dadır (TDK). Sprint kapanışında bu haritadan "akış raporu" üretilecek (`/sprint-akis-raporu`): planlanan sıra vs gerçekleşen, beklemeler nerede oldu → retro girdisi + PM kanıtı.
+<!-- BOT-BLOK:baslangic -->
+### Sprint 3 — bağımlılık grafı (otomatik üretildi · #124)
+
+> Kanonik durum GitHub'da. Düz ok = sert (canlı ön-koşul) · kesik ok = yumuşak (mock ile beklemeden başlar). `~` = yumuşak bağımlılık.
+
+#### Görsel harita
+
+```mermaid
+graph LR
+  classDef enes fill:#2e9e6b,color:#fff,stroke:#1d6b47
+  classDef esma fill:#9d5bde,color:#fff,stroke:#6b2fb7
+  classDef fatih fill:#de8f3c,color:#fff,stroke:#a8641d
+  classDef semih fill:#5b8def,color:#fff,stroke:#2f5bb7
+  classDef done fill:#3a3f45,color:#9aa3ad,stroke:#565e66
+  classDef orphan fill:#2a1f1f,color:#e0a0a0,stroke:#a05252,stroke-dasharray:4 3
+  subgraph T_Dier["Diğer"]
+    I31["#31 Scope-drift dedektörü (2. dedektö… ✓"]:::done
+    I32["#32 MCP: who_is_touching + check_scop… ✓"]:::done
+    I33["#33 Frontend: Board + Ask + Activity…"]:::fatih
+    I34["#34 Hosted demo: Fly backend + Vercel…"]:::fatih
+    I48["#48 make rebuild: DB'yi .harness + Gi…"]:::enes
+    I51["#51 /board read router (#41 projeksiy…"]:::enes
+    I52["#52 /events + /presence router (artım…"]:::enes
+    I53["#53 /health + readiness (GitHub-App a… ✓"]:::done
+    I55["#55 .harness-validate CI (front-matte… ✓"]:::done
+    I56["#56 OpenAPI ↔ üretilen TS client drif…"]:::fatih
+    I57["#57 Onboarding sihirbazı: ilk çalıştı… ✓"]:::done
+    I58["#58 /query (Ask) endpoint: NL → vektö… ✓"]:::done
+    I59["#59 /scope router (scope-drift verdic… ✓"]:::done
+    I60["#60 Stale cleanup: bayat presence + d…"]:::enes
+    I61["#61 Backend Dockerfile (Fly imajı) +… ✓"]:::done
+    I62["#62 GitHub webhook receiver (/webhook… ✓"]:::done
+    I63["#63 Hosted demo sertleştirme: tek rea…"]:::fatih
+    I64["#64 Üst-seviye ürün README + local-fi…"]:::orphan
+    I65["#65 🎬 3-dakikalık proje videosu (scri…"]:::orphan
+    I66["#66 Hosted pgvector smoke test CI (Po…"]:::enes
+    I78["#78 Ollama/tam-yerel çıkarım: Embeddi… ✓"]:::done
+    I79["#79 Hosted: canlı 'GitHub ile gir' +…"]:::esma
+    I104["#104 📊 GET /graph — aktör×modül dokunm… ✓"]:::done
+    I105["#105 📊 Radar UI — aktör×modül ısı matr…"]:::fatih
+    I129["#129 🧑 /actors/:handle — aktör görünüm…"]:::fatih
+    I130["#130 📊 Graph ek görünüm modları: git a…"]:::fatih
+    I152["#152 GitHubPort.get_diff: semantik asa… ✓"]:::done
+    I158["#158 Radar UI: dusuk-guven tespitleri…"]:::fatih
+    I162["#162 eval: runner eşik yolunu gerçek r… ✓"]:::done
+    I163["#163 radar: sim=None gerçek ayrımı — '… ✓"]:::done
+    I164["#164 radar: aynı-yazar çakışmaları düş… ✓"]:::done
+    I170["#170 store/AI: vector-index tamamlayıc…"]:::semih
+    I177["#177 🔧 build_dataset.py: git çıktısını…"]:::fatih
+    I179["#179 🔌 Backend PostgreSQL sürücüsü (ps…"]:::enes
+    I180["#180 🌐 vercel.json: SPA rewrite (deep-… ✓"]:::done
+    I181["#181 🚀 fly.toml platform manifesti — c… ✓"]:::done
+    I182["#182 🐘 Postgres + pgvector provision (…"]:::enes
+    I183["#183 🔗 Hosted app-boot DI: store+pgvec…"]:::enes
+    I184["#184 🔀 Frontend↔backend canlı wiring:…"]:::fatih
+    I185["#185 ▲ Vercel projesini repo'ya bağla:…"]:::fatih
+    I186["#186 🔑 Hosted secret: GitHub App priva… ✓"]:::done
+    I187["#187 🗄️ Alembic-on-deploy: hosted kont…"]:::enes
+    I188["#188 🧼 Prod build hijyen guard (CI): m… ✓"]:::done
+    I189["#189 🔎 Deploy-sonrası canlı smoke: /he…"]:::fatih
+    I190["#190 📖 Deploy runbook: env→platform-se…"]:::fatih
+    I191["#191 🌱 Hosted seed/rebuild: events + p…"]:::enes
+    I192["#192 🤖 Deploy CD: main→Fly backend oto…"]:::fatih
+    I206["#206 Dockerfile: DATABASE_URL şeması +…"]:::fatih
+    I207["#207 RadarService._compare_cache: bran… ✓"]:::done
+  end
+  I52 --> I130
+  I105 --> I130
+  I53 --> I181
+  I61 --> I181
+  I179 --> I182
+  I179 --> I183
+  I182 --> I183
+  I181 --> I184
+  I180 --> I185
+  I184 --> I185
+  I61 --> I187
+  I179 --> I187
+  I182 --> I187
+  I53 --> I189
+  I185 --> I189
+  I61 --> I190
+  I189 --> I190
+  I179 --> I191
+  I182 --> I191
+  I183 --> I191
+  I61 --> I192
+  I181 --> I192
+```
+
+#### Dalgalar (sert-kenar topolojik seviyeler)
+
+| Dalga | Issue'lar (sahip) |
+|---|---|
+| D0 | #33 (fatih) · #34 (fatih) · #48 (enes) · #51 (enes) · #52 (enes) · #56 (fatih) · #60 (enes) · #63 (fatih) · #64 (sahipsiz) · #65 (sahipsiz) · #66 (enes) · #79 (esma) · #105 (fatih) · #129 (fatih) · #158 (fatih) · #170 (semih) · #177 (fatih) · #179 (enes) · #184 (fatih) · #192 (fatih) · #206 (fatih) |
+| D1 | #130 (fatih) · #182 (enes) · #185 (fatih) |
+| D2 | #183 (enes) · #187 (enes) · #189 (fatih) |
+| D3 | #190 (fatih) · #191 (enes) |
+
+#### Kişi kuyrukları
+
+| Kişi | Sıra (dalga içi # artan) |
+|---|---|
+| enes | #48 → #51 → #52 → #60 → #66 → #179 → #182 → #183 → #187 → #191 |
+| esma | #79 |
+| fatih | #33 → #34 → #56 → #63 → #105 → #129 → #158 → #177 → #184 → #192 → #206 → #130 → #185 → #189 → #190 |
+| sahipsiz | #64 → #65 |
+| semih | #170 |
+
+#### Uyarılar
+
+**⚠️ Sahipsiz/label'sız (açık):** #64 #65
+
+#### Düz liste
+
+| # | Sahip | Bağımlı olduğu | Kilitlediği |
+|---|---|---|---|
+| 31 ✓ | semih | — | — |
+| 32 ✓ | esma | — | — |
+| 33 | fatih | — | — |
+| 34 | fatih | — | — |
+| 48 | enes | — | — |
+| 51 | enes | — | — |
+| 52 | enes | — | #130 |
+| 53 ✓ | esma | — | #181 #189 |
+| 55 ✓ | fatih | — | — |
+| 56 | fatih | — | — |
+| 57 ✓ | esma | — | — |
+| 58 ✓ | semih | — | — |
+| 59 ✓ | semih | — | — |
+| 60 | enes | — | — |
+| 61 ✓ | fatih | — | #181 #187 #190 #192 |
+| 62 ✓ | esma | — | — |
+| 63 | fatih | — | — |
+| 64 | sahipsiz | — | — |
+| 65 | sahipsiz | — | — |
+| 66 | enes | — | — |
+| 78 ✓ | semih | — | — |
+| 79 | esma | — | — |
+| 104 ✓ | esma | — | — |
+| 105 | fatih | — | #130 |
+| 129 | fatih | — | — |
+| 130 | fatih | #105 #52 | — |
+| 152 ✓ | esma | — | — |
+| 158 | fatih | — | — |
+| 162 ✓ | semih | — | — |
+| 163 ✓ | semih | — | — |
+| 164 ✓ | semih | — | — |
+| 170 | semih | — | — |
+| 177 | fatih | — | — |
+| 179 | enes | — | #182 #183 #187 #191 |
+| 180 ✓ | fatih | — | #185 |
+| 181 ✓ | fatih | #53 #61 | #184 #192 |
+| 182 | enes | #179 | #183 #187 #191 |
+| 183 | enes | #179 #182 | #191 |
+| 184 | fatih | #181 | #185 |
+| 185 | fatih | #180 #184 | #189 |
+| 186 ✓ | esma | — | — |
+| 187 | enes | #179 #182 #61 | — |
+| 188 ✓ | fatih | — | — |
+| 189 | fatih | #185 #53 | #190 |
+| 190 | fatih | #189 #61 | — |
+| 191 | enes | #179 #182 #183 | — |
+| 192 | fatih | #181 #61 | — |
+| 206 | fatih | — | — |
+| 207 ✓ | sahipsiz | — | — |
+<!-- BOT-BLOK:bitis -->
