@@ -11,6 +11,7 @@ from ensemble.api.errors import ERROR_RESPONSES, ErrorEnvelope, register_excepti
 from ensemble.api.routers import board, graph, health, query, radar, scope, webhook
 from ensemble.config import Settings, get_settings
 from ensemble.engine.embeddings import CachedEmbeddings, HashEmbeddings
+from ensemble.engine.board import BoardService
 from ensemble.engine.graph import GraphService
 from ensemble.engine.query import QueryService
 from ensemble.engine.radar import RadarService
@@ -146,7 +147,7 @@ async def lifespan(app: FastAPI):
         vector_index=getattr(app.state, "vector_index", None),
     )
     app.state.scope_service = _build_scope_service(settings, app.state.radar_service)
-    # TODO: BoardService gercek DI (#51)
+    app.state.board_service = BoardService(session_factory=app.state.session_factory)
     yield
     # TODO: Kapanışta kaynakları temizle
 

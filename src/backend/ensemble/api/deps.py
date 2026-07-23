@@ -24,9 +24,13 @@ def get_query_service(request: Request) -> QueryService:
 
 
 def get_board_service(request: Request) -> BoardService:
-    # return request.app.state.board_service
-    # Şimdilik stub, session_factory olarak dummy lambda döndürüyoruz
-    return BoardService(session_factory=lambda: None)  # type: ignore
+    if hasattr(request.app.state, "board_service"):
+        return request.app.state.board_service
+    session_factory = getattr(request.app.state, "session_factory", None)
+    if session_factory is None:
+        from ensemble.store.engine import get_engine, get_session_factory
+        session_factory = get_session_factory(get_engine(request.app.state.settings))
+    return BoardService(session_factory=session_factory)
 
 
 def get_graph_service(request: Request) -> GraphService:
