@@ -7,7 +7,7 @@ rebuild_projection() ile yeniden kurulabilir (rebuildable cache).
 users/accounts/profiles tablosu YOK (kapsam-sinirlari.md: kapsam dışı).
 """
 
-from datetime import datetime, timezone
+from datetime import datetime
 
 from sqlalchemy import JSON, DateTime, String, Text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
@@ -68,9 +68,7 @@ class TaskProjectionRow(Base):
     status: Mapped[str] = mapped_column(String(20), index=True, default="backlog")
     assignee: Mapped[str | None] = mapped_column(String(255))
     ref: Mapped[str | None] = mapped_column(String(255))
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime, default=lambda: datetime.now(timezone.utc)
-    )
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     def to_board_card(self) -> BoardCard:
         """DB satırından BoardCard Pydantic modeline dönüştür."""
