@@ -35,14 +35,15 @@ def test_hosted_pgvector_config_and_dsn_sql_shape_smoke():
     assert engine.url.database == "ensemble"
 
 
-def test_pgvector_ddl_and_extension_sql_shape_smoke():
+def test_pgvector_index_upsert_sql_shape_smoke():
+    """DDL artık yalnız migration'da; bu test upsert SQL şeklini doğrular."""
     sessions = _FakeSessionFactory()
     index = PgVectorIndex(sessions, dimensions=768, table_name="vector_index")
 
-    index.create_schema()
+    index.upsert("doc", [1.0] * 768, {"type": "test"})
     statements = [call.sql for call in sessions.calls]
-    assert any("CREATE TABLE IF NOT EXISTS vector_index" in stmt for stmt in statements)
-    assert any("embedding vector(768)" in stmt for stmt in statements)
+    assert any("CAST(:embedding AS vector)" in stmt for stmt in statements)
+    assert any("ON CONFLICT (id) DO UPDATE" in stmt for stmt in statements)
 
 
 def test_pgvector_index_hosted_query_contract_sql_shape_smoke():
@@ -83,7 +84,18 @@ def test_live_postgres_pgvector_integration():
         session.commit()
 
     index = PgVectorIndex(session_factory, dimensions=2, table_name="test_vector_smoke")
-    index.create_schema()
+
+    # DDL doğrudan SQL ile oluştur (production'da migration yapar)
+    with session_factory() as session:
+        session.execute(text("""
+            CREATE TABLE IF NOT EXISTS test_vector_smoke (
+                id TEXT PRIMARY KEY,
+                embedding vector(2) NOT NULL,
+                meta JSONB NOT NULL DEFAULT '{}'::jsonb
+            )
+        """))
+        session.commit()
+
     index.clear()
     index.upsert("live-doc-1", [1.0, 0.0], {"source": "integration-test"})
     results = index.query([1.0, 0.0], k=1)
