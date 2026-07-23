@@ -1,7 +1,7 @@
 # Sprint 3 — Bağımlılık Haritası & Yürütme Sırası
 
 > **Amaç:** Kim neyi **şimdi** başlatabilir, ne neyi bekler — tek bakışta. Sprint 3 = **go-live** sprinti (20 Tem–2 Ağu): çekirdek radar canlıya çıkar (Fly backend + Vercel frontend + webhook). Kanonik durum GitHub'dadır; bu doküman *sıralama rehberi*dir. Harita ile GitHub çelişirse GitHub kazanır.
-> **Sürüm: 20 Tem 2026 (Sprint 3 gün-1 planlaması)** — 47 issue açık, 0 kapandı. Sprint ilerledikçe tazelenir (bkz. rehber §5).
+> **Bu üst bölüm = TASARIM/PLAN** (gün-1, 20 Tem 2026): bağımlılık grafı · kritik yol · yürütme sırası · ownership modeli — *durable*, canlı sayı-snapshot'ı **değil**. **GÜNCEL DURUM** (açık/kapalı sayı · sahipler · sahipsiz işler · kritik-yol ilerlemesi) = dosyanın **sonundaki BOT-BLOK** (otomatik üretilir — #124 her issue değişiminde tazeler). Sayılar için üst-bölüme değil BOT-BLOK'a bak; çelişkide GitHub + BOT-BLOK kazanır.
 > **Okuma:** düz ok `A --> B` = *B, A bitmeden **canlıya çıkamaz*** (bu sprintte tüm bağımlılıklar sert — deploy zinciri mock'la geçiştirilemez, gerçek image/DB/URL gerekir). Renk = sahip/domain: 🟠 Fatih (frontend+deploy) · 🔵 Semih (AI) · 🟢 Enes (data) · 🟣 Esma (backend) · 🔴 kesikli = sahipsiz. ⭐ = kritik yol · 🔑 = kök (en çok işi açan) · ⚠️ = aşırı yüklü kuyruk.
 
 > ⭐ **DOGFOOD — bu harita ürünümüzle üretildi ve ürünümüz gerçek bir hata yakaladı.**
