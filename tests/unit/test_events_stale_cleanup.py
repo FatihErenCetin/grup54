@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime
 from unittest.mock import MagicMock
 
 from ensemble.engine.events import EventService
@@ -81,3 +81,42 @@ def test_stale_cleanup_filters_old_and_invalid_entries():
     assert esma_entry.actor.type == "agent"
 
     assert latest_ts == datetime(2026, 7, 21, 11, 30, 0)
+
+
+def test_empty_presence_returns_stable_timestamp():
+    """Tüm kayıtlar elendiğinde art arda iki çağrı aynı latest_ts döndürmeli (ETag/304 kontratı)."""
+    mock_harness = MagicMock(spec=HarnessPort)
+    mock_github = MagicMock(spec=GitHubPort)
+    mock_harness.read_active.return_value = []
+
+    service = EventService(mock_harness, mock_github)
+    now = datetime(2026, 7, 21, 12, 0, 0)
+
+    _, ts1 = service.get_presence(now=now)
+    _, ts2 = service.get_presence(now=now)
+
+    assert ts1 == ts2, "Boş sonuçta art arda çağrılar aynı timestamp döndürmeli"
+    assert ts1 == datetime.min, "Boş sonuçta sentinel (datetime.min) dönmeli"
+
+
+def test_all_stale_returns_stable_timestamp():
+    """Tüm kayıtlar bayat olduğunda da sabit sentinel dönmeli."""
+    mock_harness = MagicMock(spec=HarnessPort)
+    mock_github = MagicMock(spec=GitHubPort)
+    mock_harness.read_active.return_value = [
+        {
+            "handle": "old-user",
+            "task_id": "T-1",
+            "module": "test",
+            "branch": "old",
+            "updated_at": "2026-07-20T06:00:00Z",  # 30 saat önce
+        },
+    ]
+
+    service = EventService(mock_harness, mock_github)
+    now = datetime(2026, 7, 21, 12, 0, 0)
+
+    entries, ts = service.get_presence(ttl_seconds=7200, now=now)
+
+    assert len(entries) == 0
+    assert ts == datetime.min

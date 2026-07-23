@@ -72,7 +72,7 @@ class EventService:
                 )
             )
 
-        if latest_ts == datetime.min:
-            latest_ts = current_time
+        # Hiç taze kayıt yoksa sabit epoch döndür — ETag/304 kontratı bozulmasın.
+        # (current_time dönerse her çağrıda farklı ETag üretilir, Semih CR #221)
 
         return entries, latest_ts
