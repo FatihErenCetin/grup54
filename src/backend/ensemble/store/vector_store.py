@@ -105,20 +105,6 @@ class PgVectorIndex:
         self.dimensions = dimensions
         self.table_name = table_name
 
-    def create_schema(self) -> None:
-        ddl = text(
-            f"""
-            CREATE TABLE IF NOT EXISTS {self.table_name} (
-                id TEXT PRIMARY KEY,
-                embedding vector({self.dimensions}) NOT NULL,
-                meta JSONB NOT NULL DEFAULT '{{}}'::jsonb
-            )
-            """
-        )
-        with self.session_factory() as session:
-            session.execute(ddl)
-            session.commit()
-
     def upsert(self, id: str, vec: list[float], meta: dict) -> None:
         _validate_vector_record(id, vec)
         self._validate_dimensions(vec)
