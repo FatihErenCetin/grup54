@@ -22,7 +22,7 @@ eval-dataset:
 	uv run python eval/backtest/build_dataset.py
 
 rebuild:
-	uv run python -c "from ensemble.store.engine import get_engine, get_session_factory; from ensemble.store.rebuild import rebuild_projection; from ensemble.config import get_settings; from ensemble_shared.harness import FileHarnessPort; settings=get_settings(); engine=get_engine(settings); session=get_session_factory(engine)(); harness=FileHarnessPort(); print('Rebuilding projection...'); res=rebuild_projection(session, harness); print(f'Rebuilt: {res}')"
+	uv run python -c "from ensemble.store.engine import get_engine, get_session_factory; from ensemble.store.rebuild import rebuild_projection; from ensemble.store.vector_store import build_vector_index; from ensemble.config import get_settings; from ensemble.app import _build_github_port, _build_embeddings_port; from ensemble_shared.harness import FileHarnessPort; settings=get_settings(); engine=get_engine(settings); session=get_session_factory(engine)(); harness=FileHarnessPort(); github=_build_github_port(settings); embeddings=_build_embeddings_port(settings); vector_index=build_vector_index(settings, session_factory=get_session_factory(engine) if settings.ENSEMBLE_MODE=='hosted' else None); print('Rebuilding projection...'); res=rebuild_projection(session, harness, github=github, vector_index=vector_index, embeddings=embeddings); print(f'Rebuilt: {res}')"
 
 eval-run:
 	uv run python -m eval.eval_runner

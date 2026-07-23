@@ -72,6 +72,16 @@ def test_pgvector_index_emits_pgvector_upsert_and_query_sql():
     assert results == [("near", 0.99), ("also-near", 0.9)]
 
 
+def test_pgvector_index_emits_truncate_table_on_clear():
+    sessions = FakeSessionFactory()
+    index = PgVectorIndex(sessions, dimensions=2)
+
+    index.clear()
+
+    statements = [call.sql for call in sessions.calls]
+    assert "TRUNCATE TABLE vector_index" in statements[0]
+
+
 def test_pgvector_index_validates_dimensions_before_sql():
     sessions = FakeSessionFactory()
     index = PgVectorIndex(sessions, dimensions=2)

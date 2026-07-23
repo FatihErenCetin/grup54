@@ -85,5 +85,80 @@ def test_rebuild_projection():
     
     enes = session.query(PresenceRow).filter_by(handle="enes").first()
     assert enes.task == "T-41"
-    
+
+    session.close()
+
+
+def test_rebuild_projection_clears_stale_vectors_when_events_empty():
+    settings = Settings(DATABASE_URL="sqlite:///:memory:")
+    engine = get_engine(settings)
+    Base.metadata.create_all(engine)
+
+    session_factory = get_session_factory(engine)
+    session = session_factory()
+
+    mock_harness = MagicMock(spec=HarnessPort)
+    mock_harness.read_tasks.return_value = []
+    mock_harness.read_active.return_value = []
+
+    from ensemble.store.vector_store import LocalVectorIndex
+    vector_index = LocalVectorIndex()
+    vector_index.upsert("stale-1", [1.0, 0.0], {"type": "old"})
+
+    res = rebuild_projection(session, mock_harness, vector_index=vector_index)
+
+    assert res["events"] == 0
+    assert vector_index.query([1.0, 0.0], k=10) == []
+    session.close()
+
+
+def test_rebuild_projection_with_github_events_and_vector_index():
+    from datetime import datetime, timezone
+    from ensemble.models import NormalizedEvent
+    from ensemble.ports import EmbeddingsPort, GitHubPort
+    from ensemble.store.models import EventRow
+    from ensemble.store.vector_store import LocalVectorIndex
+
+    settings = Settings(DATABASE_URL="sqlite:///:memory:")
+    engine = get_engine(settings)
+    Base.metadata.create_all(engine)
+
+    session_factory = get_session_factory(engine)
+    session = session_factory()
+
+    mock_harness = MagicMock(spec=HarnessPort)
+    mock_harness.read_tasks.return_value = []
+    mock_harness.read_active.return_value = []
+
+    event = NormalizedEvent(
+        id="evt-100",
+        type="commit",
+        actor="enes",
+        branch="main",
+        files=["a.py"],
+        ts=datetime.now(timezone.utc),
+        ref="ref-1",
+    )
+    mock_github = MagicMock(spec=GitHubPort)
+    mock_github.fetch_backfill_events.return_value = [event]
+
+    mock_embeddings = MagicMock(spec=EmbeddingsPort)
+    mock_embeddings.embed.return_value = [[1.0, 0.0]]
+
+    vector_index = LocalVectorIndex()
+    vector_index.upsert("stale-1", [0.0, 1.0], {"type": "stale"})
+
+    res = rebuild_projection(
+        session,
+        mock_harness,
+        github=mock_github,
+        vector_index=vector_index,
+        embeddings=mock_embeddings,
+    )
+
+    assert res["events"] == 1
+    assert session.query(EventRow).count() == 1
+    query_res = vector_index.query([1.0, 0.0], k=10)
+    assert [id for id, _ in query_res] == ["evt-100"]
+
     session.close()

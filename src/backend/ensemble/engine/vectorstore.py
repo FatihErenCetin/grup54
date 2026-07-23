@@ -37,6 +37,9 @@ class InMemoryVectorIndex:
     def meta(self, id: str) -> dict:
         return dict(self._records[id].meta)
 
+    def clear(self) -> None:
+        self._records.clear()
+
 
 def cosine_similarity(left: list[float], right: list[float]) -> float:
     if len(left) != len(right):

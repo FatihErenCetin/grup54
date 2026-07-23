@@ -152,9 +152,10 @@ GET /graph?window_days=14  →  TouchGraph { window_days, nodes: GraphNode[], ed
 ### C1 · Port + hosted adapter imzası (mevcut kod — `store/vector_store.py`) 🔒
 
 ```python
-class VectorIndexPort(Protocol):                                # S2 §2, AYNEN
+class VectorIndexPort(Protocol):                                # S2 §2 + #191
     def upsert(self, id: str, vec: list[float], meta: dict) -> None: ...
     def query(self, vec: list[float], k: int) -> list[tuple[str, float]]: ...
+    def clear(self) -> None: ...                                # #191: idempotent rebuild için indeksi sıfırla
 
 class PgVectorIndex:                                            # hosted impl (#182'nin PG'sine yazar)
     def __init__(self, session_factory: Callable[[], Session], *,

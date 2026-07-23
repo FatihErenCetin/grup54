@@ -70,6 +70,12 @@ class FaissVectorIndex:
     def meta(self, id: str) -> dict:
         return dict(self._meta[id])
 
+    def clear(self) -> None:
+        self._ids.clear()
+        self._vectors.clear()
+        self._meta.clear()
+        self._index = self._faiss.IndexFlatIP(self.dimensions)
+
     def _validate_dimensions(self, vec: list[float]) -> None:
         if len(vec) != self.dimensions:
             raise ValueError("vectors must have the configured dimensions")
@@ -161,6 +167,12 @@ class PgVectorIndex:
             rows = session.execute(stmt, params).all()
 
         return [(str(row.id), float(row.score)) for row in rows]
+
+    def clear(self) -> None:
+        stmt = text(f"TRUNCATE TABLE {self.table_name}")
+        with self.session_factory() as session:
+            session.execute(stmt)
+            session.commit()
 
     def _validate_dimensions(self, vec: list[float]) -> None:
         if len(vec) != self.dimensions:
