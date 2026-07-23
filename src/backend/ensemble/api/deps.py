@@ -3,7 +3,7 @@ from typing import Annotated
 from fastapi import Depends, Request
 
 from ensemble.config import Settings
-from ensemble.engine import BoardService, GraphService, RadarService, ScopeService
+from ensemble.engine import BoardService, EventService, GraphService, RadarService, ScopeService
 from ensemble.engine.query import QueryService
 
 
@@ -40,6 +40,10 @@ def get_graph_service(request: Request) -> GraphService:
     return request.app.state.graph_service
 
 
+def get_event_service(request: Request) -> EventService:
+    return request.app.state.event_service
+
+
 # Annotated dependencies
 SettingsDep = Annotated[Settings, Depends(get_settings)]
 RadarServiceDep = Annotated[RadarService, Depends(get_radar_service)]
@@ -47,3 +51,4 @@ ScopeServiceDep = Annotated[ScopeService, Depends(get_scope_service)]
 QueryServiceDep = Annotated[QueryService, Depends(get_query_service)]
 BoardServiceDep = Annotated[BoardService, Depends(get_board_service)]
 GraphServiceDep = Annotated[GraphService, Depends(get_graph_service)]
+EventServiceDep = Annotated[EventService, Depends(get_event_service)]
