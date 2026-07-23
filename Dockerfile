@@ -73,5 +73,8 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
     CMD python -c "import urllib.request,os; urllib.request.urlopen(f'http://127.0.0.1:{os.environ.get(\"PORT\",\"8000\")}/health', timeout=2)" || exit 1
 
 # Prod CMD — reload YOK, host 0.0.0.0, port $PORT (Fly.io PORT enjekte eder,
-# yoksa 8000'e düşer). Shell-form: ${PORT:-8000} genişletmesi için gerekli.
-CMD uvicorn ensemble.app:create_app --factory --host 0.0.0.0 --port ${PORT:-8000}
+# yoksa 8000'e düşer). exec-form + `exec`: sh kendini uvicorn ile değiştirir →
+# PID 1 uvicorn olur, Fly'ın gönderdiği SIGTERM doğrudan ona ulaşır (graceful
+# shutdown; sh'a takılıp grace-period sonunda sert kill riski yok). ${PORT:-8000}
+# genişletmesi korunur, Docker'ın JSONArgsRecommended uyarısı da kalkar.
+CMD ["sh", "-c", "exec uvicorn ensemble.app:create_app --factory --host 0.0.0.0 --port ${PORT:-8000}"]
