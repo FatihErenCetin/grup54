@@ -11,13 +11,26 @@ from sqlalchemy.orm import Session, sessionmaker
 from ensemble.config import Settings
 
 
+def normalize_database_url(url: str) -> str:
+    """PostgreSQL DSN'ini psycopg v3 sürücüsüne normalize et (#179).
+
+    'postgres://' veya 'postgresql://' ile başlayan DSN'leri
+    'postgresql+psycopg://' formatına dönüştürür.
+    """
+    if url.startswith("postgres://"):
+        return url.replace("postgres://", "postgresql+psycopg://", 1)
+    if url.startswith("postgresql://"):
+        return url.replace("postgresql://", "postgresql+psycopg://", 1)
+    return url
+
+
 def get_engine(settings: Settings) -> Engine:
     """Settings'e göre SQLAlchemy engine oluştur.
 
     - SQLite: WAL modu + foreign keys aktif (performans + bütünlük).
     - PostgreSQL: pool boyutu kontrollü.
     """
-    url = settings.DATABASE_URL
+    url = normalize_database_url(settings.DATABASE_URL)
     is_sqlite = url.startswith("sqlite")
 
     connect_args = {}
