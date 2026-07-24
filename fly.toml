@@ -28,6 +28,11 @@ primary_region = "fra"
   # PR gövdesi şablonuna bak).
   ENSEMBLE_MODE = "hosted"
   PORT = "8000"
+  # Hosted demo sertlestirme (#63) - sir DEGIL, env yeterli. Bu satir olmadan
+  # ozellik canlida hic acilmaz (rate cap + cached verdict + repo-pin devre
+  # disi kalir). Acilista fail-closed: GITHUB_REPO_OWNER/NAME (Fly secret,
+  # Ek A) zaten zorunlu - DEMO_MODE onlarsiz acilmaz.
+  DEMO_MODE = "true"
 
 [http_service]
   internal_port = 8000

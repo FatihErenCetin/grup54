@@ -44,6 +44,8 @@ Fly secret ─env─> FastAPI (ENSEMBLE_MODE=hosted) ─Protocol─> engine ─P
 | `GITHUB_WEBHOOK_SECRET` | **Fly secret** | webhook imza doğrulaması (D-35) |
 | `GITHUB_WEBHOOK_PROXY_URL` | **yalnız-local** (smee kanalı) | hosted'da webhook doğrudan Fly URL'ine gelir → boş |
 | `RADAR_WINDOW_DAYS` · `RADAR_MIN_JACCARD` · `RADAR_MIN_SIMILARITY` | **Fly secret (opsiyonel)** | kalibrasyon çıktısı (#18); kod default'u kanonik |
+| `DEMO_MODE` | **Fly secret** = `true` (`fly.toml [env]`, sır değil ama tek-satırlık açma/kapama bayrağı burada yaşar) | 🆕 #63 — açılışta fail-closed: `true` iken `GITHUB_REPO_OWNER`/`NAME` zorunlu (bkz. Ek F) |
+| `DEMO_RATE_WINDOW_S` · `DEMO_AI_RATE_LIMIT` · `DEMO_AI_GLOBAL_LIMIT` · `DEMO_RATE_LIMIT` · `DEMO_CACHE_TTL_S` · `DEMO_CACHE_MAX_ENTRIES` | **Fly secret (opsiyonel)** | 🆕 #63 — kod default'u kanonik; yalnız override gerekince set (bkz. Ek F) |
 | `VITE_API_BASE_URL` | **Vercel env (build-time)** | = Fly backend public URL (**A2 çift-yön**); origin-only, query/hash yasak |
 | `VITE_MOCK` | **yalnız-local** · Vercel'de **BOŞ** | prod'da fixture chunk'ı sızmasın (yalnız `"1"` mock açar) |
 | `FLY_API_TOKEN` | **CI secret** | deploy pipeline (GitHub Actions → `fly deploy`) |
@@ -221,6 +223,56 @@ check_scope(ref: str) -> ScopeVerdict
 
 - **Codegen zinciri (frozen):** `openapi.json` → `npm run gen:api` → `src/api/schema.d.ts` → `lib/api.ts` (`openapi-fetch`, tip-güvenli). Kontrat kayarsa derleme kırılır (CI drift-check). Backend bitmeden **mock** (`VITE_MOCK=1`, yalnız local) ile paralel.
 - **#129 çift-yön kanıtı:** sıfır yeni endpoint = Ek B modellerinin ikinci tüketicisi → kontrat boşluklarını erken yakalar (S2 Ek A'daki `NormalizedEvent` ikinci-tüketici mantığının aynısı).
+
+---
+
+## Ek F (23 Tem) — Hosted demo sertleştirme (#63): tek-repo pin + rate cap + cached verdict
+
+> **Sahibi:** backend (rate cap + cache + repo-pin) · **Tüketicisi:** hosted demo'nun kendisi (fatura kapağı). 🔒 **FROZEN** — `DEMO_MODE` bayrağı VARSAYILAN KAPALI; local/dev davranışı bu bayrak açılmadan HİÇ değişmez. Amaç: *"Public no-login demo paid AI çağırıyor → Gemini faturası patlamasın."*
+
+**Kapsam:** issue'nun 4 parçasından **3'ü** burada (tek-repo pin · IP/rate cap · cached verdict); **seed** #48+#191'e devredildi (gerekçe: PR gövdesi + #191 yorumu — ön-koşulu #183 hâlâ açık, ayrıca repoda `.harness/` hiç yok).
+
+### F1 · `DEMO_MODE` tek bayrak (`config.py`) — 🔒
+
+```python
+DEMO_MODE: bool = False   # acilista fail-closed: True iken GITHUB_REPO_OWNER/NAME ZORUNLU
+DEMO_RATE_WINDOW_S: int = 60
+DEMO_AI_RATE_LIMIT: int = 10        # IP basina, /query + /scope/check (kullanici-girdili AI)
+DEMO_AI_GLOBAL_LIMIT: int = 60      # tum IP'ler toplami — IP-rotasyonuna karsi asil tavan
+DEMO_RATE_LIMIT: int = 120          # IP basina, diger (poll'lanan) GET yollari
+DEMO_CACHE_TTL_S: int = 900
+DEMO_CACHE_MAX_ENTRIES: int = 256
+```
+
+İkinci bir `DEMO_REPO` anahtarı **eklenmedi** — `GITHUB_REPO_OWNER`/`NAME` (Ek A) zaten reponun kanonik pin'i; demo modda bu ikisi zorunlu hâle gelir (ikinci doğruluk kaynağı yaratmamak için, bkz. `internal` TDK ilkesi).
+
+### F2 · IP/rate cap (`api/rate_limit.py`) — 🔒 429 sözleşmesi
+
+- Yalnız `DEMO_MODE=true` iken `create_app`'e **CORSMiddleware'DEN ÖNCE** eklenir (Starlette: son eklenen en dışta koşar — CORS dışta kalmalı ki 429 de `Access-Control-Allow-Origin` taşısın, #45/#150 dersi).
+- **Muaf:** GET-dışı metodlar (webhook POST) ve `/health` (Fly health-check).
+- **AI kovası** = yalnız `/query` + `/scope/check` (gerçekten Gemini çağıran, kullanıcı-girdili yollar). `/radar` bilerek **genel kovada** — frontend'i 10 sn'de bir poll'layan kendi Radar sayfasını kesmesin; onun maliyetini F3 sıfırlıyor.
+- AI kovasında **iki sayaç**: IP anahtarı (`DEMO_AI_RATE_LIMIT`) + `"*"` global anahtarı (`DEMO_AI_GLOBAL_LIMIT`) — IP rotasyonuna karşı.
+- `client_ip()` önceliği: `Fly-Client-IP` > `X-Forwarded-For` ilk kayıt > `request.client.host` > `"unknown"`.
+- Aşımda **429** + `Retry-After: <saniye>` + kanonik `ErrorEnvelope`: `{"error": "demo_rate_limited", "message": "...", "status": 429}` — Ek D zarfının bir üyesi, `errors.py::ERROR_RESPONSES`'a koşulsuz eklendi (openapi drift-check kararsızlaşmasın).
+- **Kabul edilen risk:** IP başlığı istemci tarafından uydurulabilir — bu bir MALİYET KAPAĞI, güvenlik sınırı değil; uydurmaya karşı asıl koruma global tavandır.
+
+### F3 · Cached verdict (`engine/cache.py`) — 🔒 mevcut Protocol'ler AYNEN
+
+- `TtlLruCache` (TTL + LRU boyut sınırı) + üç ince sarmalayıcı — **hiçbir port imzası değişmez**: `CachedConflictJudge(JudgePort)` · `CachedQueryJudge(QueryJudgePort)` · `CachedScopeJudge(ScopeJudgePort)`. Anahtar = girdinin içerik-hash'i (`sha256`, `content_hash()` ile aynı felsefe) — kimlik değil içerik keyed.
+- Wiring yalnız `DEMO_MODE=true` iken, `app.py`'de mevcut fabrikaların (`build_query_judge`, `build_scope_judge`, `_build_judge_port`) çıktısının ÜSTÜNE sarılır; `integrations/gemini/*` hiç değişmez.
+- **Asıl hedef:** `RadarService.get_detections()` her istekte her aday çifti yeniden yargılıyordu; frontend `usePolling` ~10 sn'de bir tüm Radar sayfasını yeniliyor — tek açık sekme dakikada 6 kez aynı çiftleri Gemini'ye yeniden sorduruyordu. Cache bunu HIT'e çevirir.
+- `CachedEmbeddings` (mevcut, embeddings.py) demo modda `max_entries=DEMO_CACHE_MAX_ENTRIES` alır (serbest metin `q` sınırsız büyümesin — 512 MB Fly VM); local/dev'de `max_entries=None` (bugünkü sınırsız davranış, sıfır regresyon).
+
+### F4 · Tek read-only repo'ya sabitleme (`api/routers/webhook.py`) — 🔒
+
+- İmza doğrulaması + JSON parse'tan **sonra**, event işlemeden **önce**: `DEMO_MODE=true` ve gelen `repository.full_name` yapılandırılan `GITHUB_REPO_OWNER/NAME` ile eşleşmiyorsa event **202 `{"status":"ignored","reason":"repo_not_pinned"}`** ile yok sayılır — DB'ye tek satır yazılmaz. 4xx DEĞİL (GitHub'ın webhook'u devre dışı bırakmasını önlemek için `ping` ile aynı desen).
+- Pin kontrolü imza doğrulamasının **ardından** çalışır (sıra bozulursa güvenlik gerilemesi — testle kilitli).
+
+### F5 · Bilinçli sınırlar (kayıt için)
+
+- **In-memory + tek instance:** sayaç/cache Fly makinesi durup kalkınca sıfırlanır (`fly.toml`: `auto_stop_machines=stop`, `min_machines_running=1`). Dağıtık sayaç (Redis) **bilerek kapsam dışı** (`kapsam-sinirlari.md` queue/worker yasağı).
+- **Bayatlık:** TTL 900 sn → demo taze bir push'u en fazla ~15 dk geç gösterebilir; verdict içerik-anahtarlı olduğu için YANLIŞ cevap üretmez, yalnız gecikir.
+- **Seed** (#48/#191) bu ekin kapsamında DEĞİL — ön-koşulu #183 açık kaldığı sürece hosted store boş projeksiyon döner.
 
 ---
 
