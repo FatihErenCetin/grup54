@@ -1,4 +1,4 @@
-.PHONY: install dev test lint openapi eval-dataset eval-run eval-sweep eval eval-gate eval-provider scope-eval harness-init frontend-build-guard deploy
+.PHONY: install dev test lint openapi contracts eval-dataset eval-run eval-sweep eval eval-gate eval-provider scope-eval harness-init frontend-build-guard deploy
 
 install:
 	uv sync --all-packages
@@ -8,6 +8,14 @@ dev:
 
 openapi:
 	uv run python -c "import json; from pathlib import Path; from ensemble.app import create_app; Path('src/shared/openapi.json').write_text(json.dumps(create_app().openapi(), indent=2, ensure_ascii=False), encoding='utf-8')"
+
+# #56 tek reçete: openapi.json + TS client'i BIRLIKTE regen eder (router/schema
+# degisikliginden sonra bunu calistir). node_modules gerekir (bir kez `npm ci`
+# ya da `cd src/frontend && npm ci`). CI'nin zorunlu yoluna sokulmaz (npm
+# maliyeti — bkz. docs/kontrat-drift-guardrail.md); yalnizca yerel reçete +
+# CI hata mesajinin isaret ettigi komut.
+contracts: openapi
+	cd src/frontend && npm run gen:api
 
 test:
 	uv run pytest

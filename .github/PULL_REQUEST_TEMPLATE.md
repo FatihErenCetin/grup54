@@ -9,6 +9,7 @@ Closes #<id> <!-- tek issue — birden coksa ayri PR -->
 ## DONE kapısı — [`docs/gelistirme-dongusu.md`](../docs/gelistirme-dongusu.md)
 - [ ] Issue'nun **kabul kriterleri** karşılandı
 - [ ] **Kontrat imzaları** değişmedi *(değiştiyse `docs/sprint2-kontratlar.md` güncellendi + daily'de duyuruldu)*
+- [ ] Router/şemaya dokunulduysa **`make contracts`** çalıştırıldı; `openapi.json` + `schema.d.ts` bu PR'da commit'li ([`docs/kontrat-drift-guardrail.md`](../docs/kontrat-drift-guardrail.md))
 - [ ] **Kapsam temiz** — `docs/kapsam-sinirlari.md` YAPMA listesine girilmedi
 - [ ] `make test` + `make lint` yeşil
 - [ ] **Çekirdekse** (dedektör/scope-drift/judge): eval/backtest **kabul edilebilir false-positive** gösteriyor
