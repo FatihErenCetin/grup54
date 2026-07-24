@@ -82,7 +82,7 @@ def test_demo_ayarlari_varsayilan_degerler():
     assert settings.DEMO_AI_GLOBAL_LIMIT == 60
     assert settings.DEMO_RATE_LIMIT == 120
     assert settings.DEMO_CACHE_TTL_S == 900
-    assert settings.DEMO_CACHE_MAX_ENTRIES == 256
+    assert settings.DEMO_CACHE_MAX_ENTRIES == 1024
     assert settings.demo_repo_full_name is None
 
 

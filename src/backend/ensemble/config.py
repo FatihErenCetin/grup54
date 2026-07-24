@@ -109,7 +109,18 @@ class Settings(BaseSettings):
     DEMO_AI_GLOBAL_LIMIT: int = 60  # tum IP'ler toplami — asil fatura tavani
     DEMO_RATE_LIMIT: int = 120  # IP basina, diger (poll'lanan) yollar
     DEMO_CACHE_TTL_S: int = 900
-    DEMO_CACHE_MAX_ENTRIES: int = 256
+    # 256'ydi -> RADAR_WINDOW_DAYS(14)+GITHUB_BACKFILL_LIMIT(50) altinda calisma
+    # kumesi (~300 farkli metin: commit/diff cifti + query/scope adaylari)
+    # bu siniri asiyor ve LRU tahliyesi surekli TERS etki yapiyordu (thrashing:
+    # sinirsizken ~300 embed cagrisi, 256-limitli calismada ~900'e cikiyordu -
+    # ayni metinler pencere icinde tekrar tekrar Gemini'ye gidiyordu, tam da
+    # bu cache'in onlemesi gereken sey). 1024: calisma kumesinin ~3.4x'i (guvenli
+    # pay) - bellek olcumu (768-dim float listesi, gercek Python nesnesi):
+    # sys.getsizeof ile ~24.6 KB/vektor -> 1024 * 24.6 KB =~ 25 MB, 512 MB Fly
+    # VM'in ~%5'i (F1 kontrat kaydi #63 - deger burada ve .env.example'da,
+    # docs/sprint3-kontratlar.md Ek F/F1'deki DONMUS kod bloğu 256 gosterir;
+    # o blok ayri bir kontrat-guncelleme PR'iyla senkronlanmali).
+    DEMO_CACHE_MAX_ENTRIES: int = 1024
 
     @model_validator(mode="after")
     def _validate_demo_mode(self) -> "Settings":
