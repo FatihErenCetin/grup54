@@ -12,12 +12,13 @@ from fastapi.testclient import TestClient
 
 from ensemble.app import _build_radar_service, create_app
 from ensemble.config import Settings
+from ensemble.engine.cache import CachedConflictJudge, CachedQueryJudge, CachedScopeJudge
 from ensemble.engine.embeddings import CachedEmbeddings, HashEmbeddings
 from ensemble.integrations.gemini.embeddings import GeminiEmbeddingsAdapter
 from ensemble.integrations.gemini.fake import FakeJudgeAdapter
 from ensemble.integrations.gemini.judge import GeminiJudgeAdapter
-from ensemble.integrations.gemini.query_judge import FakeQueryJudgeAdapter
-from ensemble.integrations.gemini.scope_judge import FakeScopeJudgeAdapter
+from ensemble.integrations.gemini.query_judge import FakeQueryJudgeAdapter, GeminiQueryJudgeAdapter
+from ensemble.integrations.gemini.scope_judge import FakeScopeJudgeAdapter, GeminiScopeJudgeAdapter
 from ensemble.integrations.github.adapter import GitHubAdapter
 from ensemble.integrations.github.fake import FakeGitHubAdapter
 from ensemble.integrations.ollama.adapter import OllamaAdapter
@@ -181,3 +182,54 @@ def test_app_state_lifespan_ile_scope_service_kurulur():
     with TestClient(app):
         assert app.state.scope_service.harness_port is not None
         assert isinstance(app.state.scope_service.judge_port, FakeScopeJudgeAdapter)
+
+
+# --- Hosted demo cached-verdict wiring (#63) — demo acik/kapali matrisi ---
+# GEMINI_API_KEY iki senaryoda da AYNI (dolu) tutulur ki judge_port/embeddings_port
+# karsilastirmasi yalniz DEMO_MODE'a bagli olsun (baska bir degisken karismasin).
+
+
+def _demo_wiring_settings(tmp_path, *, demo_mode: bool):
+    db_path = tmp_path / f"demo-wiring-{demo_mode}.db"
+    return _settings(
+        GEMINI_API_KEY="fake-key",
+        DEMO_MODE=demo_mode,
+        GITHUB_REPO_OWNER="FatihErenCetin" if demo_mode else None,
+        GITHUB_REPO_NAME="grup54" if demo_mode else None,
+        DEMO_CACHE_MAX_ENTRIES=42,
+        DATABASE_URL=f"sqlite:///{db_path}",
+    )
+
+
+def test_demo_kapali_iken_judge_sarmalanmaz(tmp_path):
+    app = create_app(_demo_wiring_settings(tmp_path, demo_mode=False))
+
+    with TestClient(app):
+        assert isinstance(app.state.radar_service.judge_port, GeminiJudgeAdapter)
+        assert isinstance(app.state.query_service.judge_port, GeminiQueryJudgeAdapter)
+        assert isinstance(app.state.scope_service.judge_port, GeminiScopeJudgeAdapter)
+
+        embeddings = app.state.radar_service.embeddings_port
+        assert isinstance(embeddings, CachedEmbeddings)
+        assert embeddings.max_entries is None  # demo kapali - sinirsiz (mevcut davranis)
+
+
+def test_demo_acikken_judge_ve_embeddings_sarmalanir(tmp_path):
+    app = create_app(_demo_wiring_settings(tmp_path, demo_mode=True))
+
+    with TestClient(app):
+        radar_judge = app.state.radar_service.judge_port
+        assert isinstance(radar_judge, CachedConflictJudge)
+        assert isinstance(radar_judge.inner, GeminiJudgeAdapter)
+
+        query_judge = app.state.query_service.judge_port
+        assert isinstance(query_judge, CachedQueryJudge)
+        assert isinstance(query_judge.inner, GeminiQueryJudgeAdapter)
+
+        scope_judge = app.state.scope_service.judge_port
+        assert isinstance(scope_judge, CachedScopeJudge)
+        assert isinstance(scope_judge.inner, GeminiScopeJudgeAdapter)
+
+        embeddings = app.state.radar_service.embeddings_port
+        assert isinstance(embeddings, CachedEmbeddings)
+        assert embeddings.max_entries == 42  # demo acikken DEMO_CACHE_MAX_ENTRIES uygulanir

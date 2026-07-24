@@ -8,8 +8,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 
 from ensemble.api.errors import ERROR_RESPONSES, ErrorEnvelope, register_exception_handlers
+from ensemble.api.rate_limit import DemoRateLimitMiddleware
 from ensemble.api.routers import board, events, graph, health, query, radar, scope, webhook
 from ensemble.config import Settings, get_settings
+from ensemble.engine.cache import CachedConflictJudge, CachedQueryJudge, CachedScopeJudge
 from ensemble.engine.embeddings import CachedEmbeddings, HashEmbeddings
 from ensemble.engine.board import BoardService
 from ensemble.engine.events import EventService
@@ -59,18 +61,35 @@ def _build_github_port(settings: Settings) -> GitHubPort:
 
 def _build_judge_port(settings: Settings) -> JudgePort:
     if settings.LLM_PROVIDER == "ollama":
-        return OllamaAdapter(settings)
-    if settings.GEMINI_API_KEY:
-        return GeminiJudgeAdapter(settings)
-    logger.warning("GEMINI_API_KEY tanımlı değil — FakeJudgeAdapter (kural-tabanlı) kullanılıyor.")
-    return FakeJudgeAdapter()
+        judge: JudgePort = OllamaAdapter(settings)
+    elif settings.GEMINI_API_KEY:
+        judge = GeminiJudgeAdapter(settings)
+    else:
+        logger.warning(
+            "GEMINI_API_KEY tanımlı değil — FakeJudgeAdapter (kural-tabanlı) kullanılıyor."
+        )
+        judge = FakeJudgeAdapter()
+    if settings.DEMO_MODE:
+        # #63: hosted public demo — Radar'ın 10 sn'lik poll'u aynı çifti
+        # yeniden Gemini'ye sormasın (fatura kapağı). local/dev'de DEMO_MODE
+        # kapalıyken bu sarmalayıcı hiç devreye girmez.
+        judge = CachedConflictJudge(
+            judge,
+            ttl_s=settings.DEMO_CACHE_TTL_S,
+            max_entries=settings.DEMO_CACHE_MAX_ENTRIES,
+        )
+    return judge
 
 
 def _build_embeddings_port(settings: Settings) -> EmbeddingsPort:
+    # #63: hosted demo modda cache boyutu sınırlanır (serbest metin `q` sınırsız
+    # büyümesin — 512 MB Fly VM); local/dev'de max_entries=None (mevcut sınırsız
+    # davranış, sıfır regresyon).
+    max_entries = settings.DEMO_CACHE_MAX_ENTRIES if settings.DEMO_MODE else None
     if settings.LLM_PROVIDER == "ollama":
-        return CachedEmbeddings(OllamaAdapter(settings))
+        return CachedEmbeddings(OllamaAdapter(settings), max_entries=max_entries)
     if settings.GEMINI_API_KEY:
-        return CachedEmbeddings(GeminiEmbeddingsAdapter(settings))
+        return CachedEmbeddings(GeminiEmbeddingsAdapter(settings), max_entries=max_entries)
     logger.warning("GEMINI_API_KEY tanımlı değil — HashEmbeddings kullanılıyor.")
     return HashEmbeddings()
 
@@ -109,11 +128,19 @@ def _build_query_service(
         github_owner=settings.GITHUB_REPO_OWNER,
         github_repo=settings.GITHUB_REPO_NAME,
     )
+    query_judge_port = build_query_judge(settings)
+    if settings.DEMO_MODE:
+        # #63: aynı soru+belge çiftini Gemini'ye yeniden sormaz.
+        query_judge_port = CachedQueryJudge(
+            query_judge_port,
+            ttl_s=settings.DEMO_CACHE_TTL_S,
+            max_entries=settings.DEMO_CACHE_MAX_ENTRIES,
+        )
     return QueryService(
         source_port=source,
         embeddings_port=radar_service.embeddings_port,
         vector_index=vector_index,
-        judge_port=build_query_judge(settings),
+        judge_port=query_judge_port,
     )
 
 
@@ -121,9 +148,17 @@ def _build_scope_service(settings: Settings, radar_service: RadarService) -> Sco
     subject_port = (
         radar_service.github_port if isinstance(radar_service.github_port, GitHubAdapter) else None
     )
+    scope_judge_port = build_scope_judge(settings)
+    if settings.DEMO_MODE:
+        # #63: aynı ref+subject+aday üçlüsünü yeniden yargılamaz.
+        scope_judge_port = CachedScopeJudge(
+            scope_judge_port,
+            ttl_s=settings.DEMO_CACHE_TTL_S,
+            max_entries=settings.DEMO_CACHE_MAX_ENTRIES,
+        )
     return ScopeService(
         harness_port=FileHarnessPort(),
-        judge_port=build_scope_judge(settings),
+        judge_port=scope_judge_port,
         embeddings_port=radar_service.embeddings_port,
         subject_port=subject_port,
     )
@@ -166,6 +201,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         lifespan=lifespan,
     )
     app.state.settings = settings
+
+    # Hosted demo IP/rate cap (#63) — CORS'TAN ÖNCE eklenmeli. Starlette
+    # add_middleware'i başa ekler → SON eklenen middleware EN DIŞTA koşar.
+    # Bu middleware CORS'tan SONRA eklenseydi, ürettiği 429 cevabı CORS
+    # katmanının dışında kalır ve tarayıcı gerçek hatayı "CORS error" diye
+    # gizlerdi (#45/#150 dersi — sıra test_demo_rate_limit.py ile kilitli).
+    # Yalnız DEMO_MODE=true iken kurulur; local/dev'de hiç devreye girmez.
+    if settings.DEMO_MODE:
+        app.add_middleware(DemoRateLimitMiddleware, settings=settings)
 
     # CORS (#45): açık allowlist — asla "*". Kimlik bilgisi taşınmaz (D-23:
     # cookie/auth yok); kontrattaki tüm endpoint'ler GET.

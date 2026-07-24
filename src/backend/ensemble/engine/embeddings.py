@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+from collections import OrderedDict
 from collections.abc import Callable
 
 from ensemble.ports import EmbeddingsPort
@@ -41,16 +42,27 @@ class HashEmbeddings:
 
 
 class CachedEmbeddings:
-    """Content-hash cache wrapper that preserves EmbeddingsPort's batch API."""
+    """Content-hash cache wrapper that preserves EmbeddingsPort's batch API.
+
+    `max_entries=None` (varsayılan) = bugünkü sınırsız davranış, sıfır
+    regresyon. Hosted demo modda (#63) serbest metin `q` sınırsız cache
+    büyütebileceği için (public demo, 512 MB Fly VM) `DEMO_CACHE_MAX_ENTRIES`
+    ile bir üst sınır + LRU tahliye devreye sokulur.
+    """
 
     def __init__(
         self,
         inner: EmbeddingsPort,
         key_fn: Callable[[str, str], str] = content_hash,
+        *,
+        max_entries: int | None = None,
     ):
+        if max_entries is not None and max_entries <= 0:
+            raise ValueError("max_entries must be positive")
         self.inner = inner
         self.key_fn = key_fn
-        self._cache: dict[str, list[float]] = {}
+        self.max_entries = max_entries
+        self._cache: OrderedDict[str, list[float]] = OrderedDict()
 
     def embed(self, texts: list[str], task_type: str) -> list[list[float]]:
         result_by_position: list[list[float] | None] = [None] * len(texts)
@@ -66,6 +78,7 @@ class CachedEmbeddings:
                 miss_positions.append(index)
                 miss_keys.append(key)
             else:
+                self._cache.move_to_end(key)
                 result_by_position[index] = cached
 
         if misses:
@@ -76,6 +89,10 @@ class CachedEmbeddings:
                 )
             for position, key, vector in zip(miss_positions, miss_keys, embedded):
                 self._cache[key] = vector
+                self._cache.move_to_end(key)
                 result_by_position[position] = vector
+                if self.max_entries is not None:
+                    while len(self._cache) > self.max_entries:
+                        self._cache.popitem(last=False)
 
         return [vector for vector in result_by_position if vector is not None]
