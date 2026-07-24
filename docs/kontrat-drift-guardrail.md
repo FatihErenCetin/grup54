@@ -38,21 +38,25 @@ Bu PR'ı hazırlarken izole bir worktree'de **kasten drift ürettim** ve geri al
 
 Yani mekanizmanın kendisi **doğru çalışıyor** — kod yazmaya gerek yoktu, bu doğrulamanın kendisi teslimat.
 
-## 3. Asıl boşluk: vaka-2 hiçbir zorunlu check'e yakalanmıyor
+## 3. Geçmiş boşluk (🟢 KAPANDI 24 Tem): vaka-2 artık zorunlu check'e yakalanıyor
 
-İki check **farklı job'larda** yaşıyor ve main branch protection'ın zorunlu (required) status check listesi bugün yalnız:
+> **Güncel durum:** main branch protection'ın zorunlu (required) status check listesine `frontend` **eklendi** — bkz. §7. Bu bölüm önce açığı (nasıl oluştuğunu, hangi vakanın kaçtığını), sonra kapanışı anlatır.
+
+İki check **farklı job'larda** yaşıyor. Bu PR açıldığında main branch protection'ın zorunlu (required) status check listesi yalnızdı:
 
 ```
-required_status_checks.contexts = ["lint-test", "check-single-issue"]
+required_status_checks.contexts = ["lint-test", "check-single-issue"]   # eskiden (frontend YOKTU)
 ```
 
-`frontend` **listede yok**. Vaka matrisi:
+`frontend` **listede yoktu**. O zamanki vaka matrisi:
 
-| Vaka | `lint-test` (zorunlu) | `frontend` (zorunlu DEĞİL) | Sonuç |
-|---|---|---|---|
-| 1. Router değişti, ikisi de regen edilmedi | 🔴 KIRMIZI | 🟢 (drift-check kendi de kırmızı ama job zorunlu değil) | **yakalanır** — lint-test blokluyor |
-| 2. Router değişti, `openapi.json` regen+commit, **client regen edilmedi** | 🟢 yeşil | 🔴 KIRMIZI | **merge edilebilir — açık delik** |
-| 3. İkisi de regen edildi | 🟢 | 🟢 | temiz |
+| Vaka | `lint-test` (zorunlu) | `frontend` (o zaman zorunlu DEĞİLDİ, şimdi 🔒 zorunlu) | Sonuç (o zaman) | Sonuç (şimdi) |
+|---|---|---|---|---|
+| 1. Router değişti, ikisi de regen edilmedi | 🔴 KIRMIZI | 🟢 (client bayat `openapi.json`'dan regen edildiği için fark üretmez — check gerçekten yeşil, KIRMIZI DEĞİL — ölçüldü: `schemas.py`'ye dummy alan eklenip hiçbir şey regen edilmeden `frontend` adımı koşuldu, `exit 0`) | **yakalanır** — lint-test blokluyor | **yakalanır** — lint-test blokluyor (değişmedi) |
+| 2. Router değişti, `openapi.json` regen+commit, **client regen edilmedi** | 🟢 yeşil | 🔴 KIRMIZI | **merge edilebilirdi — açık delik** | **artık merge edilemez** — `frontend` zorunlu, PR pending'de bekler |
+| 3. İkisi de regen edildi | 🟢 | 🟢 | temiz | temiz |
+
+> Vaka-1'in düzeltmesi önemli: satır o zaman "drift-check kendi de kırmızı ama job zorunlu değil" diyordu — bu **olgusal yanlıştı**. `frontend` job'ı `make openapi` **koşmuyor**; yalnız committed (o an bayat kalmış) `openapi.json`'dan `npm run gen:api` ile client üretiyor. Router/schema kaynağı değişse de `openapi.json` dosyası regen edilmediyse sıfır fark oluşur → check zaten yeşildi (vaka-1'de zorunlu olsun ya da olmasın fark etmiyordu, çünkü hiç kırmızıya dönmüyordu). Asıl risk hep vaka-2'ydeydi.
 
 ### Gerçek olay: #221 → main kırmızı → #235 hotfix
 
@@ -65,7 +69,7 @@ check-single-issue → SUCCESS
 gitleaks           → SUCCESS
 ```
 
-Yani bu olayda **öten `lint-test`'ti** (openapi.json tarafı) — `frontend` (client tarafı) o an zaten yeşildi çünkü olay tek-taraflıydı (yalnız openapi.json regen edilmemişti, o da yoktu henüz). Ama **vaka-2'nin simetriği** (openapi.json regen edilir, client edilmez) bugünkü required-check listesinde **hiçbir zorunlu job'a değmez** — çünkü client-tarafı check `frontend`'de yaşıyor ve `frontend` zorunlu değil. #235 hotfix'i main'i düzeltti ama PR gövdesinde `Closes #56` yoktu (yalnız başlıkta `T-56:` vardı) → issue #56 açık kaldı; bu PR onu kapatıyor.
+Yani bu olayda **öten `lint-test`'ti** (openapi.json tarafı) — `frontend` (client tarafı) o an zaten yeşildi çünkü olay tek-taraflıydı (yalnız openapi.json regen edilmemişti, o da yoktu henüz). Vaka-2'nin simetriği (openapi.json regen edilir, client edilmez) **o zamanki** required-check listesinde hiçbir zorunlu job'a değmiyordu — çünkü client-tarafı check `frontend`'de yaşıyor ve `frontend` henüz zorunlu değildi. #235 hotfix'i main'i düzeltti ama PR gövdesinde `Closes #56` yoktu (yalnız başlıkta `T-56:` vardı) → issue #56 açık kaldı. §7'deki ayar değişikliğiyle bu açık artık kapandı; bu PR issue'yu kapatıyor.
 
 ## 4. Pathspec tuzağı — neden cwd-göreli yazmak zorunlu
 
@@ -99,19 +103,20 @@ Son başarılı run'ın adım süreleri:
 - Saf-git kuplaj heuristiği (§5).
 - `docs/sprint3-kontratlar.md:222` prose düzeltmesi ("derleme kırılır" → "CI drift-check kırılır") — 🔒FROZEN Ek E içinde, imza değil betimleyici metin; ayrı PO-onaylı docs PR'ına bırakıldı. Bu bulgunun kanıtı: kas testi B'de kıran şey `tsc`/`vite build` değil, `git diff --exit-code` adımıydı.
 
-**Yapılması gereken tek gerçek kapanış hamlesi — PO kararı, kod değil:**
+**Tek gerçek kapanış hamlesi — PO kararı, kod değil — 🟢 UYGULANDI (24 Tem):**
 
 ```
-main branch protection → required_status_checks.contexts'e "frontend" ekle
+main branch protection → required_status_checks.contexts'e "frontend" eklendi
 ```
 
-Bugün: `["lint-test", "check-single-issue"]`. Eklendikten sonra doğrulama:
+Önce: `["lint-test", "check-single-issue"]` → şimdi: `["lint-test", "check-single-issue", "frontend"]`. Doğrulama (24 Tem itibarıyla çalıştırıldı):
 
 ```bash
 gh api repos/FatihErenCetin/grup54/branches/main/protection --jq '.required_status_checks.contexts'
+# ["lint-test","check-single-issue","frontend"]
 ```
 
-çıktısında `frontend` görünmeli.
+`frontend` artık listede — **vaka-2 deliği kapandı** (§3): client-tarafı drift (`openapi.json` regen edilir, `schema.d.ts` edilmez) artık `frontend` job'ı üzerinden zorunlu kapıya değiyor, merge PR pending'de bekler.
 
 ### Bilgi notları (PO kararı — bu PR'da değiştirilmedi)
 

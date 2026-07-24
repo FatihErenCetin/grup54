@@ -82,12 +82,20 @@ def test_drift_adimlari_zorunlu_joblarda():
     Coupling belgesi (güvenlik kapısı DEĞİL — job yeniden adlandırma GitHub'da
     fail-closed'dır, required-context eksik kalınca PR pending'de bekler,
     sessizce geçmez). Asıl koruduğu şey: birinin "OpenAPI drift-check"i
-    `lint-test`'ten alıp ayrı, zorunlu-OLMAYAN bir job'a taşıması — bu
-    FAIL-OPEN'dır ve bugünkü tek zorlayıcı kapıyı (main required check listesi
-    = ["lint-test", "check-single-issue"]) yok eder.
+    `lint-test`'ten ya da "Client tip drift-check"i `frontend`'den alıp ayrı,
+    zorunlu-OLMAYAN bir job'a taşıması/silmesi — bu FAIL-OPEN'dır ve bugünkü
+    zorlayıcı kapıları (main required check listesi
+    = ["lint-test", "check-single-issue", "frontend"]) yok eder.
 
-    Mutasyon kanıtı: adımı `lint-test`'ten silip yeni bir job'a taşıdım ->
-    bu test kırmızı oldu; geri alınca yeşile döndü (PR gövdesinde rapor edildi).
+    Mutasyon kanıtı 1: "OpenAPI drift-check" adımını `lint-test`'ten silip yeni
+    bir job'a taşıdım -> bu test kırmızı oldu; geri alınca yeşile döndü (PR
+    gövdesinde rapor edildi).
+
+    Mutasyon kanıtı 2: `ci.yml`'deki "Client tip drift-check" adımının
+    `git diff --exit-code -- src/api/schema.d.ts` satırını sildim (yalnız
+    `npm run gen:api` kaldı) -> bu test kırmızı oldu (yeni assert olmadan önce
+    bu mutasyonla yeşil kalıyordu — asimetrinin kanıtı); satırı geri koyunca
+    yeşile döndü.
     """
     doc = _load_ci_yaml()
     jobs = doc["jobs"]
@@ -111,4 +119,9 @@ def test_drift_adimlari_zorunlu_joblarda():
     assert "npm run gen:api" in run_script, (
         "'Client tip drift-check' adımı artık 'npm run gen:api' çalıştırmıyor — "
         f"run script:\n{run_script}"
+    )
+    assert "git diff --exit-code -- src/api/schema.d.ts" in run_script, (
+        "'Client tip drift-check' adımı artık schema.d.ts'i `git diff --exit-code` ile "
+        "doğrulamıyor — bu asimetri, tüm client diff bloğu silinse bile bu testin yeşil "
+        f"kalmasına yol açardı (fail-open). run script:\n{run_script}"
     )
