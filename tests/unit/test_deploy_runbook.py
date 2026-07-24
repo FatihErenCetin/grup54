@@ -110,7 +110,11 @@ def test_runbookta_sir_degeri_yok():
     # `_KEY=` / `_SECRET=` / `_TOKEN=` sagindaki deger 20+ karakter ham metinse
     # (placeholder/bos DEGILSE) bu gercek bir sizinti olabilir. Placeholder'lar
     # `<...>` ya da bos oldugu icin bu desenle eslesmez.
-    cig_deger_re = re.compile(r"[A-Z_]*(?:KEY|SECRET|TOKEN)=([^\s<`\"']{20,})")
+    # Tirnak-toleransli: deger `="..."` ya da `='...'` seklinde baslarsa da
+    # (acilis tirnagi opsiyonel `\s*["']?`) yakalanir -- eskiden `=` sonrasi
+    # ILK karakter dogrudan disarida-birakilan-sinifa (tirnak dahil) girdigi
+    # icin tirnakli bir deger regex'i hic eslesmeden gecerdi (sessiz kor nokta).
+    cig_deger_re = re.compile(r"[A-Z_]*(?:KEY|SECRET|TOKEN)=\s*[\"']?([^\s<`\"']{20,})")
     for eslesme in cig_deger_re.finditer(runbook):
         deger = eslesme.group(1)
         assert False, f"placeholder olmayan uzun deger bulundu: {deger!r}"

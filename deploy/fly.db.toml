@@ -1,0 +1,33 @@
+# deploy/fly.db.toml — Fly app "grup54-db" için AYRI manifest (D-39, self-host pgvector).
+#
+# Bilerek repo KÖKÜNDEKİ `fly.toml` (app = "ensemble-backend") ile AYNI dizinde
+# DEĞİL: kök `fly.toml`, `fly deploy`/`fly launch` gibi komutların cwd'de
+# sessizce bulup okuduğu dosyadır — iki app manifesti kökte yan yana dursaydı
+# "grup54-db için deploy" komutu `--config` unutulunca (çıplak `fly deploy
+# -a grup54-db`) yanlışlıkla backend imajını (Dockerfile build, app =
+# ensemble-backend) DB app'ine deploy etmeye çalışırdı (bkz. docs/deploy-runbook.md
+# §3 adım 2 — bu tuzak orada tarif edilir). Bu dosya HER ZAMAN açıkça
+# `--config deploy/fly.db.toml` ile çağrılır; asla varsayılan cwd taramasına
+# bırakılmaz.
+#
+# İmaj: hazır `pgvector/pgvector:pg16` — bu app'in kendi Dockerfile'ı YOK.
+# Erişim: yalnız Fly'ın özel ağı (`grup54-db.internal:5432`) — bilerek
+# `[http_service]` / public port YOK, dışarıya hiç açılmaz.
+#
+# Kimlik bilgileri (POSTGRES_USER/PASSWORD/DB) burada DEĞİL — sır, bu dosyaya
+# YAZILMAZ; `fly secrets set --stage -a grup54-db ...` ile ayrı set edilir
+# (docs/deploy-runbook.md §3 adım 2).
+
+app = "grup54-db"
+primary_region = "fra"
+
+[build]
+  image = "pgvector/pgvector:pg16"
+
+[mounts]
+  source = "pgdata"
+  destination = "/var/lib/postgresql/data"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"
