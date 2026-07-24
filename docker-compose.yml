@@ -16,8 +16,9 @@ services:
       POSTGRES_USER: ensemble
       POSTGRES_PASSWORD: ensemble
       POSTGRES_DB: ensemble
+      POSTGRES_HOST_AUTH_METHOD: trust
     ports:
-      - "5432:5432"
+      - "5433:5432"
     volumes:
       - ensemble-pg-data:/var/lib/postgresql/data
     healthcheck:

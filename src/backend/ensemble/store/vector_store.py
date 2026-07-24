@@ -141,6 +141,12 @@ class PgVectorIndex:
             session.execute(stmt, params)
             session.commit()
 
+    def clear(self) -> None:
+        stmt = text(f"TRUNCATE {self.table_name}")
+        with self.session_factory() as session:
+            session.execute(stmt)
+            session.commit()
+
     def query(self, vec: list[float], k: int) -> list[tuple[str, float]]:
         if k <= 0:
             return []
