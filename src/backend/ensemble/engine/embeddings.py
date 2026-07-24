@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import hashlib
+from collections import OrderedDict
 from collections.abc import Callable
+from threading import Lock
 
 from ensemble.ports import EmbeddingsPort
 
 
 DEFAULT_EMBEDDING_DIMENSIONS = 768
+DEFAULT_EMBEDDING_CACHE_MAXSIZE = 2048
 
 
 def content_hash(text: str, task_type: str) -> str:
@@ -47,10 +50,16 @@ class CachedEmbeddings:
         self,
         inner: EmbeddingsPort,
         key_fn: Callable[[str, str], str] = content_hash,
+        *,
+        maxsize: int = DEFAULT_EMBEDDING_CACHE_MAXSIZE,
     ):
+        if maxsize <= 0:
+            raise ValueError("maxsize must be positive")
         self.inner = inner
         self.key_fn = key_fn
-        self._cache: dict[str, list[float]] = {}
+        self.maxsize = maxsize
+        self._cache: OrderedDict[str, list[float]] = OrderedDict()
+        self._cache_lock = Lock()
 
     def embed(self, texts: list[str], task_type: str) -> list[list[float]]:
         result_by_position: list[list[float] | None] = [None] * len(texts)
@@ -60,7 +69,10 @@ class CachedEmbeddings:
 
         for index, text in enumerate(texts):
             key = self.key_fn(text, task_type)
-            cached = self._cache.get(key)
+            with self._cache_lock:
+                cached = self._cache.get(key)
+                if cached is not None:
+                    self._cache.move_to_end(key)
             if cached is None:
                 misses.append(text)
                 miss_positions.append(index)
@@ -71,11 +83,13 @@ class CachedEmbeddings:
         if misses:
             embedded = self.inner.embed(misses, task_type)
             if len(embedded) != len(misses):
-                raise ValueError(
-                    "inner embeddings must return the same number of vectors as texts"
-                )
+                raise ValueError("inner embeddings must return the same number of vectors as texts")
             for position, key, vector in zip(miss_positions, miss_keys, embedded):
-                self._cache[key] = vector
+                with self._cache_lock:
+                    self._cache[key] = vector
+                    self._cache.move_to_end(key)
+                    while len(self._cache) > self.maxsize:
+                        self._cache.popitem(last=False)
                 result_by_position[position] = vector
 
         return [vector for vector in result_by_position if vector is not None]

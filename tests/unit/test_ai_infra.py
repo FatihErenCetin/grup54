@@ -53,6 +53,31 @@ def test_cached_embeddings_rejects_short_inner_batch():
         cached.embed(["a", "b", "c"], task_type="SEMANTIC_SIMILARITY")
 
 
+def test_cached_embeddings_lru_en_eski_kaydi_sinirda_atilir():
+    inner = HashEmbeddings(dimensions=8)
+    cached = CachedEmbeddings(inner, maxsize=2)
+
+    cached.embed(["a", "b"], task_type="SEMANTIC_SIMILARITY")
+    cached.embed(["a"], task_type="SEMANTIC_SIMILARITY")  # a en yeni
+    cached.embed(["c"], task_type="SEMANTIC_SIMILARITY")  # b atılır
+    cached.embed(["b"], task_type="SEMANTIC_SIMILARITY")
+
+    assert list(cached._cache) == [
+        content_hash("c", "SEMANTIC_SIMILARITY"),
+        content_hash("b", "SEMANTIC_SIMILARITY"),
+    ]
+    assert inner.calls == [
+        (("a", "b"), "SEMANTIC_SIMILARITY"),
+        (("c",), "SEMANTIC_SIMILARITY"),
+        (("b",), "SEMANTIC_SIMILARITY"),
+    ]
+
+
+def test_cached_embeddings_gecersiz_lru_limitini_reddeder():
+    with pytest.raises(ValueError, match="maxsize"):
+        CachedEmbeddings(HashEmbeddings(), maxsize=0)
+
+
 def test_markdown_chunker_splits_on_headings_and_adds_metadata():
     chunks = chunk_markdown(
         "# Sprint 2\n\nT-15 embeddings.\n\n## Detay\n\nVectorStore cache.",

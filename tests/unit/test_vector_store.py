@@ -7,6 +7,7 @@ import pytest
 from ensemble.config import Settings
 from ensemble.ports import VectorIndexPort
 from ensemble.store.vector_store import (
+    FaissVectorIndex,
     LocalVectorIndex,
     PgVectorIndex,
     _to_pgvector_literal,
@@ -26,6 +27,13 @@ def vector_index_contract(index: VectorIndexPort) -> None:
 
 def test_local_vector_index_contract():
     vector_index_contract(LocalVectorIndex())
+
+
+def test_faiss_vector_index_contract():
+    pytest.importorskip("faiss")
+    pytest.importorskip("numpy")
+
+    vector_index_contract(FaissVectorIndex(dimensions=2))
 
 
 def test_build_vector_index_uses_local_index_in_local_mode():
