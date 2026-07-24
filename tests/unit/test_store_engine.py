@@ -226,3 +226,35 @@ def test_rebuild_projection_rolls_back_on_error():
     assert tasks[0].task_id == "T-old"
 
     session.close()
+
+
+def test_vector_index_untouched_on_db_rollback():
+    """DB hatasında vector index temizlenmemeli — rollback tutarsızlığı fix'i (#218)."""
+    from ensemble.store.vector_store import LocalVectorIndex
+
+    settings = Settings(DATABASE_URL="sqlite:///:memory:")
+    engine = get_engine(settings)
+    Base.metadata.create_all(engine)
+    session_factory = get_session_factory(engine)
+    session = session_factory()
+
+    # Önceden dolu vector index
+    vector_index = LocalVectorIndex()
+    vector_index.upsert("existing-vec", [1.0, 0.0], {"type": "before"})
+
+    mock_harness = MagicMock(spec=HarnessPort)
+    mock_harness.read_tasks.return_value = []
+    # read_active hata verecek — DB rollback tetiklenir
+    mock_harness.read_active.side_effect = RuntimeError("Harness fail")
+
+    import pytest
+    with pytest.raises(RuntimeError):
+        rebuild_projection(session, mock_harness, vector_index=vector_index)
+
+    # Vector index DB rollback sonrasında dokunulmamış olmalı
+    result = vector_index.query([1.0, 0.0], k=10)
+    assert len(result) == 1
+    assert result[0][0] == "existing-vec", "Vector index DB hatasından etkilenmemeli"
+
+    session.close()
+

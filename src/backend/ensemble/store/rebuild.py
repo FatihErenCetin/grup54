@@ -24,7 +24,15 @@ def rebuild_projection(
 
     Returns:
         {"tasks": N, "presence": M, "events": E} — eklenen satır sayıları.
+
+    Not: Vector index, DB commit başarılı olduktan sonra güncellenir.
+    Hata durumunda DB rollback oluşur ve vector index dokunulmaz kalır
+    (tutarlı durum korunur — vector index silinip DB rollback olmaz).
     """
+    # Yeni vektörleri DB commit'ten önce hazırla (staging).
+    # Bu sayede hata çıkarsa vector index hiç değiştirilmez.
+    staged_vectors: list[tuple[str, list[float], dict]] = []
+
     try:
         # --- tasks ---
         session.query(TaskProjectionRow).delete()
@@ -42,9 +50,6 @@ def rebuild_projection(
 
         # --- events (backfill & vector index) ---
         session.query(EventRow).delete()
-
-        if vector_index is not None:
-            vector_index.clear()
 
         event_rows: list[EventRow] = []
         if github is not None:
@@ -70,11 +75,26 @@ def rebuild_projection(
                         "ts": event.ts.isoformat(),
                         "ref": event.ref,
                     }
-                    vector_index.upsert(event.id, vec, meta)
+                    staged_vectors.append((event.id, vec, meta))
 
+        # DB commit başarılıysa vector index güncellenir.
+        # commit() hatası: session.rollback() çağrılır, staged_vectors sıfırlanmış
+        # sayılır (index hiç dokunulmadı).
         session.commit()
-        return {"tasks": len(task_rows), "presence": len(presence_rows), "events": len(event_rows)}
 
     except Exception:
         session.rollback()
         raise
+
+    # --- DB commit başarılı — vector index güncelle (atomik değil, kabul edilebilir) ---
+    # Staging listesi dolduysa: önce temizle, sonra yeni vektörleri yükle.
+    if vector_index is not None and staged_vectors:
+        vector_index.clear()
+        for vid, vec, meta in staged_vectors:
+            vector_index.upsert(vid, vec, meta)
+    elif vector_index is not None and github is None:
+        # github verilmemişse da clear — projeksiyon sıfırlandı.
+        vector_index.clear()
+
+    return {"tasks": len(task_rows), "presence": len(presence_rows), "events": len(event_rows)}
+
