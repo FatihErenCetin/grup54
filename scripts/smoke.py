@@ -23,12 +23,18 @@ Env sözleşmesi:
                      Verilmezse CORS + SPA route blokları ATLANIR (yalnız
                      /health kontrol edilir) — çıktıda büyük bir WARN + "kısmi
                      smoke" etiketiyle işaretlenir.
-    SMOKE_STRICT     "1" | "0". github_auth/gemini "missing" olduğunda FAIL mi
-                     WARN mi verileceğini override eder. Verilmezse
-                     `mode == "hosted"` iken otomatik strict (canlıda
-                     secret'lar İSTENİR — Sprint-3 Ek A "canlıda İSTENMEZ"
-                     kuralının makine hâli), `mode == "local"` iken degrade
-                     (WARN) — geliştirici Fake adapter'larla yeşil kalır.
+    SMOKE_STRICT     github_auth/gemini "missing" olduğunda FAIL mi WARN mi
+                     verileceğini override eder. **Varsayılan AÇIK (fail-safe):**
+                     yalnızca açıkça KAPATAN değerler ("0"/"false"/"no"/"off",
+                     büyük/küçük harf duyarsız) strict'i kapatır; "1"/"true"/
+                     "yes"/"on" ve tanınmayan her değer strict'i AÇIK bırakır
+                     (eski hata: yalnız tam "1" strict sayılıyordu — operatör
+                     `SMOKE_STRICT=true` yazınca sessizce non-strict'e
+                     düşüyordu). Tanımsız/boş bırakılırsa `mode == "hosted"`
+                     iken otomatik strict (canlıda secret'lar İSTENİR —
+                     Sprint-3 Ek A "canlıda İSTENMEZ" kuralının makine hâli),
+                     `mode == "local"` iken degrade (WARN) — geliştirici Fake
+                     adapter'larla yeşil kalır.
     SMOKE_TIMEOUT_S  saniye, varsayılan 15.
     SMOKE_RETRIES    varsayılan 2 — yalnız İLK `/health` denemesi için (Fly
                      `auto_stop_machines="stop"` soğuk başlangıcı; CORS/SPA
@@ -62,8 +68,16 @@ from dataclasses import dataclass, field
 from typing import Callable, Mapping
 from urllib.parse import urlsplit
 
-# 6 SPA route'u — src/frontend/src/main.tsx <Routes> ile BİREBİR (D-kural:
-# route listesi burada sessizce kısalırsa test #15 yakalar).
+# 6 SPA route'u — src/frontend/src/main.tsx <Routes> ile BİREBİR OLMALI.
+# DÜZELTME (B1): önceki yorum "route listesi burada sessizce kısalırsa
+# test #15 yakalar" derdi — bu YANLIŞ. test #15
+# (test_alti_route_iki_gecis_isteniyor) beklentilerini BU tuple'ın
+# kendisinden türetiyor (`for route in ROUTES: ...`), yani ROUTES burada
+# kısalır/genişler/yeniden sıralanırsa test kendi kendine göre hâlâ geçer
+# (self-referans → tautoloji, gerçek bir regresyon kilidi DEĞİL). Asıl kilit
+# `tests/unit/test_smoke.py::test_routes_sabit_liste_ile_esit` — literal
+# (hardcode) 6 route'a karşı karşılaştırır; main.tsx <Routes> ile burası
+# birbirinden sessizce sapıyorsa YALNIZCA o test kırılır.
 ROUTES: tuple[str, ...] = ("/", "/board", "/scope", "/graph", "/activity", "/ask")
 
 # src/frontend/index.html'deki kök düğüm — "200 ama gerçekten index.html mi"
@@ -331,10 +345,19 @@ def check_spa_routes(web: str, rep: Report, fetch: FetchFn, *, timeout: float) -
         _check_spa_response(refreshed, refresh_url, "refresh", rep)
 
 
+# E8 fail-open düzeltmesi: eski kod yalnız tam "1" değerini strict sayıyordu
+# (`value.strip() == "1"`) — yani "true"/"yes"/"on" yazan operatör, strict'i
+# AÇMAK isterken sessizce KAPATIYORDU (== "1" False döner). Yeni kural
+# fail-safe: yalnız AÇIKÇA kapatan değerler strict'i kapatır; geri kalan her
+# şey (tanınan "aç" değerleri + tanınmayan/typo değerler) strict'i açık
+# bırakır. Tanımsız/boş None döner — mode-bazlı varsayım (docstring) DEĞİŞMEZ.
+_STRICT_OFF_VALUES = frozenset({"0", "false", "no", "off"})
+
+
 def _parse_strict(value: str | None) -> bool | None:
-    if value in (None, ""):
+    if value is None or value.strip() == "":
         return None
-    return value.strip() == "1"
+    return value.strip().lower() not in _STRICT_OFF_VALUES
 
 
 def _parse_float(value: str | None, default: float) -> float:

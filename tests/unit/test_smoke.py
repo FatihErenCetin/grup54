@@ -13,7 +13,9 @@ import json
 from urllib.error import URLError
 from urllib.parse import urlsplit
 
-from scripts.smoke import ROUTES, HTML_MARKER, Response, main, normalize_base, origin_of
+import pytest
+
+from scripts.smoke import ROUTES, HTML_MARKER, Response, _parse_strict, main, normalize_base, origin_of
 
 API = "https://api.test"
 WEB = "https://web.test"
@@ -149,6 +151,64 @@ def test_smoke_strict_1_local_modda_da_kirmizi():
     assert rc == 1
 
 
+def test_smoke_strict_true_local_modda_da_kirmizi():
+    """E8 regresyon kilidi (integration seviyesi): eski hata `SMOKE_STRICT=true`
+    yazan operatörü sessizce non-strict'e düşürüyordu (`== "1"` tautolojisi
+    False dönüyordu). Bu artık local modda da FAIL vermeli — tıpkı "1" gibi."""
+    body = {"status": "ok", "mode": "local", "github_auth": "missing", "gemini": "missing"}
+    fake = FakeTransport({("GET", "/health"): health_resp(body)})
+    rc = main(env=base_env(web=None, SMOKE_STRICT="true"), fetch=fake, sleep=lambda s: None)
+    assert rc == 1
+
+
+def test_smoke_strict_0_hosted_modda_degrade_yesil():
+    """`SMOKE_STRICT=0` — açıkça kapatan tek değerlerden biri — hosted modun
+    otomatik-strict varsayımını bile geçersiz kılıp WARN'a düşürmeli
+    (go-live checklist'inin "SMOKE_STRICT=0 ile boyanmamış" endişesinin
+    tersi: burada BİLEREK 0 verilen durumu kilitliyoruz)."""
+    body = {"status": "ok", "mode": "hosted", "github_auth": "missing", "gemini": "missing"}
+    fake = FakeTransport({("GET", "/health"): health_resp(body)})
+    rc = main(env=base_env(web=None, SMOKE_STRICT="0"), fetch=fake, sleep=lambda s: None)
+    assert rc == 0
+
+
+# ---------------------------------------------------------------------------
+# _parse_strict — E8 fail-open düzeltmesi: her varyant için tautolojik
+# OLMAYAN kilit (literal beklenen değer hardcode edilir, aynı fonksiyonun
+# başka bir çağrısına karşı kıyaslanmaz).
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("value", ["0", "false", "False", "FALSE", "no", "No", "NO", "off", "Off", "OFF"])
+def test_parse_strict_acikca_kapatan_degerler_false(value):
+    assert _parse_strict(value) is False
+
+
+@pytest.mark.parametrize("value", ["1", "true", "True", "TRUE", "yes", "Yes", "YES", "on", "On", "ON"])
+def test_parse_strict_acikca_acan_degerler_true(value):
+    assert _parse_strict(value) is True
+
+
+def test_parse_strict_tanimsiz_deger_none():
+    assert _parse_strict(None) is None
+
+
+def test_parse_strict_bos_deger_none():
+    assert _parse_strict("") is None
+
+
+def test_parse_strict_bosluk_deger_none():
+    assert _parse_strict("   ") is None
+
+
+@pytest.mark.parametrize("value", ["yolo", "evet", "TRUEISH", "2"])
+def test_parse_strict_taninmayan_deger_fail_safe_true(value):
+    """Tanınmayan/typo bir değer AÇIKÇA kapatan listede olmadığı sürece
+    strict'i AÇIK bırakır (fail-safe) — eski davranış (yalnız tam "1" True,
+    gerisi False) burada kesin olarak tersine döndü."""
+    assert _parse_strict(value) is True
+
+
 # ---------------------------------------------------------------------------
 # K3 — CORS
 # ---------------------------------------------------------------------------
@@ -251,6 +311,17 @@ def test_alti_route_iki_gecis_isteniyor():
     assert len(spa_calls) == len(ROUTES) * 2
     for route in ROUTES:
         assert spa_calls.count(("GET", route)) == 2
+
+
+def test_routes_sabit_liste_ile_esit():
+    """B1 regresyon kilidi — tautolojik DEĞİL: `test_alti_route_iki_gecis_
+    isteniyor` beklentilerini ROUTES'un KENDİSİNDEN türetir (`for route in
+    ROUTES`), yani ROUTES burada sessizce kısalır/uzar/yeniden sıralanırsa o
+    test yine kendine göre geçer (self-referans → yanlış güvence — bkz.
+    scripts/smoke.py:65 civarı düzeltilen yorum). Bu test literal (hardcode)
+    6 route'a karşı karşılaştırır; src/frontend/src/main.tsx <Routes> ile
+    burası sessizce sapınca YALNIZ bu test kırılır."""
+    assert ROUTES == ("/", "/board", "/scope", "/graph", "/activity", "/ask")
 
 
 def test_web_url_yoksa_web_bloklari_atlanir():
