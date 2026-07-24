@@ -91,6 +91,17 @@ class FaissVectorIndex:
         self._faiss.normalize_L2(matrix)
         return matrix
 
+    def replace_all(self, vectors: list[tuple[str, list[float], dict]]) -> None:
+        self._ids = []
+        self._vectors.clear()
+        self._meta.clear()
+        for vid, vec, meta in vectors:
+            _validate_vector_record(vid, vec)
+            self._validate_dimensions(vec)
+            self._vectors[vid] = list(vec)
+            self._meta[vid] = dict(meta)
+        self._rebuild()
+
 
 class PgVectorIndex:
     """PostgreSQL pgvector implementation of VectorIndexPort."""
@@ -172,6 +183,33 @@ class PgVectorIndex:
         stmt = text(f"TRUNCATE TABLE {self.table_name}")
         with self.session_factory() as session:
             session.execute(stmt)
+            session.commit()
+
+    def replace_all(self, vectors: list[tuple[str, list[float], dict]]) -> None:
+        truncate_stmt = text(f"TRUNCATE {self.table_name}")
+        insert_stmt = text(
+            f"""
+            INSERT INTO {self.table_name} (id, embedding, meta)
+            VALUES (:id, CAST(:embedding AS vector), CAST(:meta AS jsonb))
+            ON CONFLICT (id) DO UPDATE
+            SET embedding = EXCLUDED.embedding,
+                meta = EXCLUDED.meta
+            """
+        )
+
+        for vid, vec, meta in vectors:
+            _validate_vector_record(vid, vec)
+            self._validate_dimensions(vec)
+
+        with self.session_factory() as session:
+            session.execute(truncate_stmt)
+            for vid, vec, meta in vectors:
+                params = {
+                    "id": vid,
+                    "embedding": _to_pgvector_literal(vec),
+                    "meta": json.dumps(meta, sort_keys=True),
+                }
+                session.execute(insert_stmt, params)
             session.commit()
 
     def _validate_dimensions(self, vec: list[float]) -> None:

@@ -40,6 +40,11 @@ class InMemoryVectorIndex:
     def clear(self) -> None:
         self._records.clear()
 
+    def replace_all(self, vectors: list[tuple[str, list[float], dict]]) -> None:
+        self.clear()
+        for vid, vec, meta in vectors:
+            self.upsert(vid, vec, meta)
+
 
 def cosine_similarity(left: list[float], right: list[float]) -> float:
     if len(left) != len(right):
