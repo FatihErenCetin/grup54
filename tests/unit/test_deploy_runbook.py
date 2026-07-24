@@ -6,9 +6,17 @@ deterministik; stdlib + pathlib disinda bagimlilik yok (mevcut
 `test_error_envelope.py` vb. deseni izler — ayri bir fixture/mock katmani
 gerektirmiyor).
 
-Bilincli test EDILMEYEN: tablo satirlarinin markdown yapisini parse edip
-"ayni anahtar iki sutunda" kuralini dogrulamak — kirilgan (bicim degisince
-yanlis kirmizi), degeri dusuk. Insan review'una birakilir (docs/review-rehberi.md).
+Bilincli test EDILMEYEN:
+- Tablo satirlarinin markdown yapisini parse edip "ayni anahtar iki
+  sutunda" kuralini dogrulamak — kirilgan (bicim degisince yanlis
+  kirmizi), degeri dusuk. Insan review'una birakilir (docs/review-rehberi.md).
+- "runbook'ta `make smoke` Makefile'daki `smoke:` hedefiyle ayni" capraz-
+  dosya kilidi — bu PR yazildiginda #189 (`scripts/smoke.py` + `make smoke`)
+  henuz `main`'de degil (Makefile'da `smoke:` hedefi yok). Boyle bir testi
+  simdi kosullu yazmak (var/yok'a gore dallanan bir assert) bu repoda #56 ve
+  #189 review'larinda zaten bulgu olarak isaretlenen kosullu/fail-open test
+  antikalibiydi tekrar eder. #189 `main`'e inince bu test ayri bir PR'da
+  (ya da #189'un kendi PR'inda) eklenmelidir.
 """
 
 from __future__ import annotations
@@ -106,27 +114,3 @@ def test_runbookta_sir_degeri_yok():
     for eslesme in cig_deger_re.finditer(runbook):
         deger = eslesme.group(1)
         assert False, f"placeholder olmayan uzun deger bulundu: {deger!r}"
-
-
-def test_smoke_hedefi_dogrulukla_ayirt_edilir():
-    # #189 (`make smoke`) bu PR yazildiginda henuz `main`'de degil (Makefile'da
-    # `smoke:` hedefi yok). Runbook, komutu "hedef durum" olarak acikca
-    # etiketlemeli — main'e #190'dan ONCE inen bir kontrol bunu "bugun calisiyor"
-    # gibi sunarsa yanlis olur (bilinçli/kosullu test — #56 ve #189
-    # review'larindaki fail-open ders alinarak sabit degil, DURUMA gore yazildi).
-    makefile = (_REPO_ROOT / "Makefile").read_text(encoding="utf-8")
-    runbook = _runbook_text()
-
-    smoke_target_var = bool(re.search(r"^smoke:", makefile, re.MULTILINE))
-    if smoke_target_var:
-        # #189 main'e inmis -> runbook `make smoke`'u DOGRUDAN calisir komut
-        # olarak belgeleyebilir; en azindan komutu icermeli.
-        assert "make smoke" in runbook
-    else:
-        # #189 henuz main'de degil -> runbook bunu acikca "henuz main'de
-        # degil" diye isaretlemis olmali (yanlis-canlilik vermesin, D-34 ruhu).
-        assert "make smoke" in runbook, "runbook hedef durumu bile belgelemiyor"
-        assert "henüz" in runbook and "main" in runbook, (
-            "smoke hedefi main'de yokken runbook bunu acikca 'henuz main'de "
-            "degil' diye isaretlemeli"
-        )
