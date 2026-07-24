@@ -55,20 +55,18 @@ def test_pgvector_index_emits_pgvector_upsert_and_query_sql():
     sessions = FakeSessionFactory()
     index = PgVectorIndex(sessions, dimensions=2)
 
-    index.create_schema()
     index.upsert("doc", [1.0, 0.0], {"path": "a.py"})
     results = index.query([1.0, 0.0], k=2)
 
     statements = [call.sql for call in sessions.calls]
     params = [call.params for call in sessions.calls]
-    assert "CREATE TABLE IF NOT EXISTS vector_index" in statements[0]
-    assert "embedding vector(2)" in statements[0]
-    assert "CAST(:embedding AS vector)" in statements[1]
-    assert "ON CONFLICT (id) DO UPDATE" in statements[1]
-    assert params[1]["embedding"] == "[1.0,0.0]"
-    assert params[1]["meta"] == '{"path": "a.py"}'
-    assert "ORDER BY embedding <=> CAST(:embedding AS vector), id" in statements[2]
-    assert params[2] == {"embedding": "[1.0,0.0]", "k": 2}
+    # DDL artık migration'da; PgVectorIndex yalnız DML üretir
+    assert "CAST(:embedding AS vector)" in statements[0]
+    assert "ON CONFLICT (id) DO UPDATE" in statements[0]
+    assert params[0]["embedding"] == "[1.0,0.0]"
+    assert params[0]["meta"] == '{"path": "a.py"}'
+    assert "ORDER BY embedding <=> CAST(:embedding AS vector), id" in statements[1]
+    assert params[1] == {"embedding": "[1.0,0.0]", "k": 2}
     assert results == [("near", 0.99), ("also-near", 0.9)]
 
 
