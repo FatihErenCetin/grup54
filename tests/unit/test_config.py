@@ -65,3 +65,40 @@ def test_settings_ok_without_github_app_config(monkeypatch):
     assert settings.GITHUB_APP_ID is None
     assert settings.GITHUB_APP_PRIVATE_KEY_PATH is None
     assert settings.GITHUB_APP_INSTALLATION_ID is None
+
+
+# --- Hosted demo sertlestirme (#63) ---
+
+
+def test_demo_mode_varsayilan_kapali(monkeypatch):
+    monkeypatch.delenv("DEMO_MODE", raising=False)
+    assert Settings(_env_file=None).DEMO_MODE is False
+
+
+def test_demo_ayarlari_varsayilan_degerler():
+    settings = Settings(_env_file=None)
+    assert settings.DEMO_RATE_WINDOW_S == 60
+    assert settings.DEMO_AI_RATE_LIMIT == 10
+    assert settings.DEMO_AI_GLOBAL_LIMIT == 60
+    assert settings.DEMO_RATE_LIMIT == 120
+    assert settings.DEMO_CACHE_TTL_S == 900
+    assert settings.DEMO_CACHE_MAX_ENTRIES == 256
+    assert settings.demo_repo_full_name is None
+
+
+def test_demo_ai_rate_limit_sifirsa_reddedilir():
+    with pytest.raises(ValidationError, match="pozitif"):
+        Settings(_env_file=None, DEMO_AI_RATE_LIMIT=0)
+
+
+def test_demo_mode_acikken_repo_eksikse_acilista_hata():
+    with pytest.raises(ValidationError, match="#63"):
+        Settings(_env_file=None, DEMO_MODE=True)
+
+
+def test_demo_mode_acikken_repo_doluysa_acilir():
+    settings = Settings(
+        _env_file=None, DEMO_MODE=True, GITHUB_REPO_OWNER="acme", GITHUB_REPO_NAME="demo"
+    )
+    assert settings.DEMO_MODE is True
+    assert settings.demo_repo_full_name == "acme/demo"
