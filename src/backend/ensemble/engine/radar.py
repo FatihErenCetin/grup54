@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, timezone
 from itertools import combinations
 
 from ensemble.models import Detection, NormalizedEvent
-from ensemble.ports import EmbeddingsPort, GitHubPort, JudgePort
+from ensemble.ports import EmbeddingsPort, GitHubPort, JudgePort, VectorIndexPort
 from ensemble.engine.chunking import chunk_diff
 from ensemble.engine.embeddings import HashEmbeddings
 from ensemble.engine.vectorstore import cosine_similarity
@@ -183,6 +183,7 @@ class RadarService:
         github_port: GitHubPort,
         judge_port: JudgePort,
         embeddings_port: EmbeddingsPort | None = None,
+        vector_index: VectorIndexPort | None = None,
         diffs_by_event: Mapping[str, Mapping[str, str]] | None = None,
         window_days: int = DEFAULT_RADAR_WINDOW_DAYS,
         min_jaccard: float = 0.0,
@@ -198,6 +199,7 @@ class RadarService:
         self.github_port = github_port
         self.judge_port = judge_port
         self.embeddings_port = embeddings_port or HashEmbeddings()
+        self.vector_index = vector_index
         self.diffs_by_event = diffs_by_event or {}
         self.window_days = window_days
         self.min_jaccard = min_jaccard

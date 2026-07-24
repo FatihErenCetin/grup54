@@ -79,6 +79,7 @@ class EmbeddingsPort(Protocol):         # impl: #15 (Gemini) · fake: hash-vecto
 class VectorIndexPort(Protocol):        # impl: #15 (FAISS/pgvector)
     def upsert(self, id: str, vec: list[float], meta: dict) -> None: ...
     def query(self, vec: list[float], k: int) -> list[tuple[str, float]]: ...
+    def clear(self) -> None: ...        # #191: idempotent rebuild için indeksi sıfırla
 
 class JudgePort(Protocol):              # impl: #17/#24 (Gemini) · fake: kural-tabanlı
     def judge_conflict(self, a: NormalizedEvent, b: NormalizedEvent,

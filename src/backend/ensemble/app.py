@@ -75,11 +75,16 @@ def _build_embeddings_port(settings: Settings) -> EmbeddingsPort:
     return HashEmbeddings()
 
 
-def _build_radar_service(settings: Settings) -> RadarService:
+def _build_radar_service(
+    settings: Settings,
+    *,
+    vector_index: VectorIndexPort | None = None,
+) -> RadarService:
     return RadarService(
         github_port=_build_github_port(settings),
         judge_port=_build_judge_port(settings),
         embeddings_port=_build_embeddings_port(settings),
+        vector_index=vector_index,
         window_days=settings.RADAR_WINDOW_DAYS,
         min_jaccard=settings.RADAR_MIN_JACCARD,
         min_similarity=settings.RADAR_MIN_SIMILARITY,
@@ -132,20 +137,18 @@ def _build_scope_service(settings: Settings, radar_service: RadarService) -> Sco
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     settings = app.state.settings
-    app.state.radar_service = _build_radar_service(settings)
-    # #104 review bulgusu (Semih, blocker): stub session_factory=lambda: None
-    # override'sız istekte TypeError veriyordu - store/engine.py'deki gercek
-    # engine'e baglandi (radar_service ile ayni desen). Tablolar Alembic'le
-    # onceden kurulu varsayilir (make migrate) - burasi sema kurmaz.
-    # #62 webhook receiver: Projector'un yazacagi gercek DB session factory,
-    # graph_service ile aynisi paylasilir.
     app.state.session_factory = get_session_factory(get_engine(settings))
+    app.state.vector_index = build_vector_index(
+        settings,
+        session_factory=app.state.session_factory if settings.ENSEMBLE_MODE == "hosted" else None,
+    )
+    app.state.radar_service = _build_radar_service(settings, vector_index=app.state.vector_index)
     app.state.graph_service = GraphService(app.state.session_factory)
     app.state.query_service = _build_query_service(
         settings,
         app.state.radar_service,
         session_factory=app.state.session_factory,
-        vector_index=getattr(app.state, "vector_index", None),
+        vector_index=app.state.vector_index,
     )
     app.state.scope_service = _build_scope_service(settings, app.state.radar_service)
     app.state.board_service = BoardService(session_factory=app.state.session_factory)

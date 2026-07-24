@@ -152,9 +152,10 @@ GET /graph?window_days=14  →  TouchGraph { window_days, nodes: GraphNode[], ed
 ### C1 · Port + hosted adapter imzası (mevcut kod — `store/vector_store.py`) 🔒
 
 ```python
-class VectorIndexPort(Protocol):                                # S2 §2, AYNEN
+class VectorIndexPort(Protocol):                                # S2 §2 + #191
     def upsert(self, id: str, vec: list[float], meta: dict) -> None: ...
     def query(self, vec: list[float], k: int) -> list[tuple[str, float]]: ...
+    def clear(self) -> None: ...                                # #191: idempotent rebuild için indeksi sıfırla
 
 class PgVectorIndex:                                            # hosted impl (#182'nin PG'sine yazar)
     def __init__(self, session_factory: Callable[[], Session], *,
@@ -182,7 +183,7 @@ if settings.ENSEMBLE_MODE == "hosted":
 
 - **Kanonik = migration** (`store/migrations/versions/c4f1d6a2b8e9_vector_index_table.py`). `PgVectorIndex.create_schema()` **kaldırılır / test-yardımcısına indirilir** (iki DDL kaynağı yasak).
 - `vector(768)` hardcode'u → `settings.GEMINI_EMBEDDING_DIMENSIONS` ile hizalanır (dims drift önlenir).
-- **Sağlayıcı kararı (#182 → yeni D-NN, karar_logu):** Neon/Supabase (pgvector hazır) vs Fly PG (manuel) — gerekçeli seç. Kontrat çıktısı: `DATABASE_URL=postgresql+psycopg://…` (Ek A) · `available_extensions`'da `vector` · prod rolüyle `CREATE EXTENSION vector` + `alembic upgrade head` temiz koşar. Bir semantik query gerçek PG'de döner (Fake/SQLite değil).
+- **Sağlayıcı kararı (#182 → Karar D-39, karar_logu):** Self-host pgvector on Fly (`grup54-db` app + kalıcı volume `/var/lib/postgresql/data`). Gerekçe: DB kanonik değil, projeksiyondur (`.harness/` + GitHub kanonik → #191 re-seed). Fly özel ağı (`.internal:5432`) üzerinden güvenli erişim sağlanır. Secret formatı: `DATABASE_URL=postgresql+psycopg://ensemble:<pw>@grup54-db.internal:5432/ensemble` (`fly secrets` ile atanır). `available_extensions`'da `vector` hazır bulunur; prod rolüyle `CREATE EXTENSION IF NOT EXISTS vector` + `alembic upgrade head` temiz koşar.
 
 ---
 
