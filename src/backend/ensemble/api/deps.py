@@ -3,7 +3,7 @@ from typing import Annotated
 from fastapi import Depends, Request
 
 from ensemble.config import Settings
-from ensemble.engine import BoardService, GraphService, RadarService, ScopeService
+from ensemble.engine import BoardService, EventService, GraphService, RadarService, ScopeService
 from ensemble.engine.query import QueryService
 
 
@@ -31,9 +31,13 @@ def get_vector_index(request: Request) -> VectorIndexPort:
 
 
 def get_board_service(request: Request) -> BoardService:
-    # return request.app.state.board_service
-    # Şimdilik stub, session_factory olarak dummy lambda döndürüyoruz
-    return BoardService(session_factory=lambda: None)  # type: ignore
+    if hasattr(request.app.state, "board_service"):
+        return request.app.state.board_service
+    session_factory = getattr(request.app.state, "session_factory", None)
+    if session_factory is None:
+        from ensemble.store.engine import get_engine, get_session_factory
+        session_factory = get_session_factory(get_engine(request.app.state.settings))
+    return BoardService(session_factory=session_factory)
 
 
 def get_graph_service(request: Request) -> GraphService:
@@ -41,6 +45,10 @@ def get_graph_service(request: Request) -> GraphService:
     # stub'du (session_factory=lambda: None) - override'siz istekte TypeError
     # veriyordu. Gercek DI app.py::lifespan'de kuruluyor (radar_service deseni).
     return request.app.state.graph_service
+
+
+def get_event_service(request: Request) -> EventService:
+    return request.app.state.event_service
 
 
 # Annotated dependencies
@@ -51,3 +59,4 @@ QueryServiceDep = Annotated[QueryService, Depends(get_query_service)]
 VectorIndexDep = Annotated[VectorIndexPort, Depends(get_vector_index)]
 BoardServiceDep = Annotated[BoardService, Depends(get_board_service)]
 GraphServiceDep = Annotated[GraphService, Depends(get_graph_service)]
+EventServiceDep = Annotated[EventService, Depends(get_event_service)]
