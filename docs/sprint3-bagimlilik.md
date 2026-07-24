@@ -230,7 +230,7 @@ graph LR
     I33["#33 Frontend: Board + Ask + Activity…"]:::fatih
     I34["#34 Hosted demo: Fly backend + Vercel…"]:::fatih
     I48["#48 make rebuild: DB'yi .harness + Gi…"]:::enes
-    I51["#51 /board read router (#41 projeksiy…"]:::enes
+    I51["#51 /board read router (#41 projeksiy… ✓"]:::done
     I52["#52 /events + /presence router (artım…"]:::enes
     I53["#53 /health + readiness (GitHub-App a… ✓"]:::done
     I55["#55 .harness-validate CI (front-matte… ✓"]:::done
@@ -238,7 +238,7 @@ graph LR
     I57["#57 Onboarding sihirbazı: ilk çalıştı… ✓"]:::done
     I58["#58 /query (Ask) endpoint: NL → vektö… ✓"]:::done
     I59["#59 /scope router (scope-drift verdic… ✓"]:::done
-    I60["#60 Stale cleanup: bayat presence + d…"]:::enes
+    I60["#60 Stale cleanup: bayat presence + d… ✓"]:::done
     I61["#61 Backend Dockerfile (Fly imajı) +… ✓"]:::done
     I62["#62 GitHub webhook receiver (/webhook… ✓"]:::done
     I63["#63 Hosted demo sertleştirme: tek rea…"]:::fatih
@@ -257,8 +257,8 @@ graph LR
     I163["#163 radar: sim=None gerçek ayrımı — '… ✓"]:::done
     I164["#164 radar: aynı-yazar çakışmaları düş… ✓"]:::done
     I170["#170 store/AI: vector-index tamamlayıc…"]:::semih
-    I177["#177 🔧 build_dataset.py: git çıktısını…"]:::fatih
-    I179["#179 🔌 Backend PostgreSQL sürücüsü (ps…"]:::enes
+    I177["#177 🔧 build_dataset.py: git çıktısını… ✓"]:::done
+    I179["#179 🔌 Backend PostgreSQL sürücüsü (ps… ✓"]:::done
     I180["#180 🌐 vercel.json: SPA rewrite (deep-… ✓"]:::done
     I181["#181 🚀 fly.toml platform manifesti — c… ✓"]:::done
     I182["#182 🐘 Postgres + pgvector provision (…"]:::enes
@@ -272,7 +272,7 @@ graph LR
     I190["#190 📖 Deploy runbook: env→platform-se…"]:::fatih
     I191["#191 🌱 Hosted seed/rebuild: events + p…"]:::enes
     I192["#192 🤖 Deploy CD: main→Fly backend oto…"]:::fatih
-    I206["#206 Dockerfile: DATABASE_URL şeması +…"]:::fatih
+    I206["#206 Dockerfile: DATABASE_URL şeması +… ✓"]:::done
     I207["#207 RadarService._compare_cache: bran… ✓"]:::done
   end
   I52 --> I130
@@ -303,18 +303,18 @@ graph LR
 
 | Dalga | Issue'lar (sahip) |
 |---|---|
-| D0 | #33 (fatih) · #34 (fatih) · #48 (enes) · #51 (enes) · #52 (enes) · #56 (fatih) · #60 (enes) · #63 (fatih) · #64 (sahipsiz) · #65 (sahipsiz) · #66 (enes) · #79 (esma) · #105 (fatih) · #129 (fatih) · #158 (fatih) · #170 (semih) · #177 (fatih) · #179 (enes) · #184 (fatih) · #192 (fatih) · #206 (fatih) |
-| D1 | #130 (fatih) · #182 (enes) · #185 (fatih) |
-| D2 | #183 (enes) · #187 (enes) · #189 (fatih) |
-| D3 | #190 (fatih) · #191 (enes) |
+| D0 | #33 (fatih) · #34 (fatih) · #48 (enes) · #52 (enes) · #56 (fatih) · #63 (fatih) · #64 (sahipsiz) · #65 (sahipsiz) · #66 (enes) · #79 (esma) · #105 (fatih) · #129 (fatih) · #158 (fatih) · #170 (semih) · #182 (enes) · #184 (fatih) · #192 (fatih) |
+| D1 | #130 (fatih) · #183 (enes) · #185 (fatih) · #187 (enes) |
+| D2 | #189 (fatih) · #191 (enes) |
+| D3 | #190 (fatih) |
 
 #### Kişi kuyrukları
 
 | Kişi | Sıra (dalga içi # artan) |
 |---|---|
-| enes | #48 → #51 → #52 → #60 → #66 → #179 → #182 → #183 → #187 → #191 |
+| enes | #48 → #52 → #66 → #182 → #183 → #187 → #191 |
 | esma | #79 |
-| fatih | #33 → #34 → #56 → #63 → #105 → #129 → #158 → #177 → #184 → #192 → #206 → #130 → #185 → #189 → #190 |
+| fatih | #33 → #34 → #56 → #63 → #105 → #129 → #158 → #184 → #192 → #130 → #185 → #189 → #190 |
 | sahipsiz | #64 → #65 |
 | semih | #170 |
 
@@ -331,7 +331,7 @@ graph LR
 | 33 | fatih | — | — |
 | 34 | fatih | — | — |
 | 48 | enes | — | — |
-| 51 | enes | — | — |
+| 51 ✓ | enes | — | — |
 | 52 | enes | — | #130 |
 | 53 ✓ | esma | — | #181 #189 |
 | 55 ✓ | fatih | — | — |
@@ -339,7 +339,7 @@ graph LR
 | 57 ✓ | esma | — | — |
 | 58 ✓ | semih | — | — |
 | 59 ✓ | semih | — | — |
-| 60 | enes | — | — |
+| 60 ✓ | enes | — | — |
 | 61 ✓ | fatih | — | #181 #187 #190 #192 |
 | 62 ✓ | esma | — | — |
 | 63 | fatih | — | — |
@@ -358,8 +358,8 @@ graph LR
 | 163 ✓ | semih | — | — |
 | 164 ✓ | semih | — | — |
 | 170 | semih | — | — |
-| 177 | fatih | — | — |
-| 179 | enes | — | #182 #183 #187 #191 |
+| 177 ✓ | fatih | — | — |
+| 179 ✓ | enes | — | #182 #183 #187 #191 |
 | 180 ✓ | fatih | — | #185 |
 | 181 ✓ | fatih | #53 #61 | #184 #192 |
 | 182 | enes | #179 | #183 #187 #191 |
@@ -373,6 +373,6 @@ graph LR
 | 190 | fatih | #189 #61 | — |
 | 191 | enes | #179 #182 #183 | — |
 | 192 | fatih | #181 #61 | — |
-| 206 | fatih | — | — |
+| 206 ✓ | fatih | — | — |
 | 207 ✓ | sahipsiz | — | — |
 <!-- BOT-BLOK:bitis -->
