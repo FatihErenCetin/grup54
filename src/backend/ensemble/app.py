@@ -8,9 +8,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 
 from ensemble.api.errors import ERROR_RESPONSES, ErrorEnvelope, register_exception_handlers
-from ensemble.api.routers import board, graph, health, query, radar, scope, webhook
+from ensemble.api.routers import board, events, graph, health, query, radar, scope, webhook
 from ensemble.config import Settings, get_settings
 from ensemble.engine.embeddings import CachedEmbeddings, HashEmbeddings
+from ensemble.engine.board import BoardService
+from ensemble.engine.events import EventService
 from ensemble.engine.graph import GraphService
 from ensemble.engine.query import QueryService
 from ensemble.engine.radar import RadarService
@@ -146,7 +148,11 @@ async def lifespan(app: FastAPI):
         vector_index=getattr(app.state, "vector_index", None),
     )
     app.state.scope_service = _build_scope_service(settings, app.state.radar_service)
-    # TODO: BoardService gercek DI (#51)
+    app.state.board_service = BoardService(session_factory=app.state.session_factory)
+    app.state.event_service = EventService(
+        harness_port=FileHarnessPort(),
+        github_port=_build_github_port(settings),
+    )
     yield
     # TODO: Kapanışta kaynakları temizle
 
@@ -181,6 +187,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(board.router, responses=ERROR_RESPONSES)
     app.include_router(query.router, responses=ERROR_RESPONSES)
     app.include_router(graph.router, responses=ERROR_RESPONSES)
+    app.include_router(events.router, responses=ERROR_RESPONSES)
     # #62 hata sözleşmesi: framework HTTPException'ları da Ek D zarfını taşır
     # (errors.py::http_exception) ama bunu ERROR_RESPONSES'a genel eklemedik -
     # 400/401 diğer (GET) router'lara uymuyor. Webhook'a özel bildiriliyor ki
