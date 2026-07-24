@@ -484,6 +484,56 @@
         }
       }
     },
+    "/presence": {
+      "get": {
+        "tags": [
+          "events"
+        ],
+        "summary": "Get Presence",
+        "description": "Aktif çalışan beyanlarını döndürür; bayat kayıtlar read-time'da elenir (#60).",
+        "operationId": "get_presence_presence_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PresenceResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Kalici saglayici hatasi (GitHub/Gemini/Ollama)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Gecici olarak erisilemez",
+            "headers": {
+              "Retry-After": {
+                "description": "Saniye — yalniz kendiliginden duzelebilir durumlarda",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/webhooks/github": {
       "post": {
         "tags": [
@@ -602,6 +652,40 @@
   },
   "components": {
     "schemas": {
+      "ActorRef": {
+        "properties": {
+          "handle": {
+            "type": "string",
+            "title": "Handle"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "human",
+              "agent"
+            ],
+            "title": "Type"
+          },
+          "responsible": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Responsible"
+          }
+        },
+        "type": "object",
+        "required": [
+          "handle",
+          "type"
+        ],
+        "title": "ActorRef",
+        "description": "Açık aktör tipi (#32/#52) — kontrat: docs/sprint2-kontratlar.md Ek B1."
+      },
       "BoardCard": {
         "properties": {
           "task_id": {
@@ -982,6 +1066,77 @@
           "ref"
         ],
         "title": "NearestRef"
+      },
+      "PresenceEntry": {
+        "properties": {
+          "actor": {
+            "$ref": "#/components/schemas/ActorRef"
+          },
+          "module": {
+            "type": "string",
+            "title": "Module"
+          },
+          "task": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Task"
+          },
+          "branch": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Branch"
+          },
+          "since": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Since"
+          }
+        },
+        "type": "object",
+        "required": [
+          "actor",
+          "module",
+          "task",
+          "branch",
+          "since"
+        ],
+        "title": "PresenceEntry",
+        "description": ".harness/active/* projeksiyonu (#32/#52) — kontrat: Ek B1."
+      },
+      "PresenceResponse": {
+        "properties": {
+          "entries": {
+            "items": {
+              "$ref": "#/components/schemas/PresenceEntry"
+            },
+            "type": "array",
+            "title": "Entries"
+          },
+          "latest_ts": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Latest Ts"
+          }
+        },
+        "type": "object",
+        "required": [
+          "entries",
+          "latest_ts"
+        ],
+        "title": "PresenceResponse",
+        "description": "GET /presence yanıt modeli."
       },
       "QueryResponse": {
         "properties": {
