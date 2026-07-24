@@ -1,4 +1,4 @@
-.PHONY: install dev test lint mcp openapi contracts eval-dataset eval-run eval-sweep eval eval-gate eval-butce eval-provider eval-model-secimi scope-eval harness-init frontend-build-guard deploy paket-macos up
+.PHONY: install dev test lint mcp openapi contracts eval-dataset eval-run eval-sweep eval eval-gate eval-butce eval-provider eval-model-secimi scope-eval harness-init frontend-build-guard deploy paket-macos up smoke
 
 install:
 	uv sync --all-packages
@@ -150,3 +150,12 @@ agentic:
 .PHONY: config-drift
 config-drift:
 	uv run python scripts/config_drift.py $(ARGS)
+
+# #189 deploy-sonrasi canli smoke: /health + readiness (#53) + CORS + 6 SPA
+# route'unun dogrudan+refresh deep-link'i. SMOKE_API_URL zorunlu; SMOKE_WEB_URL
+# verilmezse CORS+SPA blogu atlanir (yalniz /health kontrol edilir). Ikisi de
+# calisir: `make smoke SMOKE_API_URL=...` VE `SMOKE_API_URL=... make smoke`.
+# Detay + env sozlesmesi: scripts/smoke.py docstring'i.
+smoke:
+	SMOKE_API_URL="$(SMOKE_API_URL)" SMOKE_WEB_URL="$(SMOKE_WEB_URL)" \
+	SMOKE_STRICT="$(SMOKE_STRICT)" uv run python scripts/smoke.py
