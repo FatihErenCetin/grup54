@@ -130,6 +130,19 @@ Tam **Yalın Kanvas** (9 blok) — vizyon + rakip araştırmasından damıtıld�
 
 ---
 
+## 🌐 Hosted demo
+
+🟡 **Henüz yayına alınmadı** — go-live tamamlanınca bu bölüm gerçek URL'lerle güncellenir (sahte/placeholder "canlı" iddiası yok, D-34).
+
+| | URL |
+|---|---|
+| **Frontend (Vercel)** — bootcamp teslim formuna girilecek link | *(yayına alınınca eklenecek)* |
+| **Backend (Fly.io)** | *(yayına alınınca eklenecek)* |
+
+Deploy adımları + env→platform eşlemesi + rollback: [`docs/deploy-runbook.md`](docs/deploy-runbook.md).
+
+---
+
 # Sprint 1
 
 > **Tarih:** 19 Haziran – 5 Temmuz 2026 · **Takım:** grup54 (PO Fatih Eren Çetin · SM Esma Fazilet Karagülle · Dev Enes Talha Erdem · Dev Semih Marufoğlu) · **Ürün:** Ensemble — AI-çağı yazılım ekipleri için "paylaşılan proje beyni" (proaktif çakışma radarı · canlı scope-drift bekçisi · kendiliğinden dolan board · doğal dille "projeye sor").
