@@ -1,11 +1,25 @@
 # Deploy CD: main -> Fly otomatik deploy (#192).
 #
-# NEDEN `workflow_run` (push degil): "yalniz CI (lint+test+eval-gate) yesilse
-# deploy" kuralini ham `push` tetikleyicisi TEK BASINA saglayamaz -- push
-# aninda CI henuz sonuclanmamis olur. `workflow_run` CI'in BITTIGI ani + onun
-# dogruladigi `head_sha`'yi verir; deploy TAM O commit'i checkout eder (kriter
-# 6, asagida). Yerel esdeger `make deploy` (Makefile, #181) -- bu workflow onu
-# CI-yesil kapisina baglar.
+# KAPININ GERCEK TANIMI (onemli, ucu yerde farkli olmasin diye buraya acikca
+# yazildi): `workflow_run` tetikleyicisi bu dosyayi CI workflow'u (ci.yml,
+# `name: CI`) TAMAMEN bittiginde calistirir. `github.event.workflow_run.
+# conclusion == 'success'` demek CI'in TEK bir job'inin degil, UCUNUN DE
+# (lint-test + gitleaks + frontend) yesil oldugu demektir -- workflow_run
+# conclusion, workflow'un TUMUNUN sonucudur. Ham `push` tetikleyicisi bunu TEK
+# BASINA saglayamaz: push aninda CI henuz sonuclanmamis olur. `workflow_run`
+# CI'in BITTIGI ani + onun dogruladigi `head_sha`'yi verir; deploy TAM O
+# commit'i checkout eder (kriter 6, asagida). Yerel esdeger `make deploy`
+# (Makefile, #181) -- bu workflow onu CI-yesil kapisina baglar.
+#
+# FRONTEND ARTIK REQUIRED CHECK (main icin GitHub branch-protection required
+# check listesi guncellendi: lint-test + check-single-issue + frontend).
+# ESKI TUZAK ("PR'da frontend kirmizi olsa da merge olur, deploy'un kendi
+# gate'i sessizce hicbir sey demeden durur") artik kapandi -- ama iki farkli
+# katmanda: bu workflow'un `workflow_run` gate'i zaten baslangictan beri
+# frontend dahil CI'in TAMAMINA bakiyordu (ustteki paragraf); yeni olan,
+# ayni kuralin artik PR ASAMASINDA da zorlanmasi -- kirmizi frontend'li bir
+# commit main'e hic giremiyor. Iki savunma katmani ayni tanimi paylasir; biri
+# digerinin yerini almaz.
 #
 # TUZAKLAR ve kapatilmasi:
 #   1) ci.yml hem push'ta hem pull_request'te kosuyor -> her PR de bir
@@ -27,13 +41,34 @@
 # job'i o output'a `needs.` ile baglanir. Token yoksa `deploy` SKIP edilir
 # (failure DEGIL) -> main asla kirmizi olmaz. Ayni fail-safe CI kirmizi/PR
 # kosusu icin de gecerli: `preflight` skip -> `needs` uzerinden `deploy` de
-# skip. Token'in DEGERI hicbir yere yazilmaz/echo'lanmaz.
+# skip. Token'in DEGERI hicbir yere yazilmaz/echo'lanmaz. `smoke` job'i de
+# (asagida) AYNI deseni tekrar kullanir -- `vars.SMOKE_API_URL` icin.
 #
 # DAR KAPSAM TOKEN: FLY_API_TOKEN hesap token'i DEGIL, app-scoped deploy
 # token'i olmali:
 #   fly tokens create deploy -a ensemble-backend -x 8760h
 #   gh secret set FLY_API_TOKEN --repo FatihErenCetin/grup54   # deger stdin'den
 # Eslemenin kanonik kaynagi: docs/sprint3-kontratlar.md Ek A (satir zaten var).
+#
+# SIRALAMA UYARISI (fail-safe DEGIL -- bu bir gercek patlama riski): "secret
+# VAR ama Fly app'i (`fly.toml`'daki `app = "ensemble-backend"`) HENUZ YOK"
+# hali yukaridaki token-yoklugu kapisindan GECER (has_token=true, deploy
+# SKIP edilmez) ama `flyctl deploy` olmayan bir app'e deploy etmeye
+# calisinca PATLAR -- bu sessiz bir atlama DEGIL, kirmizi bir is. Dogru
+# sira: ONCE `fly launch` (ya da `fly apps create ensemble-backend`) ile
+# app'i olustur, SONRA `gh secret set FLY_API_TOKEN` ile token'i set et.
+# (`fly tokens create deploy -a ensemble-backend` zaten app'in var olmasini
+# sart kosar -- app yoksa komutun kendisi hata verir; bu sirayi tersine
+# cevirmemek icin acikca burada yaziyor.)
+#
+# SMOKE (deploy-sonrasi canli dogrulama, #189 BAGIMLILIGI): `deploy` basarili
+# olunca `smoke` job'i `make smoke` calistirir (bkz. asagida). Bu dal (#192)
+# #189'dan (T-189-live-smoke, `make smoke` hedefini ekleyen dal) ONCE main'e
+# inebilir -- o yuzden `smoke` job'i calistirmadan once Makefile'da `smoke:`
+# hedefinin GERCEKTEN var olup olmadigini kontrol eder; yoksa (#189 henuz
+# merge olmamissa) adimi fail-safe ATLAR, kirmizi vermez. #189 merge olunca
+# hedef belirir ve smoke kendiliginden aktiflesir -- bu dosyaya bir daha
+# DOKUNMAYA gerek YOK.
 #
 # RELEASE/MIGRATE: `flyctl deploy` fly.toml'daki `release_command`'i otomatik
 # kosar; o satir henuz YOK ve #187'nin (Enes) isi -- bu workflow fly.toml'a
@@ -108,3 +143,64 @@ jobs:
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
         run: flyctl deploy --config fly.toml --remote-only
+
+  smoke:
+    # `deploy` disinda hicbir `if:` YOK -- job-level `if:` verilmezse
+    # varsayilan davranis zaten `needs`'teki TUM job'larin basarili
+    # (SKIP DEGIL) olmasini sart kosar: `deploy` preflight-token-yoklugundan
+    # SKIP edilirse `smoke` de kendiliginden SKIP olur (kaskad fail-safe,
+    # ustteki "FAIL-SAFE SECRET KAPISI" notuyla TUTARLI -- ekstra kosul
+    # yazmaya gerek yok).
+    needs: [preflight, deploy]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.preflight.outputs.sha }} # deploy'lanan TAM commit
+
+      # Kapi 3a -- SMOKE_API_URL repo variable'i VARLIK kontrolu. `vars`
+      # `secrets` gibi `if:` icinde YASAKLI degil, ama ayni TUTARLI deseni
+      # (env -> output -> sonraki adimlarin `if:`'i) kullaniyoruz: token
+      # kapisiyla BIREBIR ayni fail-safe mantigi, iki farkli yontem degil.
+      # Kapi 3b -- Makefile'da `smoke:` hedefi VAR MI: bu dal (#192) #189'dan
+      # (T-189-live-smoke, hedefi ekleyen dal) ONCE main'e inebilir; hedef
+      # yoksa `make smoke` "No rule to make target" ile PATLAR -- bu da
+      # fail-safe atlanir (#189 bagimliligi, bkz. dosya basligi).
+      - name: SMOKE_API_URL tanimli mi + make smoke hedefi var mi?
+        id: smoke_check
+        env:
+          SMOKE_API_URL: ${{ vars.SMOKE_API_URL }}
+        run: |
+          if [ -z "$SMOKE_API_URL" ]; then
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::vars.SMOKE_API_URL tanimli degil - smoke adimi atlaniyor (fail-safe)."
+            exit 0
+          fi
+          if ! grep -qE '^smoke:' Makefile; then
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Makefile'da 'smoke' hedefi yok (#189 henuz main'e inmemis olabilir) - adim atlaniyor (fail-safe)."
+            exit 0
+          fi
+          echo "ready=true" >> "$GITHUB_OUTPUT"
+
+      - name: uv kur
+        if: steps.smoke_check.outputs.ready == 'true'
+        uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Python kur
+        if: steps.smoke_check.outputs.ready == 'true'
+        run: uv python install
+
+      - name: Bagimliliklari kur
+        if: steps.smoke_check.outputs.ready == 'true'
+        run: uv sync --all-packages --locked
+
+      - name: make smoke
+        if: steps.smoke_check.outputs.ready == 'true'
+        env:
+          SMOKE_API_URL: ${{ vars.SMOKE_API_URL }}
+          SMOKE_WEB_URL: ${{ vars.SMOKE_WEB_URL }} # opsiyonel; bossa scripts/smoke.py CORS+SPA blogunu atlar
+        run: make smoke
