@@ -24,6 +24,18 @@ primary_region = "fra"
 [build]
   image = "pgvector/pgvector:pg16"
 
+# PGDATA, mount noktasının ALTINDAKİ bir alt dizini göstermek ZORUNDA.
+# Fly volume'leri taze ext4 olarak gelir ve içinde `lost+found` bulunur;
+# `initdb` boş olmayan bir dizini reddeder:
+#   initdb: error: directory "/var/lib/postgresql/data" exists but is not empty
+#   initdb: detail: It contains a lost+found directory...
+#   initdb: hint: ... Create a subdirectory under the mount point.
+# Sonuç: PGDATA set edilmezse app ilk boot'ta crash-loop'a girer ve
+# `fly status` hiç yeşile dönmez. (docker-compose'da bu görünmez — Docker
+# *named volume*'ü boş gelir, lost+found yoktur.)
+[env]
+  PGDATA = "/var/lib/postgresql/data/pgdata"
+
 [mounts]
   source = "pgdata"
   destination = "/var/lib/postgresql/data"
