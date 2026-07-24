@@ -248,6 +248,50 @@ def test_anahtar_sayisi_sinirlanir():
     assert len(counter) <= 100
 
 
+# --- 11b. G6: genel kova global tavani IP rotasyonuna karsi kapatir ---
+
+
+def test_genel_kova_global_tavan_ip_rotasyonuna_karsi_kapatir(tmp_path):
+    """G6 regresyon kilidi: /radar (Gemini judge+embeddings cagiriyor, Ek F)
+    BILEREK genel kovada kaliyor (AI kovasina tasinmiyor - kendi 10 sn'lik
+    poll'u AI kovasinin cok daha siki butcesini paylasirdi). ESKIDEN genel
+    kovanin yalniz IP-basina sayaci vardi -> sahte Fly-Client-IP rotasyonuyla
+    (her istek farkli IP) bu sinirsizca asilirdi (olcum: 2000 istek/2000
+    uydurma IP -> 200=2000, 429=0).
+
+    DEMO_RATE_LIMIT=20 (IP basina, pratikte hic dolmaz - her sahte IP yalniz
+    1 istek atiyor), DEMO_AI_RATE_LIMIT=10, DEMO_AI_GLOBAL_LIMIT=1 ->
+    turetilen genel-kova global tavani = round(20 * 1 / 10) = 2. Uc FARKLI
+    IP'den tek's er istek: ilk ikisi genel-kova GLOBAL sayacini doldurur,
+    ucuncusu (farkli IP olmasina ragmen) 429 doner - fix geri alinirsa
+    (rate_limit.py'deki global kontrol kaldirilirsa) bu test kirilir."""
+    settings = _settings(
+        tmp_path, DEMO_RATE_LIMIT=20, DEMO_AI_RATE_LIMIT=10, DEMO_AI_GLOBAL_LIMIT=1
+    )
+    with _client(settings) as client:
+        r1 = client.get("/radar", headers={"Fly-Client-IP": "10.0.0.1"})
+        r2 = client.get("/radar", headers={"Fly-Client-IP": "10.0.0.2"})
+        r3 = client.get("/radar", headers={"Fly-Client-IP": "10.0.0.3"})
+
+    assert r1.status_code == 200
+    assert r2.status_code == 200
+    assert r3.status_code == 429  # farkli IP ama global tavan (2) doldu
+    body = r3.json()
+    assert body["error"] == "demo_rate_limited"
+    assert int(r3.headers["retry-after"]) > 0
+
+
+def test_genel_kova_global_tavan_varsayilan_oranla_turetilir(tmp_path):
+    """Turetme formulunun (yeni env EKLEMEDEN, mevcut DEMO_* degerlerinden)
+    dogru calistigini varsayilan degerlerle kilitler: DEMO_RATE_LIMIT=120,
+    DEMO_AI_RATE_LIMIT=10, DEMO_AI_GLOBAL_LIMIT=60 -> 120*60/10=720."""
+    from ensemble.api.rate_limit import DemoRateLimitMiddleware
+
+    settings = _settings(tmp_path)  # tum DEMO_* varsayilanlarda
+    middleware = DemoRateLimitMiddleware(app=lambda *a, **k: None, settings=settings)
+    assert middleware._general_global_limit == 720
+
+
 # --- 11. Webhook POST'u limitlenmez (GET-disi muafiyet) ---
 
 

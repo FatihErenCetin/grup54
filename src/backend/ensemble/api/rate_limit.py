@@ -16,7 +16,19 @@ takılır (bkz. app.py::create_app). local/dev'de bu modül hiç devreye girmez.
 
 ⚠️ IP başlığı istemci tarafından uydurulabilir → per-IP cap atlatılabilir.
 Kabul edilen risk: bu bir MALİYET KAPAĞI, güvenlik sınırı değil; uydurmaya
-karşı asıl koruma AI kovasındaki GLOBAL tavandır (`DEMO_AI_GLOBAL_LIMIT`).
+karşı asıl koruma GLOBAL tavandır.
+
+G6 düzeltmesi — genel kovada da GLOBAL tavan: `/radar` (Gemini judge +
+embeddings çağıran) genel kovada olduğu için eskiden yalnız IP-başına
+(`DEMO_RATE_LIMIT`) sınırlıydı; sahte `Fly-Client-IP` rotasyonuyla bu sınır
+sonsuz kez atlatılabiliyordu (ölçüm: 2000 istek / 2000 uydurma IP → 200=2000,
+429=0 — fatura kapağı fiilen yoktu). AI kovasına taşımadık (docs/sprint3-
+kontratlar.md Ek F/F2 BİLEREK `/radar`'ı genel kovada tutuyor — frontend'in
+kendi 10 sn pollu, AI kovasının çok daha sıkı per-IP/global bütçesini
+paylaşırsa kesilirdi). Bunun yerine AI kovasının zaten donmuş per-IP:global
+oranı (`DEMO_AI_RATE_LIMIT` : `DEMO_AI_GLOBAL_LIMIT`, varsayılan 10:60 = 6x)
+genel kovaya da uygulanır — YENİ bir `.env` anahtarı EKLENMEDEN, tamamen
+mevcut `DEMO_*` ayarlarından TÜRETİLİR (bkz. `_general_global_limit`).
 """
 
 from __future__ import annotations
@@ -152,6 +164,19 @@ class DemoRateLimitMiddleware(BaseHTTPMiddleware):
         self._settings = settings
         self._ai_counter = WindowCounter(settings.DEMO_RATE_WINDOW_S, time_fn=time_fn)
         self._general_counter = WindowCounter(settings.DEMO_RATE_WINDOW_S, time_fn=time_fn)
+        # G6: genel kovanın da bir GLOBAL tavanı olsun (IP rotasyonuna karşı) -
+        # ama AI kovası için donmuş ayrı bir env EKLEMEDEN (docs/sprint3-
+        # kontratlar.md Ek F kapsamında degil). AI kovasının zaten seçilmiş
+        # per-IP:global oranını (varsayılan 10:60 = 6x) genel kovaya da
+        # uygularız: mevcut üç DEMO_* değerinden türetilir, yeni ayar yok.
+        self._general_global_limit = max(
+            1,
+            round(
+                settings.DEMO_RATE_LIMIT
+                * settings.DEMO_AI_GLOBAL_LIMIT
+                / settings.DEMO_AI_RATE_LIMIT
+            ),
+        )
 
     async def dispatch(self, request: Request, call_next):
         if request.method != "GET" or request.url.path in _EXEMPT_PATHS:
@@ -173,4 +198,13 @@ class DemoRateLimitMiddleware(BaseHTTPMiddleware):
         allowed, retry_after = self._general_counter.allow(ip, self._settings.DEMO_RATE_LIMIT)
         if not allowed:
             return _rate_limited_response(retry_after)
+
+        # G6: IP başlığı uydurularak per-IP kapağı atlatılsa bile (rotasyon),
+        # aynı `_general_counter` üzerinde tutulan "*" global anahtarı toplam
+        # trafiği pencere başına sınırlar (AI kovasındaki desenin aynısı).
+        allowed_global, retry_global = self._general_counter.allow(
+            _GLOBAL_KEY, self._general_global_limit
+        )
+        if not allowed_global:
+            return _rate_limited_response(retry_global)
         return await call_next(request)
