@@ -274,3 +274,86 @@ def test_vector_index_untouched_on_db_rollback():
     assert result[0][0] == "existing-vec", "Vector index DB hatasından etkilenmemeli"
 
     session.close()
+
+
+def test_rebuild_writes_vector_index_in_same_db_transaction():
+    """Atomiklik (#218): vektör indeksi, DB session'ına ve commit'ten ÖNCE yazılmalı.
+
+    replace_all'a rebuild'in session'ı geçirilirse hosted PgVectorIndex aynı
+    transaction'a yazar → DB + vektör tek commit/rollback (atomik). Eski
+    'DB commit sonrası ayrı transaction' akışına dönülürse bu test kırılır.
+    """
+    from datetime import datetime, timezone
+
+    from ensemble.models import NormalizedEvent
+    from ensemble.ports import GitHubPort
+
+    settings = Settings(DATABASE_URL="sqlite:///:memory:")
+    engine = get_engine(settings)
+    Base.metadata.create_all(engine)
+    session = get_session_factory(engine)()
+
+    mock_harness = MagicMock(spec=HarnessPort)
+    mock_harness.read_tasks.return_value = []
+    mock_harness.read_active.return_value = []
+
+    mock_github = MagicMock(spec=GitHubPort)
+    mock_github.fetch_backfill_events.return_value = [
+        NormalizedEvent(
+            id="ev1", type="commit", actor="u", branch="main", ref="1", files=[],
+            ts=datetime.now(timezone.utc),
+        )
+    ]
+    mock_embeddings = MagicMock(spec=EmbeddingsPort)
+    mock_embeddings.embed.return_value = [[1.0, 0.0]]
+
+    spy_index = MagicMock()
+
+    rebuild_projection(
+        session,
+        mock_harness,
+        github=mock_github,
+        vector_index=spy_index,
+        embeddings=mock_embeddings,
+    )
+
+    spy_index.replace_all.assert_called_once()
+    _, kwargs = spy_index.replace_all.call_args
+    assert kwargs.get("session") is session, "replace_all rebuild session'ı ile çağrılmalı (aynı transaction)"
+
+    session.close()
+
+
+def test_rebuild_seed_semantic_query_not_empty():
+    """#191 kabul kriteri: seed sonrası semantik sorgu boş DEĞİL — en az 1 gerçek sonuç."""
+    from ensemble.engine.embeddings import HashEmbeddings
+    from ensemble.integrations.github.fake import FakeGitHubAdapter
+    from ensemble.store.vector_store import LocalVectorIndex
+
+    settings = Settings(DATABASE_URL="sqlite:///:memory:")
+    engine = get_engine(settings)
+    Base.metadata.create_all(engine)
+    session = get_session_factory(engine)()
+
+    mock_harness = MagicMock(spec=HarnessPort)
+    mock_harness.read_tasks.return_value = []
+    mock_harness.read_active.return_value = []
+
+    embeddings = HashEmbeddings()
+    github = FakeGitHubAdapter()  # deterministik default eventler (commit/pr/issue)
+    vector_index = LocalVectorIndex()
+
+    res = rebuild_projection(
+        session,
+        mock_harness,
+        github=github,
+        vector_index=vector_index,
+        embeddings=embeddings,
+    )
+
+    assert res["events"] >= 1, "seed en az bir event yazmalı"
+    query_vec = embeddings.embed(["commit by esma"], task_type="RETRIEVAL_QUERY")[0]
+    hits = vector_index.query(query_vec, k=5)
+    assert len(hits) >= 1, "seed sonrası semantik sorgu boş dönmemeli (#191 kanıtı)"
+
+    session.close()

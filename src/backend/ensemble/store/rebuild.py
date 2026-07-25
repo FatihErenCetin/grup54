@@ -25,9 +25,11 @@ def rebuild_projection(
     Returns:
         {"tasks": N, "presence": M, "events": E} — eklenen satır sayıları.
 
-    Not: Vector index, DB commit başarılı olduktan sonra güncellenir.
-    Hata durumunda DB rollback oluşur ve vector index dokunulmaz kalır
-    (tutarlı durum korunur — vector index silinip DB rollback olmaz).
+    Atomiklik (#218): DB satırları (tasks/presence/events) ve vektör indeksi
+    TEK bir transaction'da güncellenir. Hosted PgVectorIndex, verilen `session`'a
+    yazar ve commit tek `session.commit()` ile yapılır → ya hepsi kalır ya hepsi
+    geri alınır; "DB güncellenip index eski kalması" mümkün değildir. Hata
+    durumunda `session.rollback()` her ikisini de geri alır.
     """
     # Yeni vektörleri DB commit'ten önce hazırla (staging).
     # Bu sayede hata çıkarsa vector index hiç değiştirilmez.
@@ -77,20 +79,21 @@ def rebuild_projection(
                     }
                     staged_vectors.append((event.id, vec, meta))
 
-        # DB commit başarılıysa vector index güncellenir.
-        # commit() hatası: session.rollback() çağrılır, staged_vectors sıfırlanmış
-        # sayılır (index hiç dokunulmadı).
+        # --- vector index: AYNI transaction içinde (atomiklik #218) ---
+        # PgVectorIndex verilen session'a TRUNCATE+INSERT yazar, commit'i
+        # aşağıdaki tek session.commit() yapar → DB satırları + vektörler birlikte
+        # commit/rollback olur. In-memory index session'ı yok sayar; kendi içinde
+        # atomik (build-then-swap) olduğundan yarım-durum bırakmaz.
+        # embeddings.embed hatası bu satıra gelmeden (yukarıda) fırlar → rollback.
+        if vector_index is not None:
+            vector_index.replace_all(staged_vectors, session=session)
+
+        # Tek commit: tasks/presence/events + (hosted'da) vektörler atomik.
+        # Hata → except bloğu session.rollback() ile her ikisini de geri alır.
         session.commit()
 
     except Exception:
         session.rollback()
         raise
-
-    # --- DB commit başarılı — vector index güncelle ---
-    # Not: replace_all (örneğin PgVectorIndex'te) tek bir transaction içinde çalışır.
-    # Böylece clear/upsert işlemlerinin ortasında patlarsa, DB commit'i geri alınamaz
-    # ama vector index boş kalmaz, eski durumunda (atomic rollback) kalır.
-    if vector_index is not None:
-        vector_index.replace_all(staged_vectors)
 
     return {"tasks": len(task_rows), "presence": len(presence_rows), "events": len(event_rows)}

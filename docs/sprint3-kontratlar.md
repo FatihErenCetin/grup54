@@ -156,6 +156,7 @@ class VectorIndexPort(Protocol):                                # S2 §2 + #191
     def upsert(self, id: str, vec: list[float], meta: dict) -> None: ...
     def query(self, vec: list[float], k: int) -> list[tuple[str, float]]: ...
     def clear(self) -> None: ...                                # #191: idempotent rebuild için indeksi sıfırla
+    def replace_all(self, vectors, *, session=None) -> None: ...# #191/#218: idempotent replace + hosted'da caller DB-transaction'ına atomik yaz (session verilirse commit çağırana)
 
 class PgVectorIndex:                                            # hosted impl (#182'nin PG'sine yazar)
     def __init__(self, session_factory: Callable[[], Session], *,

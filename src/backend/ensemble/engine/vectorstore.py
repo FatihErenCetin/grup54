@@ -2,6 +2,10 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from sqlalchemy.orm import Session
 
 
 @dataclass
@@ -40,10 +44,23 @@ class InMemoryVectorIndex:
     def clear(self) -> None:
         self._records.clear()
 
-    def replace_all(self, vectors: list[tuple[str, list[float], dict]]) -> None:
-        self.clear()
+    def replace_all(
+        self,
+        vectors: list[tuple[str, list[float], dict]],
+        *,
+        session: Session | None = None,
+    ) -> None:
+        # session in-memory index icin kullanilmaz (DB-backed degil). Once tum
+        # kayitlari validate edip yeni state'i kur, sonra tek atamayla degistir:
+        # yarim-uygulanmis (kismi) durum olusmaz — atomik build-then-swap.
+        new_records: dict[str, _VectorRecord] = {}
         for vid, vec, meta in vectors:
-            self.upsert(vid, vec, meta)
+            if not vid:
+                raise ValueError("id must not be empty")
+            if not vec:
+                raise ValueError("vec must not be empty")
+            new_records[vid] = _VectorRecord(vec=list(vec), meta=dict(meta))
+        self._records = new_records
 
 
 def cosine_similarity(left: list[float], right: list[float]) -> float:

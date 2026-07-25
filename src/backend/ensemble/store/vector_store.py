@@ -91,15 +91,23 @@ class FaissVectorIndex:
         self._faiss.normalize_L2(matrix)
         return matrix
 
-    def replace_all(self, vectors: list[tuple[str, list[float], dict]]) -> None:
-        self._ids = []
-        self._vectors.clear()
-        self._meta.clear()
+    def replace_all(
+        self,
+        vectors: list[tuple[str, list[float], dict]],
+        *,
+        session: Session | None = None,
+    ) -> None:
+        # session in-memory FAISS icin kullanilmaz. Once tumunu validate edip
+        # yeni sozlukleri kur, sonra tek atamayla degistir (atomik build-then-swap).
+        new_vectors: dict[str, list[float]] = {}
+        new_meta: dict[str, dict] = {}
         for vid, vec, meta in vectors:
             _validate_vector_record(vid, vec)
             self._validate_dimensions(vec)
-            self._vectors[vid] = list(vec)
-            self._meta[vid] = dict(meta)
+            new_vectors[vid] = list(vec)
+            new_meta[vid] = dict(meta)
+        self._vectors = new_vectors
+        self._meta = new_meta
         self._rebuild()
 
 
@@ -185,7 +193,20 @@ class PgVectorIndex:
             session.execute(stmt)
             session.commit()
 
-    def replace_all(self, vectors: list[tuple[str, list[float], dict]]) -> None:
+    def replace_all(
+        self,
+        vectors: list[tuple[str, list[float], dict]],
+        *,
+        session: Session | None = None,
+    ) -> None:
+        """vector_index tablosunu TRUNCATE + toplu INSERT ile atomik yeniden kurar.
+
+        `session` verilirse (rebuild akışı, #218): TRUNCATE+INSERT çağıranın
+        DB transaction'ına yazılır ve commit ÇAĞIRANA bırakılır → DB satırları
+        (events) ile vektörler tek commit'te birlikte kalır ya da birlikte geri
+        alınır (DB güncellenip index eski kalmaz). `session` verilmezse kendi
+        transaction'ını açıp commit eder (bağımsız kullanım).
+        """
         truncate_stmt = text(f"TRUNCATE {self.table_name}")
         insert_stmt = text(
             f"""
@@ -201,16 +222,23 @@ class PgVectorIndex:
             _validate_vector_record(vid, vec)
             self._validate_dimensions(vec)
 
-        with self.session_factory() as session:
-            session.execute(truncate_stmt)
+        def _apply(sess: Session) -> None:
+            sess.execute(truncate_stmt)
             for vid, vec, meta in vectors:
                 params = {
                     "id": vid,
                     "embedding": _to_pgvector_literal(vec),
                     "meta": json.dumps(meta, sort_keys=True),
                 }
-                session.execute(insert_stmt, params)
-            session.commit()
+                sess.execute(insert_stmt, params)
+
+        if session is not None:
+            # Çağıranın transaction'ına katıl — commit'i çağıran yapar (atomik).
+            _apply(session)
+        else:
+            with self.session_factory() as own_session:
+                _apply(own_session)
+                own_session.commit()
 
     def _validate_dimensions(self, vec: list[float]) -> None:
         if len(vec) != self.dimensions:
