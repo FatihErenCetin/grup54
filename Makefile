@@ -68,15 +68,8 @@ harness-init:
 frontend-build-guard:
 	cd src/frontend && VITE_MOCK= npm run build && node scripts/prod-build-guard.mjs dist
 
-# main->self-host CD (T-192, .github/workflows/deploy.yml) main'e giden HER
-# CI-yeşil push'ta OTOMATIK deploy eder — `make deploy` artık günlük akışın
-# PARÇASI DEĞİL (eskiden Fly.io'ya `flyctl` ile elle deploy ediliyordu, #181;
-# D-46 self-host dönüşümüyle bu yol terk edildi). Bu hedef yalnız ELLE/ACİL
-# fallback içindir (örn. self-hosted runner geçici erişilemezken sunucuda
-# doğrudan çalıştırmak) — CD'nin KENDİ kullandığı AYNI komutları çalıştırır
-# (deploy.yml `deploy` job'i) ki iki deploy yolu birbirinden SAPMASIN.
-# Release/migrate adımı burada da YOK (#187) — migration hâlâ elle
-# `make migrate` ile.
+# Fly.io'ya deploy (#181, fly.toml). Secret'lar önceden `fly secrets set` ile
+# ayrı set edilmiş olmalı (bkz. fly.toml başlığı + PR gövdesi). Release/migrate
+# adımı henüz YOK (#187) — bugün yalnız imaj build+deploy eder.
 deploy:
-	docker compose -f deploy/docker-compose.prod.yml build api
-	docker compose -f deploy/docker-compose.prod.yml up -d --remove-orphans
+	flyctl deploy --config fly.toml
