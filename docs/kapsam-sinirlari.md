@@ -37,7 +37,7 @@
 - ❌ **Write/CRUD REST (POST/PUT/DELETE board/task/scope)** — durum GitHub'dan **türetilir**; MCP read-first.
 - ❌ **WebSocket/SSE push** — sözleşme polling (#20). *(Hosted webhook = GitHub→backend, farklı yön.)*
 - ❌ **Kendi GraphQL sunucun** — GraphQL sadece *GitHub'ı çağırırken* (#16). Senin yüzeyin REST+OpenAPI.
-- ❌ **API versioning / kendi rate-limit'in / ağır pagination** — tek-ekip aracı; `since=`/ETag cursor yeter.
+- ❌ **API versioning / kendi rate-limit'in / ağır pagination** — tek-ekip aracı; `since=`/ETag cursor yeter. *(istisna: hosted public demo — #63, `DEMO_MODE` arkasında; satır 11 zaten "IP/rate cap" diyor.)*
 - ❌ **Local'de webhook/ngrok/tunnel** — laptop'un public URL'i yok; local = polling.
 - ❌ **Local MCP'de auth** — stdio, OS-kullanıcı güveni. *(Sadece hosted HTTP MCP = B'de gerekir.)*
 - ❌ **Full observability (Prometheus/Grafana/Sentry/OTel)** · **K8s/Helm/Terraform/canary** — tek küçük self-host VDS + Vercel; minimal log yeter.

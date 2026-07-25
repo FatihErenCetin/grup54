@@ -28,6 +28,8 @@ Sunucu env dosyası ─env─> FastAPI (ENSEMBLE_MODE=hosted) ─Protocol─> en
 > **Sahibi:** infra (deploy dilimi) · **Tüketicisi:** herkes (backend çalışma-zamanı, frontend build, CI). 🔒 **FROZEN** — bu tablo `docs/deploy-runbook.md`'nin (#190) tek kaynağıdır; `.env.example` anahtarı eklenince buraya da satır eklenir.
 >
 > **Değişiklik notu (25 Tem, D-46 — self-host dönüşümü):** bu ek ilk donduğunda (20 Tem) hedef platform Fly.io idi (#181, `fly.toml`). #192 review'ünde (Semih) go-live topolojisi **self-host VDS + Docker Compose + self-hosted GitHub Actions runner**'a çevrildi — issue #192'nin kabul kriterleri PO tarafından buna göre güncellendi (D-46, `internal/grup54_karar_logu.md`). Aşağıdaki A1/A2/A3 **sessizce değil, bu notla** güncellendi: donmuş SATIRLAR (hangi env anahtarının hangi ortama ait olduğu) **AYNEN** kalıyor — değişen yalnızca "nerede tutulur" sütunundaki **platform adı** (Fly secret → sunucudaki env dosyası) ve `FLY_API_TOKEN` satırının **kaldırılması** (self-host CD'nin hiçbir CI secret'ına ihtiyacı yok — bkz. `.github/workflows/deploy.yml`). Vercel tarafı (frontend) **DEĞİŞMEDİ**.
+>
+> **Ek not (25 Tem, ikinci geçiş — main merge sonrası tarama):** ilk geçişte yalnız A1/A2/A3 satırları tarandı; main'den gelen #239'un (T-63) eklediği `DEMO_MODE`/`DEMO_RATE_*` satırları — ve bu dosyanın Ek C (`Sağlayıcı kararı`) ile sonundaki "Pratik" bölümünde kalan `Fly` referansları — gözden kaçmıştı. Hepsi aynı ilkeyle (donmuş satır AYNEN, yalnız platform adı self-host'a) güncellendi. **Bilinçli olarak dokunulmayanlar:** Ek F'teki `Fly-Client-IP` başlık önceliği, `/health` için "Fly health-check" notu ve `512 MB Fly VM`/`fly.toml auto_stop_machines` referansları — bunlar Ek A'nın env-yeri kararını tekrar etmiyor, hâlâ repoda duran gerçek `fly.toml` + `rate_limit.py` kodunun davranışını birebir anlatıyor (bu ikisi bu görev kapsamında self-host'a taşınmadı; ayrı bir temizlik konusu).
 
 ### A1 · Env → platform eşleme tablosu (#190 kabul kriteri)
 
@@ -46,6 +48,8 @@ Sunucu env dosyası ─env─> FastAPI (ENSEMBLE_MODE=hosted) ─Protocol─> en
 | `GITHUB_WEBHOOK_SECRET` | **Sunucu env dosyası** | webhook imza doğrulaması (D-35) |
 | `GITHUB_WEBHOOK_PROXY_URL` | **yalnız-local** (smee kanalı) | hosted'da webhook doğrudan sunucunun genel URL'ine (Caddy/DNS) gelir → boş |
 | `RADAR_WINDOW_DAYS` · `RADAR_MIN_JACCARD` · `RADAR_MIN_SIMILARITY` | **Sunucu env dosyası (opsiyonel)** | kalibrasyon çıktısı (#18); kod default'u kanonik |
+| `DEMO_MODE` | **Sunucu env dosyası** = `true` (`/etc/ensemble/ensemble.env`, sır değil ama tek-satırlık açma/kapama bayrağı burada yaşar) | 🆕 #63 — açılışta fail-closed: `true` iken `GITHUB_REPO_OWNER`/`NAME` zorunlu (bkz. Ek F) |
+| `DEMO_RATE_WINDOW_S` · `DEMO_AI_RATE_LIMIT` · `DEMO_AI_GLOBAL_LIMIT` · `DEMO_RATE_LIMIT` · `DEMO_CACHE_TTL_S` · `DEMO_CACHE_MAX_ENTRIES` | **Sunucu env dosyası (opsiyonel)** | 🆕 #63 — kod default'u kanonik; yalnız override gerekince set (bkz. Ek F) |
 | `VITE_API_BASE_URL` | **Vercel env (build-time)** | = self-host backend public URL (Caddy/DNS domain, **A2 çift-yön**); origin-only, query/hash yasak |
 | `VITE_MOCK` | **yalnız-local** · Vercel'de **BOŞ** | prod'da fixture chunk'ı sızmasın (yalnız `"1"` mock açar) |
 
@@ -183,7 +187,7 @@ if settings.ENSEMBLE_MODE == "hosted":
 
 - **Kanonik = migration** (`store/migrations/versions/c4f1d6a2b8e9_vector_index_table.py`). `PgVectorIndex.create_schema()` **kaldırılır / test-yardımcısına indirilir** (iki DDL kaynağı yasak).
 - `vector(768)` hardcode'u → `settings.GEMINI_EMBEDDING_DIMENSIONS` ile hizalanır (dims drift önlenir).
-- **Sağlayıcı kararı (#182 → yeni D-NN, karar_logu):** Neon/Supabase (pgvector hazır) vs Fly PG (manuel) — gerekçeli seç. Kontrat çıktısı: `DATABASE_URL=postgresql+psycopg://…` (Ek A) · `available_extensions`'da `vector` · prod rolüyle `CREATE EXTENSION vector` + `alembic upgrade head` temiz koşar. Bir semantik query gerçek PG'de döner (Fake/SQLite değil).
+- **Sağlayıcı kararı (#182 → D-NN, karar_logu):** ilk donduğunda (20 Tem) iki açık seçenek vardı — Neon/Supabase (pgvector hazır) vs Fly PG (manuel); **25 Tem D-46 ile self-host'a çözüldü** — aynı VDS'te docker compose Postgres+pgvector servisi (#246, bkz. Ek A `DATABASE_URL`). Kontrat çıktısı değişmedi: `DATABASE_URL=postgresql+psycopg://…` (Ek A) · `available_extensions`'da `vector` · prod rolüyle `CREATE EXTENSION vector` + `alembic upgrade head` temiz koşar. Bir semantik query gerçek PG'de döner (Fake/SQLite değil).
 
 ---
 
@@ -225,14 +229,65 @@ check_scope(ref: str) -> ScopeVerdict
 
 ---
 
+## Ek F (23 Tem) — Hosted demo sertleştirme (#63): tek-repo pin + rate cap + cached verdict
+
+> **Sahibi:** backend (rate cap + cache + repo-pin) · **Tüketicisi:** hosted demo'nun kendisi (fatura kapağı). 🔒 **FROZEN** — `DEMO_MODE` bayrağı VARSAYILAN KAPALI; local/dev davranışı bu bayrak açılmadan HİÇ değişmez. Amaç: *"Public no-login demo paid AI çağırıyor → Gemini faturası patlamasın."*
+
+**Kapsam:** issue'nun 4 parçasından **3'ü** burada (tek-repo pin · IP/rate cap · cached verdict); **seed** #48+#191'e devredildi (gerekçe: PR gövdesi + #191 yorumu — ön-koşulu #183 hâlâ açık, ayrıca repoda `.harness/` hiç yok).
+
+### F1 · `DEMO_MODE` tek bayrak (`config.py`) — 🔒
+
+```python
+DEMO_MODE: bool = False   # acilista fail-closed: True iken GITHUB_REPO_OWNER/NAME ZORUNLU
+DEMO_RATE_WINDOW_S: int = 60
+DEMO_AI_RATE_LIMIT: int = 10        # IP basina, /query + /scope/check (kullanici-girdili AI)
+DEMO_AI_GLOBAL_LIMIT: int = 60      # tum IP'ler toplami — IP-rotasyonuna karsi asil tavan
+DEMO_RATE_LIMIT: int = 120          # IP basina, diger (poll'lanan) GET yollari
+DEMO_CACHE_TTL_S: int = 900
+DEMO_CACHE_MAX_ENTRIES: int = 1024
+```
+
+İkinci bir `DEMO_REPO` anahtarı **eklenmedi** — `GITHUB_REPO_OWNER`/`NAME` (Ek A) zaten reponun kanonik pin'i; demo modda bu ikisi zorunlu hâle gelir (ikinci doğruluk kaynağı yaratmamak için, bkz. `internal` TDK ilkesi).
+
+### F2 · IP/rate cap (`api/rate_limit.py`) — 🔒 429 sözleşmesi
+
+- Yalnız `DEMO_MODE=true` iken `create_app`'e **CORSMiddleware'DEN ÖNCE** eklenir (Starlette: son eklenen en dışta koşar — CORS dışta kalmalı ki 429 de `Access-Control-Allow-Origin` taşısın, #45/#150 dersi).
+- **Muaf:** GET-dışı metodlar (webhook POST) ve `/health` (Fly health-check).
+- **AI kovası** = yalnız `/query` + `/scope/check` (gerçekten Gemini çağıran, kullanıcı-girdili yollar). `/radar` bilerek **genel kovada** — frontend'i 10 sn'de bir poll'layan kendi Radar sayfasını kesmesin; onun maliyetini F3 sıfırlıyor.
+- AI kovasında **iki sayaç**: IP anahtarı (`DEMO_AI_RATE_LIMIT`) + `"*"` global anahtarı (`DEMO_AI_GLOBAL_LIMIT`) — IP rotasyonuna karşı.
+- 🆕 #63 (G6) — **genel kova da global tavan taşır:** `/radar` bilerek genel kovada olduğu için eskiden yalnız IP-başına (`DEMO_RATE_LIMIT`) sınırlıydı; sahte `Fly-Client-IP` rotasyonuyla bu sınır sonsuz kez atlatılabiliyordu (ölçüm: 2000 istek/2000 uydurma IP → 200=2000, 429=0 — fatura kapağı fiilen yoktu). Düzeltme: **yeni bir `.env` anahtarı eklenmeden**, AI kovasının zaten donmuş per-IP:global oranı (`DEMO_AI_RATE_LIMIT`:`DEMO_AI_GLOBAL_LIMIT`, varsayılan 10:60 = 6x) genel kovaya da uygulanan **türetilmiş** bir global sayaçla (`_general_global_limit = round(DEMO_RATE_LIMIT * DEMO_AI_GLOBAL_LIMIT / DEMO_AI_RATE_LIMIT)`) genişletildi. Varsayılan ayarlarla: aynı 2000-sahte-IP senaryosu düzeltmeden sonra 200=720, 429=1280 döner (türetilen tavan 120·60/10=720 ile birebir).
+- `client_ip()` önceliği: `Fly-Client-IP` > `X-Forwarded-For` ilk kayıt > `request.client.host` > `"unknown"`.
+- Aşımda **429** + `Retry-After: <saniye>` + kanonik `ErrorEnvelope`: `{"error": "demo_rate_limited", "message": "...", "status": 429}` — Ek D zarfının bir üyesi, `errors.py::ERROR_RESPONSES`'a koşulsuz eklendi (openapi drift-check kararsızlaşmasın).
+- **Kabul edilen risk:** IP başlığı istemci tarafından uydurulabilir — bu bir MALİYET KAPAĞI, güvenlik sınırı değil; uydurmaya karşı asıl koruma global tavandır.
+
+### F3 · Cached verdict (`engine/cache.py`) — 🔒 mevcut Protocol'ler AYNEN
+
+- `TtlLruCache` (TTL + LRU boyut sınırı) + üç ince sarmalayıcı — **hiçbir port imzası değişmez**: `CachedConflictJudge(JudgePort)` · `CachedQueryJudge(QueryJudgePort)` · `CachedScopeJudge(ScopeJudgePort)`. Anahtar = girdinin içerik-hash'i (`sha256`, `content_hash()` ile aynı felsefe) — kimlik değil içerik keyed.
+- Wiring yalnız `DEMO_MODE=true` iken, `app.py`'de mevcut fabrikaların (`build_query_judge`, `build_scope_judge`, `_build_judge_port`) çıktısının ÜSTÜNE sarılır; `integrations/gemini/*` hiç değişmez.
+- **Asıl hedef:** `RadarService.get_detections()` her istekte her aday çifti yeniden yargılıyordu; frontend `usePolling` ~10 sn'de bir tüm Radar sayfasını yeniliyor — tek açık sekme dakikada 6 kez aynı çiftleri Gemini'ye yeniden sorduruyordu. Cache bunu HIT'e çevirir.
+- `CachedEmbeddings` (mevcut, embeddings.py) demo modda `max_entries=DEMO_CACHE_MAX_ENTRIES` alır (serbest metin `q` sınırsız büyümesin — 512 MB Fly VM); local/dev'de `max_entries=None` (bugünkü sınırsız davranış, sıfır regresyon).
+
+### F4 · Tek read-only repo'ya sabitleme (`api/routers/webhook.py`) — 🔒
+
+- İmza doğrulaması + JSON parse'tan **sonra**, event işlemeden **önce**: `DEMO_MODE=true` ve gelen `repository.full_name` yapılandırılan `GITHUB_REPO_OWNER/NAME` ile eşleşmiyorsa event **202 `{"status":"ignored","reason":"repo_not_pinned"}`** ile yok sayılır — DB'ye tek satır yazılmaz. 4xx DEĞİL (GitHub'ın webhook'u devre dışı bırakmasını önlemek için `ping` ile aynı desen).
+- Pin kontrolü imza doğrulamasının **ardından** çalışır (sıra bozulursa güvenlik gerilemesi — testle kilitli).
+
+### F5 · Bilinçli sınırlar (kayıt için)
+
+- **In-memory + tek instance:** sayaç/cache Fly makinesi durup kalkınca sıfırlanır (`fly.toml`: `auto_stop_machines=stop`, `min_machines_running=1`). Dağıtık sayaç (Redis) **bilerek kapsam dışı** (`kapsam-sinirlari.md` queue/worker yasağı).
+- **Bayatlık:** TTL 900 sn → demo taze bir push'u en fazla ~15 dk geç gösterebilir; verdict içerik-anahtarlı olduğu için YANLIŞ cevap üretmez, yalnız gecikir.
+- **Seed** (#48/#191) bu ekin kapsamında DEĞİL — ön-koşulu #183 açık kaldığı sürece hosted store boş projeksiyon döner.
+
+---
+
 ## Pratik: S3 paralel çalışma reçetesi
 
 - **Sprint başı (bugün):** bu dosya (Ek A–E) donar → herkes kendi diliminde mock/fixture ile başlar.
-- **Infra (#181/#182/#186/#190):** Ek A tablosuyla Fly/Vercel/managed-PG kurar; frontend'i beklemez (mock origin).
+- **Infra (#181/#182/#186/#190):** Ek A tablosuyla self-host VDS/Vercel/Postgres+pgvector kurar (D-46); frontend'i beklemez (mock origin).
 - **Backend router (#51/#52/#59/#104):** Ek B imzalarını implement eder; fake harness/store fixture'ıyla test.
 - **AI (#58):** `GET /query` RAG'ını `VectorIndexPort` + fake retrieval ile yazar; gerçek PG'yi sonra bağlar (Ek C).
 - **Store (#183):** app-boot DI + DDL tek-kaynak; local davranışı bozmadan hosted'ı ekler.
 - **MCP (#32):** engine'e delege eden read tool'lar; HTTP ile aynı motoru paylaşır (Ek D).
-- **Frontend (#33/#105/#129):** üretilen client + mock ile 5 sayfayı yapar; entegrasyonda `VITE_API_BASE_URL`'i gerçek Fly URL'ine çevirir (Ek A2).
+- **Frontend (#33/#105/#129):** üretilen client + mock ile 5 sayfayı yapar; entegrasyonda `VITE_API_BASE_URL`'i gerçek self-host backend URL'ine çevirir (Ek A2, D-46).
 
 > **Kural (S2'den devam):** kontrat değişikliği = bu dosyaya PR + daily'de duyuru. Sessizce imza/env-yeri değiştirme — birinin stub'ını ya da deploy'unu kırarsın.
