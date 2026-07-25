@@ -315,6 +315,9 @@ class ErrorEnvelope(BaseModel):
 | Gemini kalıcı/diğer | 502 | `gemini_error` | taban sınıf da eşli (fallback'e düşüp detay sızdırmaz) |
 | Framework HTTP (404/405…) | ilgili | `http_<status>` | zarf kapsamında — "tek tip" vaadi eksiksiz |
 | Beklenmedik | 500 | `internal` | mesaj **mod-bağımlı**: local=özet, hosted=generic; traceback yalnız log'da (`exc_info` ile — uvicorn'un kendi ASGI kaydıyla çift ERROR görünmesi bilinen davranış) |
+| 🆕 Demo rate limit (#63) | 429 | `demo_rate_limited` | yalnız `DEMO_MODE=true`; + `Retry-After: <saniye>` — bkz. `sprint3-kontratlar.md` Ek F/F2 |
+
+> **Yalnız EKLEME** — yukarıdaki donmuş satırlara dokunulmadı; 429/`demo_rate_limited` #63'ün hosted-demo rate cap'inin zarf üyesi olarak buraya işlendi (kod kaynağı: `api/rate_limit.py`, `errors.py::ERROR_RESPONSES`'a koşulsuz eklendi).
 
 - `422` FastAPI'nin otomatik doğrulama cevabıdır (zarf dışı, dokunulmadı); `500` spec'e bilerek beyan edilmez.
 - **CORS-on-error:** hata cevapları da `Access-Control-Allow-Origin` taşır (500 fallback'i Starlette'te CORS middleware'inin dışında koşar — başlık elle eklenir; #45/#150 dersi: yoksa tarayıcı gerçek hatayı "CORS error" diye gizler).

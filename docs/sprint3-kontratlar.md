@@ -241,7 +241,7 @@ DEMO_AI_RATE_LIMIT: int = 10        # IP basina, /query + /scope/check (kullanic
 DEMO_AI_GLOBAL_LIMIT: int = 60      # tum IP'ler toplami — IP-rotasyonuna karsi asil tavan
 DEMO_RATE_LIMIT: int = 120          # IP basina, diger (poll'lanan) GET yollari
 DEMO_CACHE_TTL_S: int = 900
-DEMO_CACHE_MAX_ENTRIES: int = 256
+DEMO_CACHE_MAX_ENTRIES: int = 1024
 ```
 
 İkinci bir `DEMO_REPO` anahtarı **eklenmedi** — `GITHUB_REPO_OWNER`/`NAME` (Ek A) zaten reponun kanonik pin'i; demo modda bu ikisi zorunlu hâle gelir (ikinci doğruluk kaynağı yaratmamak için, bkz. `internal` TDK ilkesi).
@@ -252,6 +252,7 @@ DEMO_CACHE_MAX_ENTRIES: int = 256
 - **Muaf:** GET-dışı metodlar (webhook POST) ve `/health` (Fly health-check).
 - **AI kovası** = yalnız `/query` + `/scope/check` (gerçekten Gemini çağıran, kullanıcı-girdili yollar). `/radar` bilerek **genel kovada** — frontend'i 10 sn'de bir poll'layan kendi Radar sayfasını kesmesin; onun maliyetini F3 sıfırlıyor.
 - AI kovasında **iki sayaç**: IP anahtarı (`DEMO_AI_RATE_LIMIT`) + `"*"` global anahtarı (`DEMO_AI_GLOBAL_LIMIT`) — IP rotasyonuna karşı.
+- 🆕 #63 (G6) — **genel kova da global tavan taşır:** `/radar` bilerek genel kovada olduğu için eskiden yalnız IP-başına (`DEMO_RATE_LIMIT`) sınırlıydı; sahte `Fly-Client-IP` rotasyonuyla bu sınır sonsuz kez atlatılabiliyordu (ölçüm: 2000 istek/2000 uydurma IP → 200=2000, 429=0 — fatura kapağı fiilen yoktu). Düzeltme: **yeni bir `.env` anahtarı eklenmeden**, AI kovasının zaten donmuş per-IP:global oranı (`DEMO_AI_RATE_LIMIT`:`DEMO_AI_GLOBAL_LIMIT`, varsayılan 10:60 = 6x) genel kovaya da uygulanan **türetilmiş** bir global sayaçla (`_general_global_limit = round(DEMO_RATE_LIMIT * DEMO_AI_GLOBAL_LIMIT / DEMO_AI_RATE_LIMIT)`) genişletildi. Varsayılan ayarlarla: aynı 2000-sahte-IP senaryosu düzeltmeden sonra 200=720, 429=1280 döner (türetilen tavan 120·60/10=720 ile birebir).
 - `client_ip()` önceliği: `Fly-Client-IP` > `X-Forwarded-For` ilk kayıt > `request.client.host` > `"unknown"`.
 - Aşımda **429** + `Retry-After: <saniye>` + kanonik `ErrorEnvelope`: `{"error": "demo_rate_limited", "message": "...", "status": 429}` — Ek D zarfının bir üyesi, `errors.py::ERROR_RESPONSES`'a koşulsuz eklendi (openapi drift-check kararsızlaşmasın).
 - **Kabul edilen risk:** IP başlığı istemci tarafından uydurulabilir — bu bir MALİYET KAPAĞI, güvenlik sınırı değil; uydurmaya karşı asıl koruma global tavandır.
