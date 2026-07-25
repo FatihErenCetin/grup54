@@ -24,6 +24,8 @@ class HarnessPort(Protocol):
 
     def read_active(self) -> list[dict[str, Any]]: ...
 
+    def verify_dir_readable(self, folder: str) -> None: ...
+
     def write_active(self, handle: str, decl: dict[str, Any]) -> None: ...
 
     def write_task(self, task_id: str, decl: dict[str, Any]) -> None: ...
@@ -118,6 +120,33 @@ class FileHarnessPort:
     def read_active(self) -> list[dict[str, Any]]:
         """Read every active declaration from .harness/active/."""
         return [doc.as_dict(self.root) for doc in self._read_many("active", "active")]
+
+    def verify_dir_readable(self, folder: str) -> None:
+        """Fail-closed varlık kontrolü: `.harness/<folder>/` dizini HİÇ YOK ya
+        da listelenemiyorsa (izin hatası vb.) `HarnessError` fırlatır.
+
+        Bu, `read_tasks()`/`read_active()`'ın KASITLI davranışından FARKLI bir
+        katman: o ikisi "dizin yok" ile "dizin var ama boş" durumlarını AYIRT
+        ETMEZ, ikisinde de sessizce `[]` döner (çoğu çağıran için doğru
+        davranış — bkz. NON_DATA_FILENAMES yorumu). Ama açılış bütünlük
+        kontrolü (#242) tam bu ayrımı yapmak ZORUNDA: host bind-mount'un
+        `.harness/`'i eksik/kısmi kopyaladığı senaryoda `tasks/`/`active/`
+        dizininin kendisi hiç yoktur — `read_tasks()`/`read_active()` bunu
+        "0 açık task/aktif beyan var" ile ayırt edilemez şekilde maskeler.
+        Dizin VAR ama İÇİ BOŞ olması (hiç açık task/aktif beyan olmaması)
+        MEŞRU bir durumdur ve bu metod bunda RAISE ETMEZ.
+        """
+        directory = self.harness_dir / folder
+        try:
+            exists = directory.is_dir()
+        except OSError as exc:
+            raise HarnessError(f"Harness directory not readable: {directory} ({exc})") from exc
+        if not exists:
+            raise HarnessError(f"Harness directory not found: {directory}")
+        try:
+            next(directory.iterdir(), None)
+        except OSError as exc:
+            raise HarnessError(f"Harness directory not readable: {directory} ({exc})") from exc
 
     def write_active(self, handle: str, decl: dict[str, Any]) -> None:
         """Atomically write .harness/active/<handle>.md.
