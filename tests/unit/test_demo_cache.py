@@ -770,6 +770,108 @@ def test_embeddings_cache_fill_misses_zaman_asiminda_disaridaki_kilidi_zorla_acm
     assert holder_errors == [], f"dis tutucu thread istisnayla oldu: {holder_errors}"
 
 
+# --- CachedEmbeddings son sertlestirme turu (T-63 son tur) ---
+#
+# Bagimsiz dogrulayicinin bulgulari: (MADDE 1) `_fill_misses`teki
+# `lock = self._locks.acquire(key)` / `registered_keys.append(key)` SIRASI
+# yuk tasiyan bir disiplindi - mevcut `_ExplodingLock` deseni SADECE donen
+# kilidin KENDI `.acquire()`'ini patlatiyordu (yani KAYIT YAZILDIKTAN
+# SONRASINI); `self._locks.acquire(key)`'in (registry seviyesi cagrinin)
+# KENDISI (defter yazilmadan) patlarsa sira ters cevrilmis olsa bile hicbir
+# test bunu yakalamiyordu. (MADDE 2) double-check adiminin `peek()` (sayac
+# ARTIRMAYAN) kullandigi embeddings tarafinda hic kilitlenmemisti -
+# cache.py'deki es (`test_get_or_compute_hit_miss_sayaclari_ciftlenmez`) VARDI,
+# embeddings tarafinda YOKTU.
+
+
+def test_embeddings_cache_fill_misses_defter_cagrisinin_kendisi_patlarsa_istisna_maskelenmez():
+    """MADDE 1 (T-63 son tur): `lock = self._locks.acquire(key)` defter
+    KAYDINI yazan cagridir; `registered_keys.append(key)` bunun SONRASINDA
+    gelir - sira bu sekilde oldugu surece `self._locks.acquire(key)`'in
+    KENDISI istisna firlatirsa (defter HIC yazilmadan) `registered_keys`e o
+    anahtar asla girmez, `finally` onun icin `release()` cagirmaz -> orijinal
+    istisna MASKELENMEZ. Mevcut `_ExplodingLock` deseni (bkz.
+    `test_embeddings_cache_fill_misses_kilit_edinmede_istisna_orijinali_maskelemez`)
+    bunu KACIRIYOR cunku donen kilidin KENDI `.acquire()`'ini (kayit
+    YAZILDIKTAN SONRASINI) patlatiyor - burada ONUN YERINE registry-seviyesi
+    `self._locks.acquire` metodunun KENDISI (gercek defter kaydi hic
+    olusturulmadan) 2. anahtarda patlatilir. Sira `registered_keys.append(key)`
+    ONCE / `self._locks.acquire(key)` SONRA olacak sekilde ters cevrilirse
+    (`append once` mutasyonu) bu test KIRILIR: 2. anahtar defter kaydi
+    olusmadan `registered_keys`e girer, `finally` onun icin `release()`
+    cagirir, `KeyError` firlar ve orijinal `RuntimeError`'i MASKELER."""
+
+    class _CountingEmbeddings:
+        def embed(self, texts, task_type):
+            return [[float(len(t))] for t in texts]
+
+    cached = CachedEmbeddings(_CountingEmbeddings())
+
+    original_acquire = cached._locks.acquire
+    call_count = [0]
+
+    def _acquire_explode_before_registering(key: str):
+        call_count[0] += 1
+        if call_count[0] == 2:
+            # Gercek `original_acquire(key)` HIC cagrilmiyor - defter kaydi
+            # bu anahtar icin ASLA olusmuyor (KAYIT YAZILMADAN patlama).
+            raise RuntimeError("defter yazilmadan patladi")
+        return original_acquire(key)
+
+    cached._locks.acquire = _acquire_explode_before_registering
+
+    with pytest.raises(RuntimeError, match="defter yazilmadan patladi"):
+        cached.embed(["bir", "iki", "uc", "dort"], "T")
+
+    assert len(cached._locks) == 0  # kayit defterinde sizinti kalmadi
+
+
+def test_get_or_compute_defter_cagrisinin_kendisi_patlarsa_kayit_sizmaz_ve_maskelenmez(
+    monkeypatch,
+):
+    """MADDE 1 (T-63 son tur) - kontrol: `cache.py::get_or_compute`de
+    `lock = self._locks.acquire(key)` `try` BLOGUNUN TAMAMEN DISINDA - registry
+    seviyesi `acquire()`'in KENDISI (defter yazilmadan) istisna firlatirsa
+    `finally` hic calismaz, `self._locks.release()` cagrilmaz. Defter zaten
+    yazilmadigi icin bu SIZINTI DEGIL, orijinal istisna da MASKELENMEZ.
+    `embeddings.py::_fill_misses`teki (append/acquire SIRASINA bagli) risk
+    BURADA yoktur - bu test o farki kilitler."""
+    cache = TtlLruCache(ttl_s=60, max_entries=10, time_fn=lambda: 0.0)
+
+    def _exploding_registry_acquire(key: str):
+        raise RuntimeError("defter yazilmadan patladi")
+
+    monkeypatch.setattr(cache._locks, "acquire", _exploding_registry_acquire)
+
+    with pytest.raises(RuntimeError, match="defter yazilmadan patladi"):
+        cache.get_or_compute("k", lambda: "deger")
+
+    assert len(cache._locks) == 0  # hic kayit olusmadi, sizinti da yok
+
+
+def test_embeddings_cache_hit_miss_sayaclari_ciftlenmez():
+    """MADDE 2 (T-63 son tur): `_fill_misses`in double-check adimi SAYAC
+    ARTIRMAYAN `self.cache.peek(key)` kullanir - `cache.py::get_or_compute`
+    icindeki AYNI disiplinin (bkz. `test_get_or_compute_hit_miss_sayaclari_
+    ciftlenmez`) embeddings tarafindaki esi. `peek` yerine `get` kullanilsa
+    (mutasyon), ayni mantiksal MISS hem `embed()`in hizli-yol taramasinda hem
+    de `_fill_misses`in double-check'inde SAYILIP misses=2 verirdi. Bu testte
+    1 mantiksal MISS (ilk cagri) + 1 mantiksal HIT (ikinci cagri) TAM
+    misses=1, hits=1 vermeli."""
+
+    class _CountingEmbeddings:
+        def embed(self, texts, task_type):
+            return [[float(len(t))] for t in texts]
+
+    cached = CachedEmbeddings(_CountingEmbeddings())
+
+    cached.embed(["metin"], "T")  # ilk cagri: MISS (hesaplar+yazar)
+    cached.embed(["metin"], "T")  # ikinci cagri: HIT (hizli yoldan doner)
+
+    assert cached.cache.misses == 1
+    assert cached.cache.hits == 1
+
+
 # --- TtlLruCache.get_or_compute (tekil-ucus / single-flight cekirdegi) ---
 #
 # DOGRULANMIS BLOCKER (#63 takip): get()->miss->inner->set() deseni get/set
