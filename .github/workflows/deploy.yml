@@ -29,10 +29,22 @@
 #      daldan acilan PR de o filtreyi gecer).
 #   2) workflow_run yalniz VARSAYILAN daldaki workflow dosyasindan tetiklenir
 #      -> bu dosya bu PR'in kendi kosusunda HIC calismaz; ilk gercek kosu
-#      merge SONRASI olur. workflow_dispatch elle kacis kapisi olarak durur.
+#      merge SONRASI olur. workflow_dispatch main+CI-yesil kapisina tabi
+#      ikinci bir yol olarak durur (bkz. tuzak 4 -- artik kacis kapisi DEGIL).
 #   3) `workflows: ["CI"]` stringi ci.yml'in `name:` alanina baglidir; ci.yml
 #      yeniden adlandirilirsa bu workflow SESSIZCE hic kosmaz (capraz-dosya
 #      test: tests/unit/test_deploy_workflow.py::test_ci_ismi_deploy_kapisiyla_ayni).
+#   4) (KAPATILDI, S192 review) `preflight.if` `workflow_dispatch || (...)`
+#      seklinde bir `||` ile basliyordu -> elle tetik main+CI-yesil kapisinin
+#      TAMAMINI short-circuit ediyordu: main DISINDAKI bir dal, CI hic
+#      dogrulanmadan deploy edilebiliyordu (eski "main disi elle tetik
+#      uyarisi" adimi bunu yalniz ::warning:: ile bildirip ENGELLEMIYORDU).
+#      Kapatildi: workflow_dispatch artik `github.ref == 'refs/heads/main'`
+#      ile SINIRLI VE ayni SHA icin basarili (conclusion=success) bir ci.yml
+#      kosumu VAR MI diye `gh api actions/workflows/ci.yml/runs` ile
+#      dogrulaniyor (preflight, asagida) -- bulamazsa ::error:: + exit 1,
+#      deploy hic denenmez. Elle tetik artik bir kacis kapisi DEGIL, ayni iki
+#      kapiya (main + CI-yesil) tabi ikinci bir yol.
 #
 # FAIL-SAFE SECRET KAPISI (kritik kisit): GitHub Actions `if:` ifadelerinde
 # `secrets` context'i KULLANILAMAZ (`if: secrets.X != ''` sessizce yanlis
@@ -88,6 +100,7 @@ on:
 
 permissions:
   contents: read # workflow_run'da GITHUB_TOKEN varsayilan yazma alabilir -- kapatiyoruz
+  actions: read # elle tetikte ayni SHA icin basarili ci.yml kosumu var mi kontrolu (preflight, `gh api actions/workflows/ci.yml/runs`)
 
 concurrency:
   group: deploy
@@ -96,8 +109,12 @@ concurrency:
 jobs:
   preflight:
     # Kapi 1 -- CI yesil + GERCEKTEN main'e push (PR/fork kosusu degil).
+    # workflow_dispatch artik main'e SINIRLI (asagidaki `ref` kosulu) VE
+    # asagidaki "Elle tetikte CI yesili dogrula" adimiyla CI-yesil kapisina
+    # da tabi -- eskiden buradaki `||` elle tetigi bu kapinin TAMAMINDAN
+    # muaf tutuyordu (bkz. dosya basligi, tuzak 4).
     if: >-
-      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
       (github.event.workflow_run.conclusion == 'success' &&
        github.event.workflow_run.event == 'push' &&
        github.event.workflow_run.head_branch == 'main' &&
@@ -121,11 +138,26 @@ jobs:
             echo "::notice::FLY_API_TOKEN repo secret'i yok - deploy atlaniyor (fail-safe)."
           fi
 
-      - name: main disi elle tetik uyarisi
-        if: github.event_name == 'workflow_dispatch' && github.ref != 'refs/heads/main'
+      # Kapi 1b -- elle tetikte CI-yesil dogrulamasi. `if:` yukarida
+      # workflow_dispatch'i main'e sinirlar ama CI'in o SHA icin GERCEKTEN
+      # basarili kostugunu dogrulamaz -- main'e her push zaten bir CI kosumu
+      # tetikler, ama teoride biri CI bitmeden (ya da kirmizi bittikten
+      # hemen sonra) elle tetikleyebilir. Bu adim ayni head_sha ($SHA) icin
+      # tamamlanmis (status=completed) EN SON ci.yml kosusunun
+      # conclusion=='success' oldugunu `gh api` ile dogrular; degilse
+      # ::error:: + exit 1 -- deploy job'i hic denenmez (preflight basarisiz
+      # olur, `needs: preflight` deploy'u calistirmaz).
+      - name: Elle tetikte CI yesili dogrula (ayni SHA icin)
+        if: github.event_name == 'workflow_dispatch'
         env:
-          REF: ${{ github.ref }} # dal adi shell'e enterpole EDILMEZ (injection onlemi)
-        run: echo "::warning::main disi ref elle deploy ediliyor ($REF)."
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SHA: ${{ github.sha }} # dogrudan shell'e enterpole EDILMEZ, env uzerinden (dosyadaki mevcut desenle ayni)
+        run: |
+          conclusion=$(gh api "repos/${{ github.repository }}/actions/workflows/ci.yml/runs?head_sha=$SHA&status=completed" --jq '.workflow_runs[0].conclusion // "none"')
+          if [ "$conclusion" != "success" ]; then
+            echo "::error::Elle tetiklenen commit ($SHA) icin basarili (conclusion=success) bir CI (ci.yml) kosumu bulunamadi (bulunan: $conclusion). Elle tetik CI-yesil kapisini atlayamaz -- once main'de CI'in gectiginden emin ol."
+            exit 1
+          fi
 
   deploy:
     needs: preflight

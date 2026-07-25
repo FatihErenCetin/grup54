@@ -212,9 +212,107 @@ def test_deploy_ci_dogruladigi_shayi_checkout_eder():
 
 def test_deploy_izinleri_salt_okunur():
     """workflow_run'da varsayilan GITHUB_TOKEN yazma alabilir -- acikca
-    salt-okunura indirilmeli."""
-    assert DEPLOY.get("permissions") == {"contents": "read"}, (
-        f"deploy.yml permissions={DEPLOY.get('permissions')!r} -- {{'contents': 'read'}} degil."
+    salt-okunura indirilmeli. `actions: read` elle-tetik CI-dogrulama adimi
+    (`gh api actions/workflows/ci.yml/runs`) icin gerekli -- yazma izni yok."""
+    perms = DEPLOY.get("permissions") or {}
+    assert perms.get("contents") == "read", f"deploy.yml permissions.contents={perms.get('contents')!r} -- 'read' degil."
+    assert perms.get("actions") == "read", f"deploy.yml permissions.actions={perms.get('actions')!r} -- 'read' degil."
+    assert set(perms.values()) == {"read"}, (
+        f"deploy.yml permissions={perms!r} -- 'read' disinda bir deger var (yazma izni sizmis olabilir)."
+    )
+
+
+def test_smoke_job_var_ve_needs_preflight_ve_deploy():
+    """Regresyon: eskiden `smoke` job'i TAMAMEN silinse bile mevcut testler
+    13/13 yesil kaliyordu -- hicbiri job'in VARLIGINI hic olcmuyordu. Bu test
+    hem varligini hem `needs` baglantisini (tam olarak [preflight, deploy])
+    dogrudan YAML'dan olcer, duz metin grep'i degil."""
+    jobs = DEPLOY["jobs"]
+    assert "smoke" in jobs, "deploy.yml'de 'smoke' job'i yok."
+    needs = jobs["smoke"].get("needs")
+    needs_list = [needs] if isinstance(needs, str) else list(needs or [])
+    assert needs_list == ["preflight", "deploy"], (
+        f"smoke.needs={needs_list!r} -- tam olarak ['preflight', 'deploy'] degil."
+    )
+
+
+def test_smoke_checkout_dogrulanmis_shayi_kullanir():
+    """smoke job'inin checkout adimi da (deploy gibi) preflight'in
+    dogruladigi sha'yi kullanmali -- aksi halde deploy edilenden FARKLI bir
+    commit smoke-test edilebilir (yanlis pozitif/negatif kanit riski)."""
+    smoke_steps = _all_steps(DEPLOY["jobs"]["smoke"])
+    checkout = next((s for s in smoke_steps if s.get("uses", "").startswith("actions/checkout")), None)
+    assert checkout is not None, "smoke job'inda actions/checkout adimi yok."
+    ref = checkout.get("with", {}).get("ref", "")
+    assert "needs.preflight.outputs.sha" in ref, (
+        f"smoke checkout ref={ref!r} -- needs.preflight.outputs.sha referansi yok."
+    )
+
+
+def test_smoke_make_smoke_adimi_ready_ciktisina_bagli():
+    """`make smoke` kosan bir adim VAR olmali VE `smoke_check.outputs.ready`
+    kapisina bagli olmali -- aksi halde #189 merge olmadan Makefile'da hedef
+    yokken adim 'No rule to make target' ile PATLAR (fail-safe delinir)."""
+    smoke_steps = _all_steps(DEPLOY["jobs"]["smoke"])
+    make_smoke_step = next((s for s in smoke_steps if "make smoke" in (s.get("run") or "")), None)
+    assert make_smoke_step is not None, "'make smoke' kosan bir adim bulunamadi."
+    step_if = str(make_smoke_step.get("if") or "")
+    assert "steps.smoke_check.outputs.ready" in step_if, (
+        f"'make smoke' adiminin if={step_if!r} -- steps.smoke_check.outputs.ready kapisina bagli degil."
+    )
+
+
+def test_workflow_dispatch_main_disina_sinirli():
+    """Dogrulanmis blocker (S192, Semih): eskiden `preflight.if`
+    `github.event_name == 'workflow_dispatch' || (...)` seklinde bare bir
+    `||` ile basliyordu -- main DISINDAKI bir dal, CI hic dogrulanmadan elle
+    deploy edilebiliyordu. workflow_dispatch artik `github.ref ==
+    'refs/heads/main'` ile VE'lenmis olmali."""
+    assert "workflow_dispatch' && github.ref == 'refs/heads/main'" in PREFLIGHT_IF, (
+        f"preflight.if={PREFLIGHT_IF!r} -- workflow_dispatch, github.ref=='refs/heads/main' "
+        "ile VE'lenmemis (bare '||' hala kapinin TAMAMINI short-circuit edebilir)."
+    )
+
+
+def test_elle_tetikte_ci_dogrulama_adimi_var_ve_basarisizlikta_durur():
+    """Elle tetikte, ayni SHA icin basarili (conclusion=success) bir ci.yml
+    kosumu YOKSA adim ::error:: verip exit 1 ile durmali -- preflight
+    basarisiz olur, `needs: preflight` uzerinden deploy job'i hic
+    denenmez."""
+    preflight_steps = _all_steps(DEPLOY["jobs"]["preflight"])
+    ci_check_step = next(
+        (
+            s
+            for s in preflight_steps
+            if "workflow_dispatch" in str(s.get("if") or "") and "gh api" in (s.get("run") or "")
+        ),
+        None,
+    )
+    assert ci_check_step is not None, (
+        "preflight'ta workflow_dispatch'e ozel, 'gh api' kosan bir CI-dogrulama adimi bulunamadi."
+    )
+    run_body = ci_check_step["run"]
+    assert "actions/workflows/ci.yml/runs" in run_body, (
+        f"CI-dogrulama adimi ci.yml'in workflow-run listesini sorgulamiyor: {run_body!r}"
+    )
+    assert "exit 1" in run_body, "CI-dogrulama adimi basarisizlikta exit 1 ile durmuyor."
+    # Injection onlemi: SHA dogrudan ${{ }} ile run govdesine enterpole EDILMEMELI,
+    # env uzerinden gecmeli (dosyadaki mevcut FLY_API_TOKEN deseniyle ayni).
+    assert "${{ github.sha }}" not in run_body, (
+        "github.sha run govdesine dogrudan enterpole edilmis -- env uzerinden verilmeli (injection onlemi)."
+    )
+    step_env = ci_check_step.get("env", {})
+    assert any("github.sha" in str(v) for v in step_env.values()), (
+        "CI-dogrulama adiminin env'inde github.sha referansi yok -- SHA hicbir yerden gecmiyor olabilir."
+    )
+
+
+def test_deploy_permissions_actions_read_icerir():
+    """`gh api actions/workflows/ci.yml/runs` cagrisi icin `actions: read`
+    sart -- olmadan elle-tetik CI-dogrulama adimi 403 ile patlar (deploy
+    hicbir zaman kosamaz, sessiz degil ama beklenmedik bir kirmizi)."""
+    assert DEPLOY.get("permissions", {}).get("actions") == "read", (
+        f"deploy.yml permissions={DEPLOY.get('permissions')!r} -- 'actions: read' yok."
     )
 
 
