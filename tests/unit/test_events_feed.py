@@ -101,3 +101,39 @@ def test_events_endpoint_since_query_param_filters():
         assert r.status_code == 200
         body = r.json()
         assert [e["id"] for e in body["events"]] == ["pr:99"]
+
+
+def test_events_polling_flow_returns_304_on_first_incremental_poll():
+    """Gerçek istemci akışı: full poll → dönen (latest_ts, ETag) ile ikinci poll.
+
+    Yeni event yoksa ikinci poll doğrudan 304 olmalı. ETag filtrelenmiş tüm
+    payload'dan üretilirse cursor ilerledikçe temsil kümesi değişir ve bu poll
+    boş yere 200 + gövde döner (#52 CR).
+    """
+    with _client(_EVENTS) as client:
+        first = client.get("/events")
+        assert first.status_code == 200
+        cursor = first.json()["latest_ts"]
+        etag = first.headers["ETag"]
+
+        second = client.get(
+            "/events",
+            params={"since": cursor},
+            headers={"If-None-Match": etag},
+        )
+        assert second.status_code == 304
+        assert second.content == b""
+        assert second.headers["ETag"] == etag
+
+
+def test_events_etag_changes_when_event_added_at_same_latest_ts():
+    """Aynı latest_ts'e sonradan eklenen event ETag'i değiştirir → 304'e takılıp kaçmaz."""
+    same_ts_event = NormalizedEvent(
+        id="commit:zzz", type="commit", actor="semih", branch=None, files=[],
+        ts=datetime(2026, 7, 10, 10, 0, 0), ref="zzz",  # pr:99 ile aynı ts
+    )
+    with _client(_EVENTS) as client:
+        etag_before = client.get("/events").headers["ETag"]
+    with _client([*_EVENTS, same_ts_event]) as client:
+        etag_after = client.get("/events").headers["ETag"]
+    assert etag_before != etag_after

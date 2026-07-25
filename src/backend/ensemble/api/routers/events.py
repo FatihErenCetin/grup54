@@ -7,6 +7,7 @@ from fastapi import APIRouter, Header, Query, Response
 from pydantic import BaseModel
 
 from ensemble.api.deps import EventServiceDep
+from ensemble.engine.events import snapshot_boundary_ids
 from ensemble.models import NormalizedEvent, PresenceEntry
 
 
@@ -32,12 +33,15 @@ router = APIRouter(tags=["events"])
 
 
 def _events_etag(events: list[NormalizedEvent], latest_ts: datetime) -> str:
-    """Feed içeriğinden deterministik ETag üretir.
+    """Feed'in snapshot sürümünden deterministik ETag üretir.
 
-    Aynı (latest_ts + event id kümesi) → aynı ETag → istemci If-None-Match ile
-    304 alır ve tüm feed'i tekrar çekmez (#52 cursor sözleşmesi).
+    Sürüm = latest_ts + o sınırdaki stabil event id kümesi; payload penceresi
+    değil. Böylece tam feed ile `since` sonrası artımlı feed aynı sunucu
+    durumunda aynı ETag'i verir → istemci ilk artımlı poll'de de 304 alır ve
+    tüm feed'i tekrar çekmez (#52 cursor sözleşmesi). Aynı latest_ts'e sonradan
+    eklenen event id kümesini değiştirdiği için 304'e takılıp kaçmaz.
     """
-    payload = latest_ts.isoformat() + "|" + "|".join(e.id for e in events)
+    payload = latest_ts.isoformat() + "|" + "|".join(snapshot_boundary_ids(events, latest_ts))
     digest = hashlib.sha1(payload.encode("utf-8")).hexdigest()
     return f'"{digest}"'
 

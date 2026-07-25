@@ -24,6 +24,17 @@ def _to_naive_utc(value: datetime) -> datetime:
     return value
 
 
+def snapshot_boundary_ids(events: list[NormalizedEvent], latest_ts: datetime) -> list[str]:
+    """`latest_ts` sınırındaki event id'lerini sıralı döndürür (#52).
+
+    Feed'in "sürümü" = (latest_ts + o sınırdaki id kümesi). Payload penceresi
+    cursor ilerledikçe değişir (tam feed vs artımlı feed), sınırdaki id kümesi
+    değişmez; aynı sınıra sonradan event eklenirse küme büyür. ETag bunun
+    üzerinden üretilir → iki poll aynı sunucu durumunu aynı sürüm olarak görür.
+    """
+    return sorted(e.id for e in events if _to_naive_utc(e.ts) == latest_ts)
+
+
 class EventService:
     def __init__(
         self,
