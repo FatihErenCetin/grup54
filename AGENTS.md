@@ -64,6 +64,7 @@ Bu repoda çalışan **her AI aracı**, aşağıdaki anlarda ilgili rehberi **ke
 - **`docs/gelistirme-dongusu.md`** — 🟢 **atanmış issue → done TEK rehberi (+ DONE kapısı). İşe başlamadan OKU.**
 - **`docs/review-rehberi.md`** — 🟢 **PR review'ının TEK rehberi (insan + AI). Her review'dan önce OKU** (Claude Code: `/takim-review <PR no>`).
 - **`docs/sprint2-kontratlar.md`** — 🟢 bileşen girdi/çıktı (port/endpoint imzaları; paralel çalışma — **imzayı değiştirme**).
+- **`docs/kontrat-drift-guardrail.md`** — 🟢 openapi.json ↔ TS client senkron kalma garantisi (CI drift-check'leri + `make contracts`); router/şemaya dokunan her değişiklikte oku.
 - **`docs/kapsam-sinirlari.md`** — 🟢 local-first kapsam + **YAPMA listesi** (kapsam-dışı = tasarım gereği yok; ⚠️ user-login/OAuth tuzağı).
 - `CONTRIBUTING.md` — git akışı detayı (issue→branch→commit→PR→merge; §0 işe-başla).
 - `ProjectManagement/` — sprint kanıtı + **daily nasıl kaydedilir** → `ProjectManagement/README.md` · `SprintN/{DailyScrum·Meetings·Board·Burndown·Screenshots}`.
