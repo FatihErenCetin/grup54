@@ -42,9 +42,25 @@
 #      Kapatildi: workflow_dispatch artik `github.ref == 'refs/heads/main'`
 #      ile SINIRLI VE ayni SHA icin basarili (conclusion=success) bir ci.yml
 #      kosumu VAR MI diye `gh api actions/workflows/ci.yml/runs` ile
-#      dogrulaniyor (preflight, asagida) -- bulamazsa ::error:: + exit 1,
-#      deploy hic denenmez. Elle tetik artik bir kacis kapisi DEGIL, ayni iki
-#      kapiya (main + CI-yesil) tabi ikinci bir yol.
+#      dogrulaniyor (preflight, asagida) -- bulamazsa `ci_ok=false` yazar (bkz.
+#      tuzak 5), deploy hic denenmez. Elle tetik artik bir kacis kapisi DEGIL,
+#      ayni iki kapiya (main + CI-yesil) tabi ikinci bir yol.
+#   5) (KAPATILDI, S192 review - acik 2) Kapi 1b'nin TUM engelleme gucu
+#      onceden ORTUK GitHub semantigine dayaniyordu: CI-dogrulama adimi
+#      `exit 1` ile preflight job'ini FAIL ediyordu, deploy'un atlanmasi
+#      "needs: preflight" + "job basarisiz olunca kendi if'i olan sonraki
+#      job da SKIP edilir" varsayimina baliydi -- bu, dosyanin KENDI
+#      "FAIL-SAFE SECRET KAPISI" paragrafinin ogrettigi desenle
+#      CELISIYORDU (ortuk needs-semantigine guvenme, acik bir OUTPUT'a
+#      bagla; `has_token` deseni). Kapatildi: adim artik `exit 1` ATMAZ;
+#      sonucu acikca `ci_ok=true|false` OUTPUT'una yazar (false iken
+#      ::error:: ile gorunur bir aciklama basar), preflight bunu disari
+#      verir, `deploy.if` hem `has_token` hem `ci_ok` outputlarina birlikte
+#      BAGLIDIR -- `has_token` deseniyle BIREBIR ayni yontem, iki farkli
+#      mekanizma degil. Otomatik (workflow_run) yolunda adim `event_name`'e
+#      bakip DOGRUDAN `ci_ok=true` yazar (o yolda kapi zaten
+#      `workflow_run.conclusion` ile saglaniyor) -- tek bir output her iki
+#      tetikleyici yolunda da anlamli kalir.
 #
 # FAIL-SAFE SECRET KAPISI (kritik kisit): GitHub Actions `if:` ifadelerinde
 # `secrets` context'i KULLANILAMAZ (`if: secrets.X != ''` sessizce yanlis
@@ -110,9 +126,10 @@ jobs:
   preflight:
     # Kapi 1 -- CI yesil + GERCEKTEN main'e push (PR/fork kosusu degil).
     # workflow_dispatch artik main'e SINIRLI (asagidaki `ref` kosulu) VE
-    # asagidaki "Elle tetikte CI yesili dogrula" adimiyla CI-yesil kapisina
-    # da tabi -- eskiden buradaki `||` elle tetigi bu kapinin TAMAMINDAN
-    # muaf tutuyordu (bkz. dosya basligi, tuzak 4).
+    # asagidaki "CI yesilligini dogrula (ci_ok cikisi)" adimiyla (ci_ok
+    # outputu uzerinden, bkz. tuzak 5) CI-yesil kapisina da tabi -- eskiden
+    # buradaki `||` elle tetigi bu kapinin TAMAMINDAN muaf tutuyordu (bkz.
+    # dosya basligi, tuzak 4).
     if: >-
       (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
       (github.event.workflow_run.conclusion == 'success' &&
@@ -122,6 +139,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       has_token: ${{ steps.token.outputs.has_token }}
+      ci_ok: ${{ steps.ci_check.outputs.ci_ok }}
       sha: ${{ github.event.workflow_run.head_sha || github.sha }}
     steps:
       # Kapi 2 -- secret VARLIK kontrolu; `if:` degil `env:` uzerinden okunur
@@ -138,30 +156,49 @@ jobs:
             echo "::notice::FLY_API_TOKEN repo secret'i yok - deploy atlaniyor (fail-safe)."
           fi
 
-      # Kapi 1b -- elle tetikte CI-yesil dogrulamasi. `if:` yukarida
-      # workflow_dispatch'i main'e sinirlar ama CI'in o SHA icin GERCEKTEN
-      # basarili kostugunu dogrulamaz -- main'e her push zaten bir CI kosumu
-      # tetikler, ama teoride biri CI bitmeden (ya da kirmizi bittikten
-      # hemen sonra) elle tetikleyebilir. Bu adim ayni head_sha ($SHA) icin
-      # tamamlanmis (status=completed) EN SON ci.yml kosusunun
-      # conclusion=='success' oldugunu `gh api` ile dogrular; degilse
-      # ::error:: + exit 1 -- deploy job'i hic denenmez (preflight basarisiz
-      # olur, `needs: preflight` deploy'u calistirmaz).
-      - name: Elle tetikte CI yesili dogrula (ayni SHA icin)
-        if: github.event_name == 'workflow_dispatch'
+      # Kapi 1b -- elle tetikte CI-yesil dogrulamasi; ACIK bir OUTPUT'a
+      # baglanir (has_token deseniyle BIREBIR ayni -- bkz. tuzak 5). Adim
+      # HER iki tetikleyicide de kosar (step-level `if` YOK -- kendi karari
+      # icin EVENT_NAME'e bakar): otomatik (workflow_run) yolunda kapi zaten
+      # workflow_run.conclusion ile saglandigindan dogrudan ci_ok=true yazar.
+      # Elle tetikte, ayni head_sha ($SHA) icin main dalinda (branch=main),
+      # push'tan gelen (event=push -- tuzak 1'deki filtreyle tutarli,
+      # .workflow_runs[0]'in ORTUK siralamasina guvenilmez) ve tamamlanmis
+      # (status=completed) EN SON ci.yml kosusunun conclusion=='success'
+      # oldugunu `gh api` ile dogrular. Basarisizlikta (gh api'nin kendisi
+      # sifir-disi exit ile patlasa da) job'i `exit 1` ile KIRMAZ -- ::error::
+      # basar ve ci_ok=false yazar; deploy job'inin `if`'i bu outputa
+      # `needs.` ile baglanir (asagida).
+      - name: CI yesilligini dogrula (ci_ok cikisi)
+        id: ci_check
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          SHA: ${{ github.sha }} # dogrudan shell'e enterpole EDILMEZ, env uzerinden (dosyadaki mevcut desenle ayni)
+          EVENT_NAME: ${{ github.event_name }}
+          SHA: ${{ github.sha }} # dogrudan shell'e enterpole EDILMEZ, env uzerinden
+          REPO: ${{ github.repository }} # ayni desen -- run govdesine dogrudan enterpole edilmez
         run: |
-          conclusion=$(gh api "repos/${{ github.repository }}/actions/workflows/ci.yml/runs?head_sha=$SHA&status=completed" --jq '.workflow_runs[0].conclusion // "none"')
+          if [ "$EVENT_NAME" != "workflow_dispatch" ]; then
+            # Otomatik (workflow_run) yol: kapi zaten workflow_run.conclusion ile saglaniyor.
+            echo "ci_ok=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if ! conclusion=$(gh api "repos/$REPO/actions/workflows/ci.yml/runs?head_sha=$SHA&event=push&branch=main&status=completed" --jq '.workflow_runs[0].conclusion // "none"'); then
+            echo "::error::gh api cagrisi basarisiz oldu (SHA=$SHA) -- CI durumu dogrulanamadi, guvenli taraf: deploy engellendi."
+            echo "ci_ok=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           if [ "$conclusion" != "success" ]; then
             echo "::error::Elle tetiklenen commit ($SHA) icin basarili (conclusion=success) bir CI (ci.yml) kosumu bulunamadi (bulunan: $conclusion). Elle tetik CI-yesil kapisini atlayamaz -- once main'de CI'in gectiginden emin ol."
-            exit 1
+            echo "ci_ok=false" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
+          echo "ci_ok=true" >> "$GITHUB_OUTPUT"
 
   deploy:
     needs: preflight
-    if: needs.preflight.outputs.has_token == 'true'
+    # Iki kapi BIRLIKTE: token varligi VE CI-yesilligi -- her ikisi de acik
+    # OUTPUT'a bagli (ortuk needs-basarisizlik semantigine DEGIL, tuzak 5).
+    if: needs.preflight.outputs.has_token == 'true' && needs.preflight.outputs.ci_ok == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
