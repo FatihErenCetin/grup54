@@ -361,6 +361,37 @@ def test_spa_302_yonlendirme_fail_open_kirmizi(capsys):
         assert f"OK   SPA refresh GET {WEB}{route}" not in out
 
 
+def test_spa_302_ayni_host_rewrite_mesaji(capsys):
+    """ISTENEN 2 - aynı-host dalı: Location HOST'suz (relative, örn. "/")
+    ise mevcut "SPA rewrite kuralı eksik" teşhisi DEĞİŞMEMELİ (kanonik alan
+    yönlendirmesi mesajı YANLIŞLIKLA burada tetiklenmemeli)."""
+    script = _base_ok_script()
+    script[("GET", "/board")] = Response(302, {"location": "/"}, "")
+    fake = FakeTransport(script)
+    rc = main(env=base_env(), fetch=fake, sleep=lambda s: None)
+    assert rc == 1
+    out = capsys.readouterr().out
+    assert "SPA rewrite kuralı eksik" in out
+    assert "kanonik alan yönlendirmesi" not in out
+
+
+def test_spa_302_farkli_host_kanonik_alan_mesaji(capsys):
+    """ISTENEN 2 - farklı-host dalı: Location'ın HOST'u istenen host'tan
+    farklıysa (örn. www->apex kanonik alan yönlendirmesi) kök neden "SPA
+    rewrite kuralı eksik" DEĞİL — SMOKE_WEB_URL'in kanonik olmayan hostu
+    olabilir; ayrı ve doğru bir mesaj basılmalı, eski rewrite mesajı
+    BASILMAMALI."""
+    script = _base_ok_script()
+    script[("GET", "/board")] = Response(302, {"location": "https://baska-host.example/"}, "")
+    fake = FakeTransport(script)
+    rc = main(env=base_env(), fetch=fake, sleep=lambda s: None)
+    assert rc == 1
+    out = capsys.readouterr().out
+    assert "kanonik alan yönlendirmesi" in out
+    assert "SMOKE_WEB_URL'i canonical URL'e çevir" in out
+    assert "SPA rewrite kuralı eksik" not in out
+
+
 class _RedirectingSpaHandler(http.server.BaseHTTPRequestHandler):
     """Gerçek bir "bozuk deploy"u taklit eden minik HTTP sunucusu: `/`
     dışındaki HER yolu `/`'e 302 ile yönlendirir; `/` 200 + `HTML_MARKER`
@@ -414,6 +445,122 @@ def test_http_fetch_allow_redirects_gercek_urllib():
         server.shutdown()
         server.server_close()
         thread.join(timeout=2.0)
+
+
+def _make_cors_health_handler(allowed_origin: str) -> type:
+    """`/health`'e GET+OPTIONS'ta sağlıklı + CORS-uyumlu (ACAO tam eşleşir)
+    cevap veren gerçek bir handler sınıfı üretir — ISTENEN 1 uçtan-uca
+    testlerinde "backend" rolünü oynar."""
+
+    class _Handler(http.server.BaseHTTPRequestHandler):
+        def do_GET(self) -> None:
+            if self.path == "/health":
+                body = json.dumps(GOOD_HEALTH).encode("utf-8")
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.send_header("Access-Control-Allow-Origin", allowed_origin)
+                self.end_headers()
+                self.wfile.write(body)
+            else:
+                self.send_response(404)
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+
+        def do_OPTIONS(self) -> None:
+            self.send_response(200)
+            self.send_header("Access-Control-Allow-Origin", allowed_origin)
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+
+        def log_message(self, format: str, *args: object) -> None:  # pragma: no cover
+            pass  # test çıktısını http.server access-log'uyla kirletme
+
+    return _Handler
+
+
+class _AlwaysOkSpaHandler(http.server.BaseHTTPRequestHandler):
+    """Sağlıklı deploy taklidi: HER GET yoluna (deep-link + refresh dahil)
+    doğrudan 200 + `HTML_MARKER` döner — rewrite kuralı doğru kurulmuş
+    senaryosu (ISTENEN 1 (b))."""
+
+    def do_GET(self) -> None:
+        body = f'<html><body><div {HTML_MARKER}></div></body></html>'.encode("utf-8")
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def log_message(self, format: str, *args: object) -> None:  # pragma: no cover
+        pass  # test çıktısını http.server access-log'uyla kirletme
+
+
+def _start_server(handler_class: type) -> tuple[http.server.HTTPServer, threading.Thread]:
+    server = http.server.HTTPServer(("127.0.0.1", 0), handler_class)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    return server, thread
+
+
+def _stop_server(server: http.server.HTTPServer, thread: threading.Thread) -> None:
+    server.shutdown()
+    server.server_close()
+    thread.join(timeout=2.0)
+
+
+def test_e2e_bozuk_deploy_main_gercek_soketle_kirmizi():
+    """ISTENEN 1(a) — UÇTAN UCA DİKİŞ KİLİDİ: `check_spa_routes` ile
+    `http_fetch` arasındaki `allow_redirects=False` kablosunu, `main()`'i
+    GERÇEK 127.0.0.1 URL'leriyle (SMOKE_API_URL + SMOKE_WEB_URL env) koşarak
+    kilitler — FakeTransport'un `allow_redirects`'i yok saydığı boşluğu
+    kapatır. /health + CORS sağlıklı, "/" 200+marker, DİĞER tüm route'lar
+    "/"'e 302 — issue #189 kabul kriteri: main() 1 dönmeli."""
+    web_server, web_thread = _start_server(_RedirectingSpaHandler)
+    web_url = f"http://127.0.0.1:{web_server.server_port}"
+
+    api_handler = _make_cors_health_handler(web_url)
+    api_server, api_thread = _start_server(api_handler)
+    api_url = f"http://127.0.0.1:{api_server.server_port}"
+
+    try:
+        env = {
+            "SMOKE_API_URL": api_url,
+            "SMOKE_WEB_URL": web_url,
+            "SMOKE_RETRIES": "0",
+            "SMOKE_TIMEOUT_S": "2",
+        }
+        rc = main(env=env)
+        assert rc == 1
+    finally:
+        _stop_server(web_server, web_thread)
+        _stop_server(api_server, api_thread)
+
+
+def test_e2e_saglikli_deploy_main_gercek_soketle_yesil():
+    """ISTENEN 1(b) — aynı gerçek-soket düzeneği, sağlıklı deploy: TÜM
+    deep-link'ler doğrudan 200+marker döner (redirect yok). main() 0
+    dönmeli (yanlış pozitif YOK) — (a) ile birlikte hem fail-open hem
+    fail-closed yönünü kilitler."""
+    web_server, web_thread = _start_server(_AlwaysOkSpaHandler)
+    web_url = f"http://127.0.0.1:{web_server.server_port}"
+
+    api_handler = _make_cors_health_handler(web_url)
+    api_server, api_thread = _start_server(api_handler)
+    api_url = f"http://127.0.0.1:{api_server.server_port}"
+
+    try:
+        env = {
+            "SMOKE_API_URL": api_url,
+            "SMOKE_WEB_URL": web_url,
+            "SMOKE_RETRIES": "0",
+            "SMOKE_TIMEOUT_S": "2",
+        }
+        rc = main(env=env)
+        assert rc == 0
+    finally:
+        _stop_server(web_server, web_thread)
+        _stop_server(api_server, api_thread)
 
 
 def test_routes_sabit_liste_ile_esit():

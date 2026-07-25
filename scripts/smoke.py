@@ -39,6 +39,8 @@ Env sözleşmesi:
     SMOKE_RETRIES    varsayılan 2 — yalnız İLK `/health` denemesi için (Fly
                      `auto_stop_machines="stop"` soğuk başlangıcı; CORS/SPA
                      istekleri retry'sız).
+    SPA route kontrolleri redirect İZLEMEZ (`allow_redirects=False`) — 3xx
+    doğrudan FAIL sayılır (operatör go-live'da sürprize uğramasın).
 
 Kullanım:
     make smoke SMOKE_API_URL=https://ensemble-api.fly.dev \\
@@ -340,10 +342,24 @@ def check_cors(api: str, web_origin: str, rep: Report, fetch: FetchFn, *, timeou
 def _check_spa_response(resp: Response, url: str, pass_label: str, rep: Report) -> None:
     if resp.status in _REDIRECT_STATUSES:
         location = resp.header("location") or "?"
-        rep.fail(
-            f"SPA {pass_label} GET {url} -> {resp.status} (Location: {location}); "
-            "deep-link doğrudan servis edilmiyor - SPA rewrite kuralı eksik"
-        )
+        # Location'in HOST'u istenen host'tan farklıysa (www->apex, http->https
+        # gibi kanonik alan yönlendirmesi) kök neden "SPA rewrite kuralı eksik"
+        # DEĞİL — SMOKE_WEB_URL'in kanonik olmayan bir host taşıması olabilir.
+        # Location relative ise (host yok, örn. "/") ya da host AYNI ise mevcut
+        # rewrite-eksik teşhisi geçerliliğini korur.
+        req_host = urlsplit(url).hostname
+        loc_host = urlsplit(location).hostname
+        if loc_host and loc_host != req_host:
+            rep.fail(
+                f"SPA {pass_label} GET {url} -> {resp.status} (Location: {location}); "
+                f"kanonik alan yönlendirmesi - SMOKE_WEB_URL'i canonical URL'e çevir "
+                f"(istenen host '{req_host}' != Location host '{loc_host}')"
+            )
+        else:
+            rep.fail(
+                f"SPA {pass_label} GET {url} -> {resp.status} (Location: {location}); "
+                "deep-link doğrudan servis edilmiyor - SPA rewrite kuralı eksik"
+            )
         return
     if resp.status != 200:
         label = resp.status if resp.status else "bağlantı yok"
