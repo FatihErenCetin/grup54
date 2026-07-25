@@ -118,11 +118,21 @@ def _build_judge_port(settings: Settings) -> JudgePort:
         # #63: hosted public demo — Radar'ın 10 sn'lik poll'u aynı çifti
         # yeniden Gemini'ye sormasın (fatura kapağı). local/dev'de DEMO_MODE
         # kapalıyken bu sarmalayıcı hiç devreye girmez.
+        # T-63 son tur: `_build_embeddings_port` ile AYNI disiplin - tekil-uçuş
+        # bekleme süresi LLM_PROVIDER'a göre türetilir (Ollama'nın gerçek
+        # en-kötü-durumu ~122 sn iken sabit Gemini türetmesi ~46 sn'de erken
+        # zaman aşımına uğratıyordu - ayrıntı için `_ollama_single_flight_wait_s`
+        # docstring'i).
+        single_flight_wait_s = (
+            _ollama_single_flight_wait_s(settings)
+            if settings.LLM_PROVIDER == "ollama"
+            else _gemini_single_flight_wait_s(settings)
+        )
         judge = CachedConflictJudge(
             judge,
             ttl_s=settings.DEMO_CACHE_TTL_S,
             max_entries=settings.DEMO_CACHE_MAX_ENTRIES,
-            single_flight_wait_s=_gemini_single_flight_wait_s(settings),
+            single_flight_wait_s=single_flight_wait_s,
         )
     return judge
 

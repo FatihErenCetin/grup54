@@ -308,6 +308,37 @@ def test_embeddings_ollama_dalinda_kendi_single_flight_degerini_kullanir():
     assert service.embeddings_port.cache.single_flight_wait_s == expected_ollama
 
 
+def test_judge_ollama_dalinda_kendi_single_flight_degerini_kullanir(tmp_path):
+    """T-63 son tur (MADDE 3): `_build_judge_port` LLM_PROVIDER'dan BAGIMSIZ
+    olarak HER ZAMAN `_gemini_single_flight_wait_s` enjekte ediyordu - hemen
+    bir alttaki `_build_embeddings_port`in Ollama dali icin daha once
+    duzeltilen (`_ollama_single_flight_wait_s`) ayni hatanin duzeltilmemis
+    ikizi (DEMO_MODE=true + LLM_PROVIDER=ollama'da judge cache'i gercek
+    ~122sn yerine Gemini'nin ~46sn'sini bekliyordu). Ayarlar varsayilan
+    kalir ki iki formul (46.0 vs 122.0) dogal olarak FARKLI olsun."""
+    db_path = tmp_path / "demo-wiring-judge-ollama.db"
+    settings = _settings(
+        LLM_PROVIDER="ollama",
+        DEMO_MODE=True,
+        GEMINI_API_KEY="bulunsa-bile-kullanma",
+        GITHUB_REPO_OWNER="FatihErenCetin",
+        GITHUB_REPO_NAME="grup54",
+        DEMO_CACHE_MAX_ENTRIES=42,
+        DATABASE_URL=f"sqlite:///{db_path}",
+    )
+    expected_ollama = _ollama_single_flight_wait_s(settings)
+    expected_gemini = _gemini_single_flight_wait_s(settings)
+    assert expected_ollama != expected_gemini  # iki formul birbirinden BAGIMSIZ
+
+    app = create_app(settings)
+
+    with TestClient(app):
+        radar_judge = app.state.radar_service.judge_port
+        assert isinstance(radar_judge, CachedConflictJudge)
+        assert isinstance(radar_judge.inner, OllamaAdapter)
+        assert radar_judge.cache.single_flight_wait_s == expected_ollama
+
+
 def test_demo_acikken_judge_kilit_bekleme_suresi_gemini_ayarlarindan_turer(tmp_path):
     """Sabit 30sn DEGIL - gercek wiring'de (app.py lifespan) judge/embeddings
     sarmalayicilarinin ALTINDAKI TtlLruCache, GEMINI_TIMEOUT_S/MAX_RETRIES'ten
