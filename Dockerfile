@@ -1,6 +1,7 @@
 # syntax=docker/dockerfile:1
 #
-# Ensemble backend — çok-aşamalı imaj (Fly.io hedefi, #61).
+# Ensemble backend — çok-aşamalı imaj (#61). Hedef: self-host VDS + Docker
+# Compose (#246, D-46 — Fly.io yerine "yan yana yaşama"; fly.toml kaldırıldı).
 #
 # Aşamalar:
 #   1) builder — uv ile bağımlılıkları + workspace paketlerini senkronla (cache-dostu layer sırası)
@@ -72,9 +73,11 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
     CMD python -c "import urllib.request,os; urllib.request.urlopen(f'http://127.0.0.1:{os.environ.get(\"PORT\",\"8000\")}/health', timeout=2)" || exit 1
 
-# Prod CMD — reload YOK, host 0.0.0.0, port $PORT (Fly.io PORT enjekte eder,
-# yoksa 8000'e düşer). exec-form + `exec`: sh kendini uvicorn ile değiştirir →
-# PID 1 uvicorn olur, Fly'ın gönderdiği SIGTERM doğrudan ona ulaşır (graceful
-# shutdown; sh'a takılıp grace-period sonunda sert kill riski yok). ${PORT:-8000}
-# genişletmesi korunur, Docker'ın JSONArgsRecommended uyarısı da kalkar.
+# Prod CMD — reload YOK, host 0.0.0.0, port $PORT (deploy/docker-compose.prod.yml
+# `environment: PORT: "8000"` enjekte eder, yoksa 8000'e düşer). exec-form +
+# `exec`: sh kendini uvicorn ile değiştirir → PID 1 uvicorn olur, Docker'ın
+# (`docker compose stop`/restart sırasında) gönderdiği SIGTERM doğrudan ona
+# ulaşır (graceful shutdown; sh'a takılıp grace-period sonunda sert kill riski
+# yok). ${PORT:-8000} genişletmesi korunur, Docker'ın JSONArgsRecommended
+# uyarısı da kalkar.
 CMD ["sh", "-c", "exec uvicorn ensemble.app:create_app --factory --host 0.0.0.0 --port ${PORT:-8000}"]

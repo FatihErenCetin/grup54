@@ -2,6 +2,9 @@
 .env
 .env.local
 .env.*.local
+# deploy/.env.production.example (sablon) HARIC — gercek deger tasiyan
+# deploy/.env.production yukaridaki `.env.*.local` desenine UYMAZ (#246):
+deploy/.env.production
 *.pem
 *.key
 

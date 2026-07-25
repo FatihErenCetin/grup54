@@ -1,0 +1,306 @@
+# deploy/docker-compose.prod.yml — Ensemble uretim yigini (D-46 "yan yana yasama")
+#
+# ============================================================================
+# NEREDE KOSAR
+# ============================================================================
+# BogaHost VDS · Ubuntu 22.04.5 LTS (kernel 5.15, x86_64) · 4 cekirdek ·
+# 7.8 GiB RAM · 58G disk (45G bos) · Docker 29.5.2 + Compose v5.1.4 ·
+# kullanici `fatih` (docker grubunda -> sudo'suz `docker` calisir).
+#
+# Komut HER ZAMAN bu dosyanin dizininden (repo/deploy/) kosulur:
+#
+#   docker compose -f docker-compose.prod.yml --env-file .env.production up -d --build
+#
+# `--env-file` ZORUNLU (yalnizca `env_file:` yetmez): asagida `environment:`
+# icinde `${POSTGRES_PASSWORD:?...}` gibi interpolasyonlar var; Compose bunlari
+# servis-ici `env_file:`den DEGIL, kendi env dosyasindan cozer. Ikisi ayri
+# mekanizma — `env_file:` konteynerin icine degisken enjekte eder, `--env-file`
+# bu YAML metninin kendisini doldurur.
+#
+# ============================================================================
+# SELinux YOK -> mount'larda `,z`/`,Z` etiketi GEREKMEZ (Ubuntu, AppArmor).
+# ============================================================================
+#
+# ============================================================================
+# NEDEN BU DOSYADA CADDY SERVISI YOK
+# ============================================================================
+# 80 ve 443'u sunucuda HOST uzerindeki systemd caddy servisi tutuyor
+# (/lib/systemd/system/caddy.service · /etc/caddy/Caddyfile · 1 ay 25 gundur
+# ayakta). Konteynerde ikinci bir Caddy acmak bu portlari ondan calmak demek ->
+# calisan `api.ikarus.mcvconsultancy.com` (tesvik-api) sitesi duser. Bunun
+# yerine host caddy'ye BIZIM site blogumuz eklenir:
+#     deploy/caddy/ensemble.caddy  ->  /etc/caddy/conf.d/ensemble.caddy
+# (kurulum + `import` satiri o dosyanin basliginda).
+#
+# ============================================================================
+# NEDEN 8001
+# ============================================================================
+# 8000 DOLU — tesvik-api zaten 127.0.0.1:8000'de dinliyor. Bizim api 8001'e
+# yayinlanir ve YALNIZ loopback'e baglanir ("127.0.0.1:8001:8000"): 0.0.0.0'a
+# yayinlansaydi Docker'in DNAT kurallari ufw/iptables filtresini atlar ve API
+# dogrudan public IP'den (2.59.181.226:8001) TLS'siz erisilebilir olurdu.
+# Disariya tek kapi Caddy'dir.
+#
+# ============================================================================
+# NEDEN `name: ensemble`
+# ============================================================================
+# Compose proje adi konteyner adlarinin ve named volume'lerin ON EKIDIR.
+# Sabitlemezsek dizin adindan turer (repo klonunun adi degisirse yeni bir
+# volume dogar -> "veriler kayboldu" surprizi) ve calisan tesvik-* yigininin
+# ad alaniyla karisma riski dogar. Sabit: konteynerler `ensemble-*`, volume
+# `ensemble_ensemble-pg-data`. tesvik-postgres/-qdrant/-redis/-api/-worker'a
+# HICBIR sekilde dokunulmaz.
+
+name: ensemble
+
+# --- Ortak parcalar (tekrar = drift) -------------------------------------
+x-logging: &varsayilan-log
+  # json-file surucusu VARSAYILAN olarak SINIRSIZ buyur — 45G bos diski bir
+  # log dosyasinin doldurmasi bu makinede tesvik yigininin da olmesi demek.
+  # 10m x 5 = konteyner basina en fazla 50 MB.
+  driver: "json-file"
+  options:
+    max-size: "10m"
+    max-file: "5"
+
+x-api-imaj: &api-imaj
+  # Build context repo KOKU (bu dosya deploy/ altinda) — kokteki .dockerignore
+  # gecerli olsun diye. Ayni `image:` etiketini hem api hem migrate tasir:
+  # migrate'e `build:` vermeseydik Compose imaji yerelde bulamayip REGISTRY'den
+  # cekmeye kalkabilirdi (boyle bir registry yok). Ikinci build tam cache
+  # isabetidir, maliyeti yok.
+  build:
+    context: ..
+    dockerfile: Dockerfile
+  image: ensemble-api:prod
+
+services:
+  # =========================================================================
+  # db — pgvector'lu Postgres. Host portu YOK.
+  # =========================================================================
+  db:
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    # ports: YOK ve OLMAYACAK. Yalniz `ensemble-net` uzerinden `db:5432`.
+    # (tesvik-postgres zaten ayri bir konteyner; ad cakismasi proje on eki
+    # sayesinde imkansiz.)
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?deploy/.env.production icinde POSTGRES_USER tanimli olmali}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?deploy/.env.production icinde POSTGRES_PASSWORD tanimli olmali}
+      POSTGRES_DB: ${POSTGRES_DB:?deploy/.env.production icinde POSTGRES_DB tanimli olmali}
+      # PGDATA BILEREK SET EDILMIYOR. Fly manifestinde (deploy/fly.db.toml)
+      # PGDATA=/var/lib/postgresql/data/pgdata ZORUNLUDUR cunku Fly volume'u
+      # taze ext4 olarak gelir ve icinde `lost+found` bulunur; initdb bos
+      # olmayan dizini reddeder. Docker NAMED VOLUME'u ise gercekten bostur ->
+      # burada alt dizin gerekmez. (Bu fark yalnizca burada aciklaniyor ki
+      # "Fly'da var, burada neden yok" sorusu bir daha sorulmasin.)
+    volumes:
+      - ensemble-pg-data:/var/lib/postgresql/data
+    # Postgres'in varsayilan 64 MB /dev/shm'i paralel sorgu + buyuk sort'ta
+    # "could not resize shared memory segment" ile patlar; pgvector index
+    # kurulumu tam da boyle bir is.
+    shm_size: 256mb
+    healthcheck:
+      # $$ -> Compose interpolasyonundan KACIS: degiskeni konteynerin KENDI
+      # ortamindan okur, bu YAML'dan degil. Operator --env-file'i unutsa bile
+      # healthcheck anlamsiz bos degerle kosmaz.
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 20s
+    logging: *varsayilan-log
+    deploy:
+      resources:
+        limits:
+          # GEREKCE (olculmus): host 7.8 GiB, tesvik yigini ~1.5 GiB -> ~6 GiB
+          # bize kaliyor. db'ye 1.5 GiB: shared_buffers varsayilani 128 MB,
+          # asil tepe noktasi pgvector index kurulumu + maintenance_work_mem.
+          # 4 cekirdegin 1.5'u: tesvik-worker (arq) ile ayni CPU'yu paylasiyoruz,
+          # bir vacuum/index isi makineyi kilitlemesin.
+          cpus: "1.5"
+          memory: 1536M
+        # `reservations` BILEREK YOK: swarm disinda (duz `docker compose up`)
+        # yumusak bir ipucundan ibaret; yanlis bir garanti hissi verir.
+    networks: [ensemble-net]
+
+  # =========================================================================
+  # migrate — TEK ATIMLIK. Fly'daki `release_command`in ELLE KARSILIGI (#187).
+  # =========================================================================
+  #
+  # #187 kriteri: fly.toml'a `release_command = "alembic upgrade head"`
+  # eklendiginde Fly bunu gecici bir makinede, TRAFIK ACILMADAN ONCE kosar ve
+  # migration patlarsa deploy'u FAIL-CLOSED iptal eder. Burada platform bunu
+  # bizim yerimize yapmiyor; ayni garantiyi iki parca uretiyor:
+  #   1) bu servis `restart: "no"` ile bir kez kosar,
+  #   2) api'nin `depends_on.migrate.condition: service_completed_successfully`i
+  #      (asagida) migrate 0 ile bitmeden api'yi BASLATMAZ.
+  # Yani `alembic upgrade head` patlarsa api hic ayaga kalkmaz — Fly'in
+  # release_command'i ile ayni fail-closed sonuc.
+  #
+  # KURDUGU SEY: `CREATE EXTENSION IF NOT EXISTS vector` (migration
+  # bfde4c8f644f, postgresql-dialect guard'li) + `vector_index` tablosu
+  # (c4f1d6a2b8e9) + ilk tablolar (b636480eb1c7).
+  # NOT: CREATE EXTENSION superuser ister; resmi imajda POSTGRES_USER initdb
+  # superuser'idir -> calisir. Ileride DSN'i kisitli bir role cevirirsen bu
+  # migration ilk adimda patlar (ve yukaridaki fail-closed zinciri sayesinde
+  # api hic acilmaz — sessiz gecmez).
+  migrate:
+    <<: *api-imaj
+    restart: "no"
+    # alembic.ini src/backend kokunde; script_location = ensemble/store/migrations.
+    # env.py DATABASE_URL'i alembic.ini'deki sqlite varsayilanindan DEGIL,
+    # get_settings()'ten alir -> asagidaki environment gecerli.
+    working_dir: /app/src/backend
+    command: ["alembic", "upgrade", "head"]
+    env_file:
+      - .env.production
+    environment:
+      ENSEMBLE_MODE: hosted
+      # DATABASE_URL'i BURADA turetiyoruz (env dosyasinda degil): host adi
+      # konteyner agina ait (`db`), sifre POSTGRES_PASSWORD ile TEK KAYNAKTAN
+      # gelir -> ikisi ayri yerde yazilip birbirinden kaymaz.
+      # `+psycopg` son eki KANONIK (kontrat Ek A/C3): son ek olmadan SQLAlchemy
+      # psycopg2'yi dener -> ModuleNotFoundError.
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+    depends_on:
+      db:
+        condition: service_healthy
+    logging: *varsayilan-log
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+    networks: [ensemble-net]
+
+  # =========================================================================
+  # api — FastAPI/uvicorn. YALNIZ loopback'e yayinlanir.
+  # =========================================================================
+  api:
+    <<: *api-imaj
+    restart: unless-stopped
+    env_file:
+      - .env.production
+    environment:
+      ENSEMBLE_MODE: hosted
+      PORT: "8000"
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+    ports:
+      # SOL taraf host, SAG taraf konteyner. "127.0.0.1:" on eki KRITIK —
+      # silinirse Docker portu 0.0.0.0'a acar ve ufw'yi ATLAR.
+      - "127.0.0.1:8001:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        # FAIL-CLOSED: migrate 0 disinda bir kodla biterse api HIC baslamaz.
+        # Bu satir #187'nin (release_command) elle karsiligidir — silme.
+        condition: service_completed_successfully
+    volumes:
+      # ---------------------------------------------------------------------
+      # .harness/ — ORTAK BAGLAM. BURAYI OKUMADAN DEPLOY ETME.
+      # ---------------------------------------------------------------------
+      # OLCULEN GERCEK (varsayim degil): `.harness/` dizini bu repoda HIC YOK.
+      #   * `git ls-files | grep -c '^\.harness'` -> 0 (main)
+      #   * tum origin/* dallari tarandi -> hicbirinde 0'dan fazla dosya yok
+      #   * diskte de yok
+      #   * .gitignore'da da YOK (yani "bilerek ignore edilmis" degil, hic
+      #     olusturulmamis). Uretecek olan sey: `make harness-init`
+      #     (ensemble.onboarding.wizard).
+      #
+      # DIZIN YOKSA NE OLUR (kod okundu, tahmin degil):
+      #   * FileHarnessPort() root="." ile kurulur; konteynerde WORKDIR /app
+      #     oldugu icin hedef tam olarak /app/.harness.
+      #   * read_tasks() / read_active() -> `_read_many` dizin yoksa []  DONER.
+      #     Yani hata yok, SESSIZ BOS: /board bos, /activity bos, /graph bos.
+      #   * read_scope() -> HarnessError -> ScopeService ScopeUnavailableError'a
+      #     cevirir -> api/errors.py bunu HTTP 503 "scope_unavailable" yapar.
+      #     ScopeService varsayilan sprint'i "3" (DEFAULT_SCOPE_SPRINT), yani
+      #     aranan dosya `.harness/scope/sprint-3.md`.
+      #   Sonuc: demo "yariya kadar calisir" — board sessizce bos, /scope 503.
+      #
+      # `create_host_path: false` BILEREK: kisa sozdizimi ("../.harness:...")
+      # kullanilsaydi Docker eksik host dizinini root'a ait BOS bir dizin olarak
+      # KENDISI YARATIR ve yigin sorunsuz ayaga kalkardi -> tam da yukaridaki
+      # sessiz bos-board surprizi. Bu haliyle dizin yoksa `docker compose up`
+      # "bind source path does not exist" ile PATLAR (fail-loud).
+      #
+      # URETIMDE NEREDEN GELECEK: bkz. harness_notu — ozeti: `.harness/`
+      # git'e commit'lenmeli (AGENTS.md'ye gore zaten kanonik, git-senkron
+      # ortak baglam); o zaman sunucudaki `git pull` bu mount'u kendiliginden
+      # tazeler.
+      #
+      # `:ro` guvenli: API katmaninda write_active/write_task/write_scope
+      # cagiran HICBIR yol yok (grep edildi) — yazan yalnizca MCP `declare_work`
+      # ve onboarding wizard'i, ikisi de bu yiginda kosmuyor.
+      #
+      # Sahiplik: konteyner `ensemble` (uid 1000) kullanicisi olarak kosar;
+      # sunucudaki `fatih` de uid 1000 ise okuma sorunsuz. Degilse dizine
+      # `chmod -R a+rX .harness` yeter (yazma gerekmiyor).
+      - type: bind
+        source: ../.harness
+        target: /app/.harness
+        read_only: true
+        bind:
+          create_host_path: false
+    # healthcheck: Dockerfile'daki HEALTHCHECK devralinir (/health'e loopback
+    # istegi; local modda bile harici bagimlilik istemez). Burada tekrar
+    # tanimlamiyoruz ki iki yerde birbirinden kayan iki tanim olmasin.
+    security_opt:
+      - no-new-privileges:true
+    logging: *varsayilan-log
+    deploy:
+      resources:
+        limits:
+          # GEREKCE: Python + FastAPI tabani ~150-250 MB; ustune DEMO_MODE
+          # embedding/judge cache'i (DEMO_CACHE_MAX_ENTRIES=1024 x 768-dim
+          # vektor ~= 25 MB, #63'te olculmus) + SQLAlchemy havuzlari. 1 GiB
+          # rahat pay birakir. db(1.5) + api(1.0) + migrate(0.5, gecici) =
+          # en fazla ~2.5-3 GiB; tesvik ~1.5 GiB ile birlikte 7.8 GiB'in
+          # yarisindan azi -> OOM-killer'in tesvik konteynerlerini secmesi
+          # riski yok.
+          cpus: "2.0"
+          memory: 1024M
+    networks: [ensemble-net]
+
+networks:
+  ensemble-net:
+    # Kendi bridge agimiz (ensemble_ensemble-net). tesvik yigininin agina
+    # BAGLANMAZ; iki yigin birbirinin servis adlarini goremez.
+    driver: bridge
+
+volumes:
+  ensemble-pg-data:
+    # DB kanonik DEGIL, projeksiyondur (D-39): `.harness/` + GitHub kanonik.
+    # Bozulursa yedekten donmek yerine yeniden kurulur.
+
+# ============================================================================
+# ISLETME NOTLARI
+# ============================================================================
+#
+# 1) YENI KOD YAYINLARKEN `docker compose restart api` KULLANMA.
+#    `restart` migrate'i yeniden kosturmaz -> yeni migration'lar uygulanmadan
+#    yeni imaj trafige cikar. Dogru komut her zaman:
+#        docker compose -f docker-compose.prod.yml --env-file .env.production up -d --build
+#    (Ayni sebeple sunucu reboot'unda db+api `unless-stopped` ile kendiliginden
+#    doner ama migrate KOSMAZ — bu dogrudur: sema zaten guncel.)
+#
+# 2) DB projeksiyonunu yeniden kurmak (`make rebuild` esdegeri):
+#    Makefile IMAJDA YOK (Dockerfile yalnizca pyproject/uv.lock/src'i COPY
+#    ediyor), bu yuzden hedef adiyla cagrilamaz. Konteyner ici karsiligi:
+#        docker compose -f docker-compose.prod.yml exec api python -c "\
+#    from ensemble.config import get_settings; \
+#    from ensemble.store.engine import get_engine, get_session_factory; \
+#    from ensemble.store.rebuild import rebuild_projection; \
+#    from ensemble_shared.harness import FileHarnessPort; \
+#    s=get_settings(); print(rebuild_projection(get_session_factory(get_engine(s))(), FileHarnessPort()))"
+#    (cwd /app oldugu icin FileHarnessPort() dogru mount'u okur.)
+#
+# 3) Konfigurasyon hatalari MIGRATE adiminda patlar, api'de degil: alembic
+#    env.py da get_settings() cagirir. Ornegin DEMO_MODE=true iken
+#    GITHUB_REPO_OWNER/NAME bos ise (#63 fail-closed acilis) migrate 1 ile
+#    biter ve api hic baslamaz. Bu ISTENEN davranistir.
+#
+# 4) Log takibi:  docker compose -f docker-compose.prod.yml logs -f api
+#    Migrate ciktisi:  docker compose -f docker-compose.prod.yml logs migrate
