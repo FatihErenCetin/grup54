@@ -60,6 +60,7 @@ Bu doküman `T-190-deploy-runbook` dalının kendisi — bu dal, altındaki bağ
 - **CD (GitHub Actions → `deploy.yml`, #192):** yalnız `main`'e **push** + CI workflow'unun (`ci.yml`, `name: CI`) **TAMAMI** yeşil olunca `flyctl deploy` koşar — `workflow_run`'ın `conclusion == 'success'`ü tek bir job'a değil, CI'in **üçünün de** (`lint-test` + `gitleaks` + `frontend`) yeşil olduğu anlamına gelir (`eval-gate` ayrı bir job değil, `lint-test`'in içinde bir adım). ⚠️ Bu, main'in required-check listesiyle (`lint-test` + `check-single-issue` + `frontend`) **"aynı kural" DEĞİL** — iki katman **örtüşüyor ama özdeş değil**, kümeler farklı ve biri diğerinin yerine geçmez:
   - **deploy kapısı** (bu satır, `workflow_run`): `lint-test` + `gitleaks` + `frontend`. **`check-single-issue` bu kümede YOK** — deploy, PR'ın tek-issue kuralına hiç bakmaz.
   - **PR/main required-check listesi**: `lint-test` + `check-single-issue` + `frontend`. **`gitleaks` bu kümede YOK** — gitleaks her PR'da çalışır ama branch protection'ın zorunlu listesine hiç eklenmemiş (bkz. `docs/kontrat-drift-guardrail.md` §7).
+
   Kesişim yalnız `lint-test` + `frontend`; her katmanın diğerinde olmayan kendine özgü bir kontrolü var (deploy kapısında `gitleaks`, PR kapısında `check-single-issue`) — biri yeşil diye diğeri de yeşildir **varsayılmaz**. PR/fork çalıştırmaz (fail-safe token kapısı, §3 adım 10).
 
 ---

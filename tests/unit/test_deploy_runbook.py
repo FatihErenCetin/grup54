@@ -24,9 +24,12 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+import yaml
+
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _ENV_EXAMPLE = _REPO_ROOT / ".env.example"
 _RUNBOOK = _REPO_ROOT / "docs" / "deploy-runbook.md"
+_CI_YML = _REPO_ROOT / ".github" / "workflows" / "ci.yml"
 
 # .env.example'daki duz "ANAHTAR=" satirlarini yakalar (yorum satirlari HARIC —
 # CORS_ORIGINS bilerek bu regex'in disinda kaliyor, bkz. asagidaki ayri test).
@@ -50,9 +53,93 @@ def _bolum_1_topoloji() -> str:
     """'## 1. Topoloji' basligindan '## 2. Env' basligina kadarki metin —
     CD/deploy kapisi + PR/main required-check aciklamasi burada yasiyor."""
     runbook = _runbook_text()
-    baslangic = runbook.index("## 1. Topoloji")
-    bitis = runbook.index("## 2. Env")
+    baslangic_baslik = "## 1. Topoloji"
+    bitis_baslik = "## 2. Env"
+    # runbook.index(...) ValueError firlatir ve bakimciya NE ARANDIGINI
+    # soylemez ("substring not found") — baslik degisince (orn. numaralandirma
+    # kayarsa) bakimci hangi basligin arandigini bulmak icin bu fonksiyona
+    # bakmak zorunda kalir. Onceden acik assert mesajiyla ayni bilgiyi verir.
+    assert baslangic_baslik in runbook, (
+        f"docs/deploy-runbook.md'de {baslangic_baslik!r} basligi bulunamadi — "
+        "baslik yeniden adlandirilmis/numaralandirilmis olabilir; "
+        "_bolum_1_topoloji()'yi guncelle"
+    )
+    assert bitis_baslik in runbook, (
+        f"docs/deploy-runbook.md'de {bitis_baslik!r} basligi bulunamadi — "
+        "baslik yeniden adlandirilmis/numaralandirilmis olabilir; "
+        "_bolum_1_topoloji()'yi guncelle"
+    )
+    baslangic = runbook.index(baslangic_baslik)
+    bitis = runbook.index(bitis_baslik)
     return runbook[baslangic:bitis]
+
+
+def _baglam_satiri(bolum: str, baglam_etiketi: str) -> str:
+    """'- **<baglam_etiketi>**' ile BASLAYAN madde-satirini bulur (bu baglamin
+    KUME-TANIMI ciddi anlamda yasadigi tek satir).
+
+    Salt substring eslemesi ("baglam_etiketi in satir") YETERSIZ: ayni ifade
+    runbook'ta ozet/capraz-referans cumlelerinde de geciyor — orn.
+    "deploy kapısı" hem kume-tanimi satirinda ("- **deploy kapısı** (bu
+    satır, ...): ...") HEM DE "Kesişim yalnız ..." ozet cumlesinde ("...deploy
+    kapısında `gitleaks`, PR kapısında..."). Substring'e guvenen bir test bu
+    ikinci baglamdan yanlislikla kume uyesi cikarabilir. Bu yuzden yalniz
+    madde-basi bullet bicimiyle ("- **<etiket>**") baslayan satir aranir.
+    """
+    for satir in bolum.splitlines():
+        if satir.strip().startswith(f"- **{baglam_etiketi}**"):
+            return satir
+    raise AssertionError(
+        f"'- **{baglam_etiketi}**' ile baslayan bir madde-satiri bulunamadi — "
+        "kume tanimi baska bir bicimde yazilmis olabilir, bu test yardimcisini "
+        "guncelle"
+    )
+
+
+_KUME_UYE_RE = re.compile(r"`([a-zA-Z][a-zA-Z0-9_-]*)`")
+_YOK_UYE_RE = re.compile(r"`([a-zA-Z][a-zA-Z0-9_-]*)`\s*bu kümede YOK")
+
+
+def _kume_ve_yok_cumlesi(satir: str) -> tuple[str, str]:
+    """Bir baglam satirini KUME-TANIMI cumlesinden YOK-IDDIASI cumlesine
+    ayirir. Ayrim ilk '. ' (nokta+bosluk) sinirindan yapilir: ilk cumle uye
+    listesini (': `a` + `b` + `c`.') tasir, ikinci cumle 'bu kümede YOK'
+    iddiasini tasir.
+
+    Bu ayrim ZORUNLU: aksi halde iki cumle tek bir 'satir' string'inde
+    karisir ve "kumede X gecer mi" testi YOK-cumlesindeki bir ismi de kume
+    uyesi sanabilir (#190 turunun asil kok nedeni — assert'ler kumenin UYESI
+    olarak mi yoksa "bu kumede YOK" cumlesinde mi gectigini ayirt etmiyordu).
+    """
+    parcalar = satir.split(". ", 1)
+    assert len(parcalar) == 2, (
+        "baglam satirinda kume-cumlesi/YOK-cumlesi ayrimi (ilk '. ' siniri) "
+        f"bulunamadi: {satir!r}"
+    )
+    return parcalar[0], parcalar[1]
+
+
+def _kume_uyeleri(kume_cumlesi: str) -> set[str]:
+    """Kume-tanimi cumlesinin ':' SONRASINDAKI kisminda gecen backtick'li
+    isimleri doner. ':' oncesi (etiket + parantez aciklamasi, orn.
+    "(bu satır, `workflow_run`)") KASTEN disarida birakilir — orada gecen
+    backtick'li isimler (orn. `workflow_run`) kumenin UYESI degil."""
+    assert ":" in kume_cumlesi, (
+        f"kume cumlesinde ':' (uye listesi ayraci) bulunamadi: {kume_cumlesi!r}"
+    )
+    liste_kismi = kume_cumlesi.split(":", 1)[1]
+    uyeler = set(_KUME_UYE_RE.findall(liste_kismi))
+    assert uyeler, f"kume cumlesinin uye listesinde hic isim bulunamadi: {kume_cumlesi!r}"
+    return uyeler
+
+
+def _yok_uyesi(yok_cumlesi: str) -> str:
+    """YOK-iddiasi cumlesinden '`isim` bu kümede YOK' desenindeki ismi cikarir."""
+    eslesme = _YOK_UYE_RE.search(yok_cumlesi)
+    assert eslesme, (
+        f"YOK cumlesinde beklenen '`isim` bu kümede YOK' deseni bulunamadi: {yok_cumlesi!r}"
+    )
+    return eslesme.group(1)
 
 
 def test_env_example_anahtarlarinin_tamami_runbookta():
@@ -133,10 +220,100 @@ def test_deploy_kapisi_ve_pr_kapisi_kume_farki_isimle_belirtilir():
     # Ana bulgu (#190): iki kapinin AYNI kural oldugu POZITIF iddia
     # edilmemeli. ("aynı kural" DEGIL negasyonu serbest — bilerek kullaniliyor;
     # yasakli olan pozitif "...kuralını uygular" ifadesi, orijinal bulgu buydu.)
-    assert "kuralını uygular" not in bolum, (
-        "runbook, deploy kapisi ile PR/main required-check listesinin ayni "
-        "kurali uyguladigini iddia ediyor gibi gorunuyor (#190 bulgusu geri "
-        "donmus olabilir) — iki kume ortusen ama ozdes DEGIL"
+    #
+    # NOT: eskiden burada `"kuralını uygular" not in bolum` seklinde §1'in
+    # TAMAMI uzerinde genis bir substring yasagi vardi. Bu, tamamen mesru bir
+    # GELECEK cumleyi de kirar (orn. "check-single-issue tek-issue kuralını
+    # uygular") — o cumle "aynı kural" iddiasiyla ilgisiz ama yine de
+    # yasakli deseni iceriyor. Bunun yerine yalniz "aynı" ile "kuralını
+    # uygular" AYNI CUMLEDE (nokta siniri icinde) birlikte gectigi durumu
+    # yasakla — orijinal bulgunun tam sekli buydu ("...aynı ... kuralını
+    # uygular").
+    cumleler = re.split(r"(?<=[.!?])\s+", bolum)
+    ihlal_eden_cumleler = [c for c in cumleler if "aynı" in c and "kuralını uygular" in c]
+    assert not ihlal_eden_cumleler, (
+        "runbook'ta 'aynı' ile 'kuralını uygular' AYNI CUMLEDE gecen ifade(ler) "
+        f"var — deploy kapisi ile PR/main required-check listesinin ayni kurali "
+        f"uyguladigini iddia ediyor gibi gorunuyor (#190 bulgusu geri donmus "
+        f"olabilir; iki kume ortusen ama ozdes DEGIL): {ihlal_eden_cumleler!r}"
+    )
+
+
+def test_deploy_kapisi_kumesi_ci_yml_ile_ozdes_pr_kapisi_farkli():
+    """Drift kilidinin GERCEK versiyonu (review turu 2 bulgusu — ACIK 1):
+    yukaridaki `test_deploy_kapisi_ve_pr_kapisi_kume_farki_isimle_belirtilir`
+    yalniz ISIM VARLIGINI olcuyor (gitleaks/check-single-issue kelimeleri
+    satirda geciyor mu) — kume icerigi TERS cevrilse bile (deploy kumesine
+    check-single-issue, PR kumesine gitleaks yazilsa) o test yesil kalmaya
+    devam ediyor (bkz. PR govdesindeki mutasyon kaniti).
+
+    Bu test GERCEK kume karsilastirmasi yapar — `test_ci_drift_guard.py`'nin
+    izledigi desenle ayni: ci.yml'i PyYAML ile parse edip `jobs` anahtarlarini
+    dogruluk kaynagi olarak kullanir.
+
+    - deploy kapisi kumesi ci.yml'in KENDI job isimlerinden turetilir
+      (`set(yaml.safe_load(...)["jobs"].keys())`) — runbook'un DEDIGI degil,
+      ci.yml'in GERCEKTEN NE OLDUGU.
+    - runbook'un deploy-kapisi cumlesinin bu gercek kumeyi TAM OLARAK
+      (fazlasiz/eksiksiz) saydigini dogrular.
+    - PR/main required-check kumesi runbook metninden cikarilir (bu kume
+      branch-protection ayari — repoda baska bir dosyada YAsamiyor) ve deploy
+      kumesiyle AYNI OLMADIGI assert edilir.
+    - Kume-cumlesi ile YOK-cumlesi AYRI parse edilir (bkz. `_kume_ve_yok_cumlesi`)
+      ve her baglamin YOK iddiasi capraz dogrulanir: bir baglamda 'YOK' denen
+      isim o baglamin KENDI kumesinde OLMAMALI, DIGER baglamin kumesinde
+      OLMALI.
+    """
+    assert _CI_YML.exists(), f"CI workflow bulunamadi: {_CI_YML}"
+    ci_dokuman = yaml.safe_load(_CI_YML.read_text(encoding="utf-8"))
+    deploy_gercek = set(ci_dokuman["jobs"].keys())
+    assert deploy_gercek, f"ci.yml'de hic job bulunamadi: {_CI_YML}"
+
+    bolum = _bolum_1_topoloji()
+    deploy_satir = _baglam_satiri(bolum, "deploy kapısı")
+    pr_satir = _baglam_satiri(bolum, "PR/main required-check listesi")
+
+    deploy_kume_cumlesi, deploy_yok_cumlesi = _kume_ve_yok_cumlesi(deploy_satir)
+    pr_kume_cumlesi, pr_yok_cumlesi = _kume_ve_yok_cumlesi(pr_satir)
+
+    deploy_runbook = _kume_uyeleri(deploy_kume_cumlesi)
+    pr_runbook = _kume_uyeleri(pr_kume_cumlesi)
+
+    assert deploy_runbook == deploy_gercek, (
+        f"runbook'un deploy-kapisi cumlesi ({sorted(deploy_runbook)}) ci.yml'in "
+        f"gercek job kumesiyle ({sorted(deploy_gercek)}) ORTUSMUYOR — runbook "
+        f"ci.yml'i yanlis tasvir ediyor olabilir: {deploy_kume_cumlesi!r}"
+    )
+
+    assert pr_runbook != deploy_gercek, (
+        "PR/main required-check listesi, ci.yml'in TAMAMIYLA (deploy kapisiyla) "
+        f"AYNI kume olarak yazilmis gorunuyor ({sorted(pr_runbook)}) — bu iki "
+        "kapi ortusen ama ozdes DEGIL olmali (kumeler ters cevrilmis olabilir): "
+        f"{pr_kume_cumlesi!r}"
+    )
+
+    deploy_yok = _yok_uyesi(deploy_yok_cumlesi)
+    pr_yok = _yok_uyesi(pr_yok_cumlesi)
+
+    assert deploy_yok not in deploy_runbook, (
+        f"deploy kapısı YOK-cumlesi '{deploy_yok}'in bu kumede olmadigini iddia "
+        f"ediyor ama '{deploy_yok}' aslinda deploy kumesinde ({sorted(deploy_runbook)}) "
+        "bulunuyor — YOK iddiasi yanlis (kumeler karismis olabilir)"
+    )
+    assert deploy_yok in pr_runbook, (
+        f"deploy kapısı YOK-cumlesindeki '{deploy_yok}' PR/main kumesinde de "
+        f"({sorted(pr_runbook)}) bulunmuyor — YOK iddiasi anlamsiz, bu isim ait "
+        "oldugu 'diger' kumede gorunmeli"
+    )
+
+    assert pr_yok not in pr_runbook, (
+        f"PR/main required-check YOK-cumlesi '{pr_yok}'in bu kumede olmadigini "
+        f"iddia ediyor ama '{pr_yok}' aslinda PR kumesinde ({sorted(pr_runbook)}) "
+        "bulunuyor — YOK iddiasi yanlis (kumeler karismis olabilir)"
+    )
+    assert pr_yok in deploy_runbook, (
+        f"PR/main required-check YOK-cumlesindeki '{pr_yok}' deploy kumesinde de "
+        f"({sorted(deploy_runbook)}) bulunmuyor — YOK iddiasi anlamsiz"
     )
 
 
