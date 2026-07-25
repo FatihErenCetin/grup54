@@ -118,8 +118,10 @@ class Settings(BaseSettings):
     # pay) - bellek olcumu (768-dim float listesi, gercek Python nesnesi):
     # sys.getsizeof ile ~24.6 KB/vektor -> 1024 * 24.6 KB =~ 25 MB, 512 MB Fly
     # VM'in ~%5'i (F1 kontrat kaydi #63 - deger burada ve .env.example'da,
-    # docs/sprint3-kontratlar.md Ek F/F1'deki DONMUS kod bloğu 256 gosterir;
-    # o blok ayri bir kontrat-guncelleme PR'iyla senkronlanmali).
+    # docs/sprint3-kontratlar.md Ek F/F1'deki kod blogu da 1024 gosterir - AYNI
+    # commit'te senkronlandi; test_config.py::
+    # test_demo_cache_max_entries_dokuman_ile_ayni bu ikisinin bir daha
+    # kaymamasini kilitler).
     DEMO_CACHE_MAX_ENTRIES: int = 1024
 
     @model_validator(mode="after")

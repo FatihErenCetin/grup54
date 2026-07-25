@@ -19,6 +19,7 @@ from ensemble.engine.graph import GraphService
 from ensemble.engine.query import QueryService
 from ensemble.engine.radar import RadarService
 from ensemble.engine.scope import ScopeService
+from ensemble.integrations.gemini.client import RETRY_WAIT_CAP_S
 from ensemble.integrations.gemini.embeddings import GeminiEmbeddingsAdapter
 from ensemble.integrations.gemini.fake import FakeJudgeAdapter
 from ensemble.integrations.gemini.judge import GeminiJudgeAdapter
@@ -35,6 +36,33 @@ from ensemble.store.vector_store import LocalVectorIndex, build_vector_index
 from ensemble_shared.harness import FileHarnessPort
 
 logger = logging.getLogger("ensemble.wiring")
+
+
+def _gemini_single_flight_wait_s(settings: Settings) -> float:
+    """`engine/cache.py::TtlLruCache.get_or_compute` (ve `CachedEmbeddings.
+    embed`'in kendi çok-anahtarlı tekil-uçuş turu) tek bir anahtarın kilidini
+    en çok BU KADAR bekler; süre dolunca kilitsiz devam eder (bkz. o
+    modüllerin docstring'i - "zarif düşüş"). Sabit `30.0` (engine katmanının
+    modül-seviyesi VARSAYILANI) tek bir Gemini çağrısının GERÇEK en-kötü-durum
+    süresiyle uyumsuzdu (#63 takip, ISTENEN 2): Gemini yavaşladığında -
+    tam da faturanın patlayacağı an - bekleyenler süre dolunca pes edip HER
+    BİRİ kendi çağrısını tekrarlıyordu (tekil-uçuş katmanının tüm amacını
+    delen boşluk).
+
+    Türetme formülü: `ResilientGeminiClient` bir çağrıyı `GEMINI_MAX_RETRIES`
+    kez dener (`tenacity.stop_after_attempt`); her deneme kendi
+    `GEMINI_TIMEOUT_S` HTTP timeout'una kadar sürebilir. N deneme arasında
+    N-1 bekleme olur (ilk denemeden ÖNCE bekleme yok), her bekleme
+    `wait_random_exponential(..., max=RETRY_WAIT_CAP_S)` ile üstten sınırlı.
+    En kötü durum = N*timeout + (N-1)*bekleme_tavanı. Varsayılan ayarlarla
+    (10.0 x 3 + 8.0 x 2 = 46.0 sn) tek bir çağrı gerçekten bu kadar
+    sürebiliyordu - sabit 30 sn bu senaryoda HER ZAMAN erken zaman aşımına
+    uğrardı. `engine katmanı ensemble.config'e bağımlı kalmaz (katman
+    disiplini) - bu türetme yalnız BURADA, wiring noktasında yapılır.
+    """
+    attempts = settings.GEMINI_MAX_RETRIES
+    waits_between_attempts = max(attempts - 1, 0)
+    return attempts * settings.GEMINI_TIMEOUT_S + waits_between_attempts * RETRY_WAIT_CAP_S
 
 
 def _build_github_port(settings: Settings) -> GitHubPort:
@@ -77,6 +105,7 @@ def _build_judge_port(settings: Settings) -> JudgePort:
             judge,
             ttl_s=settings.DEMO_CACHE_TTL_S,
             max_entries=settings.DEMO_CACHE_MAX_ENTRIES,
+            single_flight_wait_s=_gemini_single_flight_wait_s(settings),
         )
     return judge
 
@@ -86,10 +115,23 @@ def _build_embeddings_port(settings: Settings) -> EmbeddingsPort:
     # büyümesin — 512 MB Fly VM); local/dev'de max_entries=None (mevcut sınırsız
     # davranış, sıfır regresyon).
     max_entries = settings.DEMO_CACHE_MAX_ENTRIES if settings.DEMO_MODE else None
+    # Tekil-uçuş bekleme süresi DEMO_MODE'dan bağımsız hesaplanır (Ollama/Fake
+    # provider'da hiç kullanılmaz - TtlLruCache yalnız DEMO_MODE'da anlamlı
+    # şekilde sınırlı max_entries alır - ama enjekte etmek zararsız, local/dev
+    # davranışını değiştirmez).
+    single_flight_wait_s = _gemini_single_flight_wait_s(settings)
     if settings.LLM_PROVIDER == "ollama":
-        return CachedEmbeddings(OllamaAdapter(settings), max_entries=max_entries)
+        return CachedEmbeddings(
+            OllamaAdapter(settings),
+            max_entries=max_entries,
+            single_flight_wait_s=single_flight_wait_s,
+        )
     if settings.GEMINI_API_KEY:
-        return CachedEmbeddings(GeminiEmbeddingsAdapter(settings), max_entries=max_entries)
+        return CachedEmbeddings(
+            GeminiEmbeddingsAdapter(settings),
+            max_entries=max_entries,
+            single_flight_wait_s=single_flight_wait_s,
+        )
     logger.warning("GEMINI_API_KEY tanımlı değil — HashEmbeddings kullanılıyor.")
     return HashEmbeddings()
 
@@ -135,6 +177,7 @@ def _build_query_service(
             query_judge_port,
             ttl_s=settings.DEMO_CACHE_TTL_S,
             max_entries=settings.DEMO_CACHE_MAX_ENTRIES,
+            single_flight_wait_s=_gemini_single_flight_wait_s(settings),
         )
     return QueryService(
         source_port=source,
@@ -155,6 +198,7 @@ def _build_scope_service(settings: Settings, radar_service: RadarService) -> Sco
             scope_judge_port,
             ttl_s=settings.DEMO_CACHE_TTL_S,
             max_entries=settings.DEMO_CACHE_MAX_ENTRIES,
+            single_flight_wait_s=_gemini_single_flight_wait_s(settings),
         )
     return ScopeService(
         harness_port=FileHarnessPort(),

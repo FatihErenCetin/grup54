@@ -10,10 +10,11 @@ import logging
 import pytest
 from fastapi.testclient import TestClient
 
-from ensemble.app import _build_radar_service, create_app
+from ensemble.app import _build_radar_service, _gemini_single_flight_wait_s, create_app
 from ensemble.config import Settings
 from ensemble.engine.cache import CachedConflictJudge, CachedQueryJudge, CachedScopeJudge
 from ensemble.engine.embeddings import CachedEmbeddings, HashEmbeddings
+from ensemble.integrations.gemini.client import RETRY_WAIT_CAP_S
 from ensemble.integrations.gemini.embeddings import GeminiEmbeddingsAdapter
 from ensemble.integrations.gemini.fake import FakeJudgeAdapter
 from ensemble.integrations.gemini.judge import GeminiJudgeAdapter
@@ -233,3 +234,64 @@ def test_demo_acikken_judge_ve_embeddings_sarmalanir(tmp_path):
         embeddings = app.state.radar_service.embeddings_port
         assert isinstance(embeddings, CachedEmbeddings)
         assert embeddings.max_entries == 42  # demo acikken DEMO_CACHE_MAX_ENTRIES uygulanir
+
+
+# --- Tekil-ucus bekleme suresi Gemini'nin gercek en-kotu-durumundan turetilir
+#     (#63 ISTENEN 2) ---
+
+
+def test_gemini_single_flight_wait_s_formulu():
+    """N*timeout + (N-1)*retry_bekleme_tavani. Varsayilan ayarlarla
+    (GEMINI_TIMEOUT_S=10.0, GEMINI_MAX_RETRIES=3, RETRY_WAIT_CAP_S=8.0):
+    3*10 + 2*8 = 46.0 - PR govdesindeki "~46 sn surebilir" iddiasiyla birebir
+    (sabit 30 sn'nin NEDEN erken zaman asimina ugradigini kanitlar)."""
+    settings = Settings(_env_file=None, GEMINI_TIMEOUT_S=10.0, GEMINI_MAX_RETRIES=3)
+
+    assert _gemini_single_flight_wait_s(settings) == 3 * 10.0 + 2 * RETRY_WAIT_CAP_S
+    assert _gemini_single_flight_wait_s(settings) == 46.0
+
+
+def test_gemini_single_flight_wait_s_tek_denemede_bekleme_yok():
+    # N=1 -> aralarinda bekleme olacak deneme cifti yok (N-1=0)
+    settings = Settings(_env_file=None, GEMINI_TIMEOUT_S=5.0, GEMINI_MAX_RETRIES=1)
+
+    assert _gemini_single_flight_wait_s(settings) == 5.0
+
+
+def test_demo_acikken_judge_kilit_bekleme_suresi_gemini_ayarlarindan_turer(tmp_path):
+    """Sabit 30sn DEGIL - gercek wiring'de (app.py lifespan) judge/embeddings
+    sarmalayicilarinin ALTINDAKI TtlLruCache, GEMINI_TIMEOUT_S/MAX_RETRIES'ten
+    turetilen degeri kullanmali (#63 ISTENEN 2 - ISTENEN sadece formulu degil,
+    wiring'i de kilitler)."""
+    db_path = tmp_path / "demo-wiring-single-flight.db"
+    settings = _settings(
+        GEMINI_API_KEY="fake-key",
+        DEMO_MODE=True,
+        GITHUB_REPO_OWNER="FatihErenCetin",
+        GITHUB_REPO_NAME="grup54",
+        DEMO_CACHE_MAX_ENTRIES=42,
+        DATABASE_URL=f"sqlite:///{db_path}",
+        GEMINI_TIMEOUT_S=20.0,
+        GEMINI_MAX_RETRIES=2,
+    )
+    expected = _gemini_single_flight_wait_s(settings)
+    assert expected != 30.0  # varsayilan sabitten farkli oldugunu da dogrula
+
+    app = create_app(settings)
+
+    with TestClient(app):
+        radar_judge = app.state.radar_service.judge_port
+        assert isinstance(radar_judge, CachedConflictJudge)
+        assert radar_judge.cache.single_flight_wait_s == expected
+
+        query_judge = app.state.query_service.judge_port
+        assert isinstance(query_judge, CachedQueryJudge)
+        assert query_judge.cache.single_flight_wait_s == expected
+
+        scope_judge = app.state.scope_service.judge_port
+        assert isinstance(scope_judge, CachedScopeJudge)
+        assert scope_judge.cache.single_flight_wait_s == expected
+
+        embeddings = app.state.radar_service.embeddings_port
+        assert isinstance(embeddings, CachedEmbeddings)
+        assert embeddings.cache.single_flight_wait_s == expected

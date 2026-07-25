@@ -1,7 +1,12 @@
+import re
+from pathlib import Path
+
 import pytest
 from pydantic import ValidationError
 
 from ensemble.config import Settings, get_settings
+
+_REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
 def test_default_mode_is_local(monkeypatch):
@@ -102,3 +107,32 @@ def test_demo_mode_acikken_repo_doluysa_acilir():
     )
     assert settings.DEMO_MODE is True
     assert settings.demo_repo_full_name == "acme/demo"
+
+
+# --- Dokuman <-> kod drift (#63 ISTENEN 3) ---
+#
+# docs/sprint3-kontratlar.md Ek F/F1'deki "DONMUS" kod blogu ile config.py'deki
+# gercek varsayilan bu PR'de tam da BURADA (256 vs 1024) kaymisti. Regex satir
+# numarasina degil "### F1" basligina baglanir - kirilgan olmasin diye.
+
+
+def test_demo_cache_max_entries_dokuman_ile_ayni():
+    doc_text = (_REPO_ROOT / "docs" / "sprint3-kontratlar.md").read_text(encoding="utf-8")
+
+    f1_start = doc_text.index("### F1")
+    f1_section = doc_text[f1_start:]
+    code_block_match = re.search(r"```python\n(.*?)```", f1_section, re.DOTALL)
+    assert code_block_match, "Ek F/F1 altinda ```python kod blogu bulunamadi"
+
+    value_match = re.search(
+        r"DEMO_CACHE_MAX_ENTRIES:\s*int\s*=\s*(\d+)", code_block_match.group(1)
+    )
+    assert value_match, "F1 kod blogunda DEMO_CACHE_MAX_ENTRIES tanimi bulunamadi"
+
+    doc_value = int(value_match.group(1))
+    code_value = Settings(_env_file=None).DEMO_CACHE_MAX_ENTRIES
+
+    assert doc_value == code_value, (
+        f"docs/sprint3-kontratlar.md Ek F/F1 DEMO_CACHE_MAX_ENTRIES={doc_value} "
+        f"ile config.py varsayilani={code_value} birbirinden kaymis"
+    )

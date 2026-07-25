@@ -9,6 +9,7 @@ edilir.
 
 from __future__ import annotations
 
+import sys
 import threading
 import time
 from datetime import datetime, timezone
@@ -249,6 +250,55 @@ def test_hit_miss_sayaclari():
     assert cache.hits == 2
 
 
+def test_get_or_compute_hit_miss_sayaclari_ciftlenmez():
+    """#63 ISTENEN 3: `get_or_compute` MISS yolunda `get()`'i iki kez
+    cagiriyordu (hizli yol + kilit-alti double-check) - tek bir mantiksal
+    MISS iki kez sayiliyordu. Double-check artik sayac ARTIRMAYAN `peek()`
+    kullanir - bu testte 1 mantiksal miss (ilk cagri) + 1 mantiksal hit
+    (ikinci cagri) TAM misses=1, hits=1 vermeli."""
+    cache = TtlLruCache(ttl_s=100, max_entries=10, time_fn=lambda: 0.0)
+
+    cache.get_or_compute("k", lambda: "deger")  # ilk cagri: MISS (hesaplar+yazar)
+    cache.get_or_compute("k", lambda: "deger")  # ikinci cagri: HIT (hizli yoldan doner)
+
+    assert cache.misses == 1
+    assert cache.hits == 1
+
+
+def test_get_or_compute_lock_acquire_istisnasinda_kayit_sizmiyor(monkeypatch):
+    """#63 ISTENEN 3: `lock = self._locks.acquire(key)` ile
+    `acquired = lock.acquire(timeout=...)` try BLOGUNUN DISINDAYDI - ikincisi
+    istisna firlatirsa `finally` hic calismiyor, `self._locks.release(key)`
+    cagrilmiyor, kayit defterinde KALICI sizinti oluyordu.
+
+    `threading.Lock` C-tipi bir nesne oldugu icin tek bir ORNEGIN
+    `.acquire`'ini monkeypatch'lemek mumkun degil (`attribute is read-only`) -
+    onun yerine `KeyedLockRegistry.acquire`'i, GERCEK defter kaydini (refcount)
+    aynen YAPAN ama gercek Lock yerine PATLAYAN sahte bir kilit donduren bir
+    sarmalayicıyla degistiriyoruz."""
+    cache = TtlLruCache(ttl_s=60, max_entries=10, time_fn=lambda: 0.0)
+
+    class _ExplodingLock:
+        def acquire(self, timeout=None):
+            raise RuntimeError("lock patladi")
+
+        def release(self):  # pragma: no cover - hicbir zaman cagrilmamali
+            pass
+
+    original_acquire = cache._locks.acquire
+
+    def _acquire_with_exploding_lock(key: str):
+        original_acquire(key)  # gercek refcount kaydi YINE artirilir
+        return _ExplodingLock()
+
+    monkeypatch.setattr(cache._locks, "acquire", _acquire_with_exploding_lock)
+
+    with pytest.raises(RuntimeError, match="lock patladi"):
+        cache.get_or_compute("k", lambda: "deger")
+
+    assert len(cache._locks) == 0  # istisnaya ragmen kayit sizmadi
+
+
 # --- CachedConflictJudge ---
 
 
@@ -355,6 +405,11 @@ def test_radar_ikinci_pollde_judge_cagirmaz():
 
 
 # --- CachedEmbeddings boyut siniri (demo bellek korumasi) ---
+#
+# #63 takip (ikinci tur): el yazmasi OrderedDict (`._cache`) kaldirildi, yerine
+# TtlLruCache (`.cache`) geldi - asagidaki testler `.cache` uzerinden okur
+# (`__len__` TtlLruCache'in kendi metodu). Davranis (LRU sinir + sinirsiz
+# varsayilan) AYNEN korunuyor, yalniz erisim yolu degisti.
 
 
 def test_embeddings_cache_demo_modda_sinirli():
@@ -366,14 +421,115 @@ def test_embeddings_cache_demo_modda_sinirli():
     limited.embed(["a"], "T")
     limited.embed(["bb"], "T")
     limited.embed(["ccc"], "T")
-    assert len(limited._cache) == 2
+    assert len(limited.cache) == 2
 
     # varsayilan (max_entries=None) = bugunku sinirsiz davranis, sifir regresyon
     unlimited = CachedEmbeddings(_CountingEmbeddings())
     unlimited.embed(["a"], "T")
     unlimited.embed(["bb"], "T")
     unlimited.embed(["ccc"], "T")
-    assert len(unlimited._cache) == 3
+    assert len(unlimited.cache) == 3
+
+
+def test_embeddings_cache_donen_vektor_mutasyona_kapali():
+    """Kopya disiplini (#63 ISTENEN 1): deger list[float] yani MUTABLE -
+    cagiran donen vektoru yerinde mutasyona ugratirsa cache'in kendi kopyasi
+    KIRLENMEMELI (hit yolunda AYNI referans donseydi bu test kirilirdi)."""
+
+    class _CountingEmbeddings:
+        def __init__(self):
+            self.calls = 0
+
+        def embed(self, texts, task_type):
+            self.calls += 1
+            return [[1.0, 2.0] for _ in texts]
+
+    inner = _CountingEmbeddings()
+    cached = CachedEmbeddings(inner)
+
+    first = cached.embed(["metin"], "T")[0]
+    first[0] = 999.0  # cagiranin kendi kopyasini mutasyona ugrat
+
+    second = cached.embed(["metin"], "T")[0]
+
+    assert second == [1.0, 2.0]  # cache'teki orijinal etkilenmedi
+    assert inner.calls == 1  # hala HIT (yeniden hesaplanmadi)
+
+
+def test_embeddings_cache_ayni_metin_es_zamanli_inner_bir_kez_cagrilir():
+    """Tekil-ucus (single-flight) - #63 ISTENEN 1 ZORUNLU testi: N thread AYNI
+    metni es zamanli isterse `inner.embed` TAM 1 KEZ cagrilmali. Eski
+    (kilitsiz) uygulamada hepsi miss gorup pahali cagriyi N KEZ tetiklerdi
+    (BULGU 2)."""
+    release_event = threading.Event()
+    entered_event = threading.Event()
+    call_count = [0]
+    count_lock = threading.Lock()
+
+    class _BlockingEmbeddings:
+        def embed(self, texts, task_type):
+            with count_lock:
+                call_count[0] += 1
+            entered_event.set()
+            release_event.wait(timeout=5)
+            return [[7.0] for _ in texts]
+
+    cached = CachedEmbeddings(_BlockingEmbeddings())
+    results: list[list[float]] = []
+    results_lock = threading.Lock()
+
+    def worker():
+        vector = cached.embed(["ayni metin"], "T")[0]
+        with results_lock:
+            results.append(vector)
+
+    threads = [threading.Thread(target=worker) for _ in range(6)]
+    for t in threads:
+        t.start()
+    assert entered_event.wait(timeout=5)
+    time.sleep(0.15)  # digerlerinin kilitte yigilmasi icin pay
+    release_event.set()
+    _join_all(threads)
+
+    assert call_count[0] == 1
+    assert len(results) == 6
+    assert all(r == [7.0] for r in results)
+
+
+def test_embeddings_cache_es_zamanlilikta_keyerror_vermez():
+    """BULGU 1 (#63 takip) regresyon kilidi: el yazmasi OrderedDict
+    `get()`/`move_to_end()` arasini kilitsiz birakiyordu - kucuk max_entries +
+    yuksek thread sayisi + kucultulmus switch-interval ile ayni anahtarlarin
+    surekli tahliye edilip yeniden yazilmasi zorlanir. Yeni (TtlLruCache
+    tabanli) uygulamada KeyError HICBIR ZAMAN firlamamali. Deterministik ve
+    hizli tutmak icin dar bir anahtar havuzu (yuksek carpisma/tahliye orani)
+    + makul tur sayisi kullanilir."""
+    old_interval = sys.getswitchinterval()
+    sys.setswitchinterval(1e-6)
+    try:
+        class _FastEmbeddings:
+            def embed(self, texts, task_type):
+                return [[float(len(t))] for t in texts]
+
+        cached = CachedEmbeddings(_FastEmbeddings(), max_entries=2)
+        errors: list[BaseException] = []
+        errors_lock = threading.Lock()
+
+        def worker(rounds: int) -> None:
+            try:
+                for i in range(rounds):
+                    text = f"metin-{i % 4}"
+                    cached.embed([text], "T")
+            except BaseException as exc:  # noqa: BLE001 - testte hatayi yakala
+                with errors_lock:
+                    errors.append(exc)
+
+        threads = [threading.Thread(target=worker, args=(400,)) for _ in range(12)]
+        _run_all(threads)
+
+        assert errors == [], f"es zamanlilikta istisna(lar) firladi: {errors}"
+    finally:
+        sys.setswitchinterval(old_interval)
 
 
 # --- TtlLruCache.get_or_compute (tekil-ucus / single-flight cekirdegi) ---

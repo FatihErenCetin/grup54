@@ -17,7 +17,15 @@ asıl hedefi budur.
 zamanlı N istek hepsi miss görüp pahalı çağrıyı N KEZ tetikliyordu (public
 demoda Gemini faturasının patlamasını önlemenin tüm amacını delen boşluk).
 `TtlLruCache.get_or_compute()` anahtar-başına bir kilitle bunu kapatır — bkz.
-aşağıdaki `_KeyedLockRegistry` + `get_or_compute` docstring'i.
+aşağıdaki `KeyedLockRegistry` + `get_or_compute` docstring'i.
+
+**#63 takip (ikinci tur) — `engine/embeddings.py::CachedEmbeddings` de bu
+modüle taşındı:** elde yazılmış `OrderedDict` tabanlı LRU'su `get()`/`set()`
+arasını (ve `set()` içindeki tahliye döngüsünü) kilitsiz bırakıyordu — eş
+zamanlı istekler aynı anahtarı tahliye ederken `move_to_end(key)` `KeyError`
+fırlatabiliyordu (birinci elden repro: modülün kendi testinde). `TtlLruCache`
+ve `KeyedLockRegistry` iki modül arasında PAYLAŞILIR — tek bir kilit
+disiplini, iki ayrı el-yazması yerine.
 """
 
 from __future__ import annotations
@@ -44,6 +52,17 @@ from ensemble.ports import JudgePort, QueryJudgePort, ScopeJudgePort
 # koşar. `compute()` (örn. Gemini çağrısı) asılırsa aynı anahtarı bekleyen
 # diğer istekler sonsuza dek bloklanmasın diye kilit yalnız bu kadar beklenir;
 # süre dolunca kilitsiz devam edilir (bkz. `get_or_compute` docstring'i).
+#
+# #63 takip (ISTENEN 2): bu SABİT bir yer-tutucu VARSAYILANDIR, davranışa
+# gömülü değildir — `TtlLruCache(..., single_flight_wait_s=...)` (ve ondan
+# geçen `_CachedJudgeBase`/`CachedEmbeddings` alt sınıfları) bunu ENJEKTE
+# EDİLEBİLİR bir parametre olarak sunar. Gerçek değer `app.py` wiring
+# noktasında `GEMINI_TIMEOUT_S`/`GEMINI_MAX_RETRIES`'ten TÜRETİLİR (bkz.
+# `app.py::_gemini_single_flight_wait_s`) — engine katmanı `ensemble.config`'e
+# BAĞIMLI KALMAZ (katman disiplini), yalnız bu modül-seviyesi varsayılanı
+# taşır. `None` geçilirse (parametre atlanırsa) çağrı ANINDA bu modül
+# değişkeni okunur (bkz. `TtlLruCache.__init__`) — testler bunu monkeypatch
+# ile override edebilsin diye bilerek "def-time bound default" DEĞİL.
 _SINGLE_FLIGHT_WAIT_S = 30.0
 
 
@@ -55,7 +74,7 @@ def _digest(payload: Any) -> str:
     return hashlib.sha256(blob.encode("utf-8")).hexdigest()
 
 
-class _KeyedLockRegistry:
+class KeyedLockRegistry:
     """Anahtar-başına `Lock` kayıt defteri. Sözlüğün KENDİSİ bir master `Lock`
     ile korunur; bir anahtarın gerçek (uzun sürebilecek) kilitlenmesi bu master
     kilidin DIŞINDA olur — master kilit yalnız kayıt defterini korur, pahalı
@@ -63,7 +82,11 @@ class _KeyedLockRegistry:
 
     Refcount: `acquire()` artırır, `release()` azaltır; son bekleyen çıkınca
     kayıt SİLİNİR — sözlük, geçmişte görülmüş her anahtar için sınırsız
-    büyümesin (uzun ömürlü demo süreci)."""
+    büyümesin (uzun ömürlü demo süreci).
+
+    `TtlLruCache.get_or_compute()` (tekil anahtar) VE `CachedEmbeddings.embed()`
+    (çok-anahtarlı batch, bkz. `engine/embeddings.py`) arasında PAYLAŞILIR —
+    modül-özel değil, isim baştaki alt çizgiden arındırıldı (#63 takip)."""
 
     def __init__(self) -> None:
         self._master = Lock()
@@ -104,6 +127,7 @@ class TtlLruCache:
         max_entries: int,
         *,
         time_fn: Callable[[], float] = time.monotonic,
+        single_flight_wait_s: float | None = None,
     ) -> None:
         if ttl_s <= 0:
             raise ValueError("ttl_s must be positive")
@@ -114,9 +138,22 @@ class TtlLruCache:
         self._time_fn = time_fn
         self._data: OrderedDict[str, tuple[float, Any]] = OrderedDict()
         self._lock = Lock()
-        self._locks = _KeyedLockRegistry()
+        self._locks = KeyedLockRegistry()
+        # `single_flight_wait_s=None` (varsayılan) BİLEREK burada modül
+        # sabitine (`_SINGLE_FLIGHT_WAIT_S`) değil, `get_or_compute` İÇİNDE her
+        # çağrıda TEKRAR okunan bir bare-name lookup'a bağlanır (bkz. aşağısı) -
+        # açık değer geçilmediği sürece testler modül sabitini monkeypatch'le
+        # override edebilsin diye (constructor-time'da "dondurulmuş" bir
+        # default parametre DEĞİL).
+        self._explicit_single_flight_wait_s = single_flight_wait_s
         self.hits = 0
         self.misses = 0
+
+    @property
+    def single_flight_wait_s(self) -> float:
+        if self._explicit_single_flight_wait_s is not None:
+            return self._explicit_single_flight_wait_s
+        return _SINGLE_FLIGHT_WAIT_S
 
     def get(self, key: str) -> Any | None:
         with self._lock:
@@ -131,6 +168,26 @@ class TtlLruCache:
                 return None
             self._data.move_to_end(key)
             self.hits += 1
+            return value
+
+    def peek(self, key: str) -> Any | None:
+        """`get(key)` ile AYNI okuma/expiry/move_to_end mantığı ama `hits`/
+        `misses` SAYAÇLARINI ARTIRMAZ. `get_or_compute`'un iç double-check
+        adımı (#63 ISTENEN 3) İÇİN — dış görünüme (kullanıcı taraflı gerçek
+        hit/miss oranı) karışmasın diye ayrı tutulur (aksi halde tek bir
+        mantıksal MISS, "hızlı yol + double-check" olmak üzere İKİ KEZ
+        sayılıyordu). `CachedEmbeddings._fill_misses()` de (embeddings.py)
+        AYNI nedenle kendi çok-anahtarlı double-check'i için kullanır —
+        modül-özel değil, isim baştaki alt çizgiden bilerek arındırıldı."""
+        with self._lock:
+            entry = self._data.get(key)
+            if entry is None:
+                return None
+            expires_at, value = entry
+            if expires_at <= self._time_fn():
+                del self._data[key]
+                return None
+            self._data.move_to_end(key)
             return value
 
     def set(self, key: str, value: Any) -> None:
@@ -154,26 +211,38 @@ class TtlLruCache:
         KİLİTLENME KORUMASI: pahalı `compute()` çağrısı bu kilit ALTINDA koşar.
         `compute()` asılırsa (örn. Gemini çağrısı hiç dönmezse) aynı anahtarı
         bekleyen diğer istekler sonsuza dek bloklanmasın diye kilit yalnız
-        `_SINGLE_FLIGHT_WAIT_S` saniye beklenir; süre dolarsa kilit olmadan
-        kendi hesabını yapar — bu, tekil-uçuş katmanı eklenmeden ÖNCEKİ
-        (racy get/compute/set) davranışa zarif bir düşüştür. İstek thread'ini
-        sonsuza kadar bloke etmek, mükerrer bir pahalı çağrıdan daha kötüdür.
+        `self.single_flight_wait_s` saniye beklenir (bkz. constructor —
+        `app.py`'de Gemini'nin GERÇEK en-kötü-durum süresinden türetilir);
+        süre dolarsa kilit olmadan kendi hesabını yapar — bu, tekil-uçuş
+        katmanı eklenmeden ÖNCEKİ (racy get/compute/set) davranışa zarif bir
+        düşüştür. İstek thread'ini sonsuza kadar bloke etmek, mükerrer bir
+        pahalı çağrıdan daha kötüdür.
         """
         cached = self.get(key)
         if cached is not None:
             return cached
 
         lock = self._locks.acquire(key)
-        acquired = lock.acquire(timeout=_SINGLE_FLIGHT_WAIT_S)
+        # `acquired`, `lock.acquire()` çağrısından ÖNCE (try DIŞINDA değil,
+        # try'DAN ÖNCE) False'a sabitlenir: `lock.acquire()`'in KENDİSİ
+        # istisna fırlatırsa (ör. taklit bir hata) `finally` yine de
+        # `self._locks.release(key)` çağırır - aksi halde kayıt defterinde
+        # kalıcı sızıntı olurdu (#63 ISTENEN 3, bkz.
+        # test_get_or_compute_lock_acquire_istisnasinda_kayit_sizmiyor).
+        acquired = False
         try:
+            acquired = lock.acquire(timeout=self.single_flight_wait_s)
             if acquired:
                 # double-check: bu thread kilidi beklerken başka bir thread
-                # zaten hesaplayıp cache'e yazmış olabilir.
-                cached = self.get(key)
+                # zaten hesaplayıp cache'e yazmış olabilir. SAYAÇ ARTIRMAYAN
+                # `peek` kullanılır (bkz. docstring'i) - aksi halde tek bir
+                # mantıksal miss iki kez sayılırdı.
+                cached = self.peek(key)
                 if cached is not None:
                     return cached
-            # `acquired` False ise (zaman aşımı): kilitsiz devam — yukarıdaki
-            # docstring'teki "zarif düşüş".
+            # `acquired` False ise (zaman aşımı ya da acquire istisnası
+            # sonrası): kilitsiz devam — yukarıdaki docstring'teki "zarif
+            # düşüş".
             value = compute()
             self.set(key, value)
             return value
@@ -202,8 +271,11 @@ class _CachedJudgeBase:
         ttl_s: float,
         max_entries: int,
         time_fn: Callable[[], float] = time.monotonic,
+        single_flight_wait_s: float | None = None,
     ) -> None:
-        self.cache = TtlLruCache(ttl_s, max_entries, time_fn=time_fn)
+        self.cache = TtlLruCache(
+            ttl_s, max_entries, time_fn=time_fn, single_flight_wait_s=single_flight_wait_s
+        )
 
     def _cached_call(self, key: str, compute: Callable[[], Any]) -> Any:
         def _compute_and_snapshot() -> Any:
@@ -230,8 +302,14 @@ class CachedConflictJudge(_CachedJudgeBase):
         ttl_s: float,
         max_entries: int,
         time_fn: Callable[[], float] = time.monotonic,
+        single_flight_wait_s: float | None = None,
     ) -> None:
-        super().__init__(ttl_s=ttl_s, max_entries=max_entries, time_fn=time_fn)
+        super().__init__(
+            ttl_s=ttl_s,
+            max_entries=max_entries,
+            time_fn=time_fn,
+            single_flight_wait_s=single_flight_wait_s,
+        )
         self.inner = inner
 
     def judge_conflict(
@@ -259,8 +337,14 @@ class CachedQueryJudge(_CachedJudgeBase):
         ttl_s: float,
         max_entries: int,
         time_fn: Callable[[], float] = time.monotonic,
+        single_flight_wait_s: float | None = None,
     ) -> None:
-        super().__init__(ttl_s=ttl_s, max_entries=max_entries, time_fn=time_fn)
+        super().__init__(
+            ttl_s=ttl_s,
+            max_entries=max_entries,
+            time_fn=time_fn,
+            single_flight_wait_s=single_flight_wait_s,
+        )
         self.inner = inner
 
     def answer_query(self, question: str, documents: list[QueryDocument]) -> QueryJudgement:
@@ -284,8 +368,14 @@ class CachedScopeJudge(_CachedJudgeBase):
         ttl_s: float,
         max_entries: int,
         time_fn: Callable[[], float] = time.monotonic,
+        single_flight_wait_s: float | None = None,
     ) -> None:
-        super().__init__(ttl_s=ttl_s, max_entries=max_entries, time_fn=time_fn)
+        super().__init__(
+            ttl_s=ttl_s,
+            max_entries=max_entries,
+            time_fn=time_fn,
+            single_flight_wait_s=single_flight_wait_s,
+        )
         self.inner = inner
 
     def judge_scope(
