@@ -34,7 +34,7 @@ from ensemble.integrations.query_source import HarnessEventQuerySource
 from ensemble.ports import EmbeddingsPort, GitHubPort, JudgePort, VectorIndexPort
 from ensemble.store.engine import get_engine, get_session_factory
 from ensemble.store.vector_store import LocalVectorIndex, build_vector_index
-from ensemble_shared.harness import FileHarnessPort
+from ensemble_shared.harness import FileHarnessPort, HarnessError
 
 logger = logging.getLogger("ensemble.wiring")
 
@@ -240,6 +240,39 @@ def _build_scope_service(settings: Settings, radar_service: RadarService) -> Sco
     )
 
 
+def _verify_harness_boot(scope_service: ScopeService) -> None:
+    """#242 BLOCKER 1(b) — FAIL-CLOSED açılış kontrolü.
+
+    Ölçülen üretim hatası: bir konteyner dağıtımında `deploy/docker-compose
+    .prod.yml` (#246) `.harness/`i host'tan SALT-OKUNUR bind-mount ediyor.
+    Host tarafında `.harness/` dizini yoksa Docker orada SESSİZCE **boş bir
+    dizin** yaratır ve imaja gömülü (Dockerfile'daki `COPY .harness/`) kopyayı
+    MASKELER — sonuç: `read_scope()` `HarnessError` fırlatır, `read_tasks()`
+    sessizce `[]` döner, ürün "çalışıyor görünüp" boş board/scope sunar.
+
+    Bu fonksiyon o senaryoyu SESSİZ bozulmadan GÜRÜLTÜLÜ açılış hatasına
+    çevirir: `.harness/scope/<sprint>` açılışta okunamıyorsa süreç hiç ayağa
+    kalkmaz, hata mesajı ne yapılacağını söyler.
+
+    KASITLI SINIR: yalnız `lifespan` (uygulama açılışı) içinden çağrılır —
+    `FileHarnessPort`/`ScopeService` KURULUMUNA (constructor'a) taşınmadı;
+    `tmp_path` köklü port kullanan birim testlerin (ör. `test_scope.py`)
+    hiçbiri bu kontrolden geçmez ve etkilenmez (bkz. `.harness/README.md` §9).
+    """
+    try:
+        scope_service.harness_port.read_scope(scope_service.sprint)
+    except HarnessError as exc:
+        raise RuntimeError(
+            f"ACILIS DURDURULDU: .harness/scope/sprint-{scope_service.sprint} "
+            f"okunamadi ({exc}). Olasi sebep: .harness/ konteynerde yok ya da "
+            "bos - host'ta .harness/ dizini bulunmadan bind-mount edilirse "
+            "Docker orada bos bir dizin yaratip imaja gomulu kopyayi "
+            "maskeler. COZUM: repo kokunde `.harness/` gercekten var mi ve "
+            "git'e alinmis mi kontrol et (git ls-files -- .harness), "
+            "bind-mount kullaniliyorsa host tarafinda ayni icerigi senkronla."
+        ) from exc
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     settings = app.state.settings
@@ -259,6 +292,7 @@ async def lifespan(app: FastAPI):
         vector_index=getattr(app.state, "vector_index", None),
     )
     app.state.scope_service = _build_scope_service(settings, app.state.radar_service)
+    _verify_harness_boot(app.state.scope_service)
     app.state.board_service = BoardService(session_factory=app.state.session_factory)
     app.state.event_service = EventService(
         harness_port=FileHarnessPort(),

@@ -30,6 +30,12 @@ src/frontend/dist/
 src/frontend/node_modules/
 node_modules/
 
+# NOT (#242): .harness/ BİLİNÇLİ olarak burada YOK — Dockerfile onu açıkça
+# COPY eder (kanonik ortak bağlam, üretim runtime'ının okuduğu tek kaynak).
+# Buraya eklenirse imaj içinde /app/.harness sessizce kaybolur (fail-closed
+# açılış kontrolü ensemble.app.lifespan bunu gürültülü şekilde yakalar, ama
+# yine de BURAYA eklemeyin).
+
 # --- Test / eval / dokümantasyon / ekip-özel ---
 tests/
 eval/
