@@ -1,4 +1,4 @@
-.PHONY: install dev test lint openapi contracts eval-dataset eval-run eval-sweep eval eval-gate eval-provider scope-eval harness-init frontend-build-guard deploy
+.PHONY: install dev test lint openapi contracts eval-dataset eval-run eval-sweep eval eval-gate eval-provider eval-model-secimi scope-eval harness-init frontend-build-guard deploy
 
 install:
 	uv sync --all-packages
@@ -56,6 +56,15 @@ eval-provider:
 # #31 scope-drift DONE kapısı: 3-sınıf backtest + yanlış-alarm precision.
 scope-eval:
 	uv run python -m eval.scope_eval
+
+# #244 YZ model seçimi ölçümü — judge (GEMINI_MODEL) + embedding boyutu
+# (GEMINI_EMBEDDING_DIMENSIONS) karşılaştırması. Varsayılan: yalnız tahmini
+# çağrı sayısını yazdırır (ağsız) — GEMINI_API_KEY yoksa/`--run` verilmezse
+# gerçek çağrı YAPILMAZ (maliyet kontrolü). Gerçek ölçüm:
+#   uv run python -m eval.model_secimi_eval --run
+# Rapor: eval/model-secimi-raporu.md.
+eval-model-secimi:
+	uv run python -m eval.model_secimi_eval
 
 # Onboarding sihirbazı (#57): ilk .harness/ iskeletini yazar (.harness/ zaten
 # varsa DOKUNMAZ - fail-safe). Örnek: make harness-init MILESTONE="Sprint 3"
