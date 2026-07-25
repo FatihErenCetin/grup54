@@ -299,6 +299,24 @@ def test_smoke_job_var_ve_needs_preflight_ve_deploy():
     )
 
 
+def test_smoke_job_seviyesinde_if_yok():
+    """S22 (ufak sertlestirme -- bagimsiz dogrulayici bulgusu): smoke job'inin
+    kaskad fail-safe'i (deploy SKIP olursa smoke da kendiliginden SKIP olur --
+    bkz. smoke job'inin dosya-ici yorumu) YALNIZ YORUMLA korunuyordu, hicbir
+    testle degil: smoke job'ina `if: always()` eklenirse 40 test yesil kalirdi
+    -- deploy SKIP olsa BILE smoke kosar, deploy edilmemis prod'a karsi yesil
+    smoke = yanlis-pozitif go-live kaniti. Job-level `if:` verilmezse GitHub'in
+    varsayilan davranisi zaten `needs`'teki TUM job'larin basarili (SKIP
+    DEGIL) olmasini sart kosar -- bu yuzden smoke job'inda 'if' anahtari HIC
+    olmamali (ekstra kosul yazmaya gerek yok, kaskad zaten dogru calisir)."""
+    smoke_job = DEPLOY["jobs"]["smoke"]
+    assert "if" not in smoke_job, (
+        f"smoke job'inda 'if': {smoke_job.get('if')!r} tanimli -- bu, needs=[preflight, deploy] "
+        "varsayilan basari-kosulu kaskadini gecersiz kilabilir (orn. 'always()' deploy SKIP "
+        "olsa da smoke'un yine de kosmasina izin verir -- yanlis-pozitif go-live kaniti)."
+    )
+
+
 def test_smoke_checkout_dogrulanmis_shayi_kullanir():
     """smoke job'inin checkout adimi da (deploy gibi) preflight'in
     dogruladigi sha'yi kullanmali -- aksi halde deploy edilenden FARKLI bir
@@ -744,6 +762,30 @@ def test_target_govdesi_deploy_enabled_davranisini_dogru_degerlendirir(tmp_path,
     assert res["outputs"].get("has_target") == beklenen, res
 
 
+def test_target_env_deploy_enabled_vars_a_tam_baglidir():
+    """DELIK 1 (S192, EN ONEMLI -- bagimsiz dogrulayici bulgusu): S1-S4
+    mutasyonlarinin (env sabit 'true' / env blogu tamamen silinmis / degisken
+    adinda typo, orn. vars.DEPLOY_ENABLE / vars yerine secrets kullanilmis)
+    HICBIRI 'target' adiminin RUN GOVDESINI degistirmez -- govde zaten yalniz
+    $DEPLOY_ENABLED kabuk degiskenine bakar, degisen tek sey env: BAGLANTISIDIR.
+    `_run_target_check` (govde-execution testi, yukarida) DEPLOY_ENABLED'i
+    subprocess ortamina DOGRUDAN yazdigi icin bu baglantiyi hic OLCMEZ -- dort
+    mutasyon da o testle birlikte 40/40 yesil birakir. Bu yuzden ayri,
+    YAML-seviyeli ANAHTAR-BAZLI TAM ESITLIK kontrolu gerekir: alt-dizgi 'bir
+    yerde geciyor mu' YETMEZ (orn. '${{ secrets.DEPLOY_ENABLED }}' de alt-dizgi
+    olarak 'DEPLOY_ENABLED' icerir, secrets/vars farkini kacirir)."""
+    target_step = next(
+        s for s in _all_steps(DEPLOY["jobs"]["preflight"]) if s.get("id") == "target"
+    )
+    step_env = target_step.get("env", {})
+    assert _norm_expr(step_env.get("DEPLOY_ENABLED", "")) == "${{vars.DEPLOY_ENABLED}}", (
+        f"target adiminin env.DEPLOY_ENABLED degeri {step_env.get('DEPLOY_ENABLED')!r} -- tam "
+        "olarak '${{ vars.DEPLOY_ENABLED }}' degil (S1: sabit deger / S2: env silinmis / S3: "
+        "degisken adi yanlis yazilmis / S4: secrets kullanilmis olabilir -- hedef kapisi "
+        "FAIL-OPEN riskindedir)."
+    )
+
+
 def test_deploy_permissions_actions_read_icerir():
     """`gh api actions/workflows/ci.yml/runs` cagrisi icin `actions: read`
     sart -- olmadan elle-tetik CI-dogrulama adimi 403 ile patlar (deploy
@@ -794,6 +836,120 @@ def test_deploy_prod_compose_dosyasini_acikca_kullanir():
     up_steps = [s for s in compose_steps if "up -d" in s["run"]]
     assert build_steps, "deploy job'inda imaji kuran (build) bir docker compose adimi yok."
     assert up_steps, "deploy job'inda servisleri ayaga kaldiran (up -d) bir docker compose adimi yok (M1)."
+
+
+def test_compose_check_yolu_build_up_yollariyla_tutarli():
+    """Ufak sertlestirme (bagimsiz dogrulayici bulgusu): compose_check'in
+    VARLIK kontrol ettigi yol ile build/up adimlarinin 'docker compose -f
+    <yol>' ile kullandigi yol iki AYRI sabit dizgi -- ayni kaynaktan turemez.
+    Biri guncellenip digeri unutulursa (path drift) compose_check YANLIS
+    dosyayi 'var' sanip ready=true yazabilir, build/up ise BASKA (gercek
+    olmayan) bir yolu arar. compose_check govdesindeki '[ -f <yol> ]'
+    kosulundaki yol ile build/up adimlarinin '-f' yolunun TAM ESIT oldugunu
+    dogrula."""
+    compose_check_body = next(
+        s["run"] for s in _all_steps(DEPLOY["jobs"]["deploy"]) if s.get("id") == "compose_check"
+    )
+    check_match = re.search(r"\[\s*-f\s+(\S+)\s*\]", compose_check_body)
+    assert check_match, f"compose_check govdesinde '[ -f <yol> ]' kosulu bulunamadi: {compose_check_body!r}"
+    checked_path = check_match.group(1)
+
+    compose_steps = [
+        s for s in _all_steps(DEPLOY["jobs"]["deploy"]) if "docker compose" in (s.get("run") or "")
+    ]
+    assert compose_steps, "deploy job'inda 'docker compose' kosan hicbir adim yok."
+    for step in compose_steps:
+        used_match = re.search(r"-f\s+(\S+)", step["run"])
+        assert used_match, f"{step.get('name')!r} adiminda '-f <yol>' bulunamadi: {step['run']!r}"
+        assert used_match.group(1) == checked_path, (
+            f"{step.get('name')!r} adimi '-f {used_match.group(1)}' kullaniyor ama compose_check "
+            f"'{checked_path}' varligini kontrol ediyor -- yol tutarsizligi (path drift)."
+        )
+
+
+def _compose_check_run_body() -> str:
+    step = next(s for s in _all_steps(DEPLOY["jobs"]["deploy"]) if s.get("id") == "compose_check")
+    return step["run"]
+
+
+def _run_compose_check(tmp_path: Path, *, dosya_var: bool) -> dict:
+    """`compose_check` adiminin run govdesini GERCEKTEN calistirir (cwd=
+    tmp_path -- govde `deploy/docker-compose.prod.yml` GORELI yolunu kontrol
+    eder). `dosya_var=True` ise dosya tmp_path altinda GERCEKTEN olusturulur.
+    `_run_target_check`/`_run_ci_check` ile AYNI desen -- metnin kopyasi
+    DEGIL, YAML'dan cikarilan govdenin GERCEK calistirilan hali."""
+    if dosya_var:
+        (tmp_path / "deploy").mkdir(parents=True, exist_ok=True)
+        (tmp_path / "deploy" / "docker-compose.prod.yml").write_text("services: {}\n")
+
+    run_script = tmp_path / "run_compose_check.sh"
+    run_script.write_text(_compose_check_run_body())
+    run_script.chmod(run_script.stat().st_mode | stat.S_IEXEC)
+
+    output_file = tmp_path / "github_output_compose.txt"
+    output_file.write_text("")
+
+    env = {"PATH": os.environ.get("PATH", ""), "GITHUB_OUTPUT": str(output_file)}
+    result = subprocess.run(
+        ["bash", "--noprofile", "--norc", "-eo", "pipefail", str(run_script)],
+        cwd=tmp_path,
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    outputs: dict[str, str] = {}
+    for line in output_file.read_text().splitlines():
+        if "=" in line:
+            key, value = line.split("=", 1)
+            outputs[key] = value
+    return {
+        "outputs": outputs,
+        "returncode": result.returncode,
+        "stdout": result.stdout,
+        "stderr": result.stderr,
+    }
+
+
+def test_compose_check_govdesi_dosya_varsa_ready_true_yazar(tmp_path):
+    """DELIK 2 (S192, ONEMLI -- bagimsiz dogrulayici bulgusu): compose_check
+    govdesini `_run_ci_check`/`_run_target_check` ile AYNI desende GERCEKTEN
+    calistirir -- dosya varken ready=true beklenir."""
+    res = _run_compose_check(tmp_path, dosya_var=True)
+    assert res["returncode"] == 0, res
+    assert res["outputs"].get("ready") == "true", res
+
+
+def test_compose_check_govdesi_dosya_yoksa_ready_false_ve_notice_yazar(tmp_path):
+    """DELIK 2 (S192, ONEMLI -- bagimsiz dogrulayici bulgusu): compose_check'in
+    yeni eklenen kapisi, dosyadaki diger iki kapinin (target, ci_check) sahip
+    oldugu execution testinden yoksundu -- kanit: dosya-varlik kosulunu her
+    zaman dogru olacak sekilde degistiren bir mutasyon (M12/S12,
+    `[ -f ... ]` -> `if true`) onceki yalniz-YAML-yapisi testiyle (
+    test_deploy_prod_compose_dosyasini_acikca_kullanir) YAKALANMAZDI -- o test
+    yalniz if-baglantisina bakar, govde ICERIGINE degil. Bu test govdeyi
+    GERCEKTEN bos bir dizinde (dosya YOK) calistirir: ready=false VE gorunur
+    bir ::notice:: beklenir -- M12 mutasyonu (kosul her-zaman-dogru) bu
+    vakada ready=true yazardi ve bu assert kirilirdi."""
+    res = _run_compose_check(tmp_path, dosya_var=False)
+    assert res["returncode"] == 0, res
+    assert res["outputs"].get("ready") == "false", res
+    assert "::notice::" in res["stdout"], f"Dosya yokken ::notice:: basilmadi: {res}"
+
+
+def test_deploy_timeout_minutes_tanimli():
+    """S10 (ufak sertlestirme -- bagimsiz dogrulayici bulgusu): 'timeout-
+    minutes' silinirse 40 test yesil kalirdi. Dosya basligi bunu asili
+    build'i kesen bir onlem sayiyor: concurrency group=deploy +
+    cancel-in-progress:false yuzunden asili kalan bir build/up SONRAKI TUM
+    deploylari kuyrukta tutar (SELF-HOSTED RUNNER notu). Deger job'in CALISMA
+    suresini (kuyruk suresini degil) sinirlamali -- job seviyesinde acikca
+    tanimli, pozitif bir tam sayi olmali."""
+    timeout = DEPLOY["jobs"]["deploy"].get("timeout-minutes")
+    assert timeout is not None, "deploy job'inda 'timeout-minutes' tanimli degil (asili build/up riski)."
+    assert isinstance(timeout, int) and timeout > 0, (
+        f"timeout-minutes={timeout!r} -- gecerli bir pozitif tam sayi degil."
+    )
 
 
 def test_deploy_self_hosted_runner_etiketinde_kosar():
