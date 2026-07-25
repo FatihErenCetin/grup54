@@ -208,6 +208,16 @@ class TtlLruCache:
         istisna olduğu gibi çağırana yayılır — sıradaki çağrı yeniden hesaplar.
         Başarısız sonuç ASLA cache'lenmez.
 
+        PUBLIC API UYARISI (#63 ISTENEN 3): `None` "MISS" için kullanılan
+        SENTINEL değerdir — hem `get()`/`peek()` hem bu metot boş bulunca
+        `None` döner. Eğer `compute()` GERÇEKTEN `None` döndürürse bu değer
+        `set()` edilir ama sonraki `get()`/`peek()` onu YİNE MISS sayar; yani
+        `compute()` bu anahtar için HER ÇAĞRIDA yeniden çalıştırılır (asla
+        gerçek anlamda "cache'lenmiş" olmaz). Bugünkü tüm çağıranlar
+        (`_CachedJudgeBase`, `CachedEmbeddings`) `None` DÖNDÜRMEZ (Pydantic
+        modeli / `list[float]`), o yüzden şu an zararsız — ama yeni bir
+        `compute()` eklerken bunu UNUTMA.
+
         KİLİTLENME KORUMASI: pahalı `compute()` çağrısı bu kilit ALTINDA koşar.
         `compute()` asılırsa (örn. Gemini çağrısı hiç dönmezse) aynı anahtarı
         bekleyen diğer istekler sonsuza dek bloklanmasın diye kilit yalnız
