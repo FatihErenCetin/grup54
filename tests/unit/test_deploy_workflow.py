@@ -48,6 +48,13 @@ def _all_steps(job: dict) -> list[dict]:
     return job.get("steps", []) or []
 
 
+def _norm_expr(expr: str) -> str:
+    """`${{ x }}` bicimli GitHub ifadelerini bosluk-duyarsiz karsilastirmak
+    icin normalize eder (anahtar-bazli TAM ESITLIK testlerinde kullanilir --
+    alt-dizgi degil, deger tam olarak beklenen ifadeye esit olmali)."""
+    return re.sub(r"\s+", "", expr or "")
+
+
 CI = _load("ci.yml")
 DEPLOY = _load("deploy.yml")
 PREFLIGHT_IF = DEPLOY["jobs"]["preflight"]["if"]
@@ -132,9 +139,12 @@ def test_hicbir_workflow_if_icinde_secrets_kullanmiyor():
 
 
 def test_flyctl_kosan_her_job_token_kapisina_bagli():
-    """Generik: `flyctl` kosan HER job, bir `has_token` output'u ureten job'a
-    `needs` ile baglanmali VE `if`'i o output'u referans almali -- yarin
-    ikinci bir flyctl job'i eklenirse bu test onu da yakalar."""
+    """Generik: `flyctl` kosan HER job, bir `has_token` VE bir `ci_ok`
+    output'u ureten job'a `needs` ile baglanmali VE `if`'i HER IKI output'u
+    da referans almali -- yarin ikinci bir flyctl job'i (orn. `deploy2`)
+    eklenirse, `ci_ok` kontrolu olmadan da (yalniz has_token'a bagliyken) bu
+    test onu yakalar (DELIK 1, S192 sertlestirme: token varsa ama CI kirmiziyken
+    de flyctl kosabilecek bir job sessizce eklenebilirdi)."""
     for wf_name, wf in _all_workflows():
         for job_id, job in (wf.get("jobs") or {}).items():
             runs_flyctl = any("flyctl" in (step.get("run") or "") for step in _all_steps(job))
@@ -152,6 +162,29 @@ def test_flyctl_kosan_her_job_token_kapisina_bagli():
                 "'needs.<job>.outputs.has_token' referansi yok -- token "
                 "yokken de calisabilir (fail-safe kapi delinmis)."
             )
+            assert any(f"needs.{n}.outputs.ci_ok" in job_if for n in needs_list), (
+                f"{wf_name}:{job_id} 'flyctl' kosuyor ama if kosulunda "
+                "'needs.<job>.outputs.ci_ok' referansi yok -- CI kirmiziyken de "
+                "calisabilir (fail-safe kapi delinmis, DELIK 1)."
+            )
+
+
+def test_deploy_if_ciplak_or_alternatifi_yok():
+    """DELIK 1 (S192 sertlestirme): deploy.if bugun ciplak bir '||' icermiyor,
+    ama biri `|| github.event_name == 'workflow_dispatch'` gibi bir alternatif
+    eklerse iki kapiyi (has_token + ci_ok) birden short-circuit eder -- bu,
+    dosyanin kendi "tuzak 4" paragrafinda preflight.if icin belgelenen ve
+    kapatilan anti-kalibin AYNISIDIR, burada deploy.if icin tekrarlanir:
+    tepe-seviye '||' ile bol, HER alternatifin hem has_token hem ci_ok
+    kontrolu icerdigini dogrula (ciplak/kosulsuz bir alternatif kalmamali)."""
+    deploy_if = str(DEPLOY["jobs"]["deploy"].get("if") or "")
+    alternatifler = [alt.strip() for alt in deploy_if.split("||")]
+    for alt in alternatifler:
+        assert "has_token" in alt and "ci_ok" in alt, (
+            f"deploy.if alternatiflerinden biri ('{alt}') hem has_token hem ci_ok "
+            f"kontrolu icermiyor -- ciplak bir '||' ile kapi(lar) short-circuit "
+            f"edilebilir (tam if={deploy_if!r})."
+        )
 
 
 def test_token_degeri_asla_loglanmaz():
@@ -308,17 +341,26 @@ def test_workflow_dispatch_main_disina_sinirli():
     # Tepe seviye '||' ile boler (bu ifadede parantez ic ice degil -- '&&'
     # gruplari '||' ile ayriliyor, bu yuzden duz split yeterli).
     alternatifler = [alt.strip() for alt in PREFLIGHT_IF.split("||")]
-    dispatch_alt = next((alt for alt in alternatifler if "workflow_dispatch" in alt), None)
-    assert dispatch_alt is not None, (
+    dispatch_alts = [alt for alt in alternatifler if "workflow_dispatch" in alt]
+    assert dispatch_alts, (
         f"preflight.if={PREFLIGHT_IF!r} -- workflow_dispatch iceren alternatif yok."
     )
-    assert "&&" in dispatch_alt, (
-        f"workflow_dispatch alternatifi ('{dispatch_alt}') '&&' icermiyor -- ciplak bir '||' ile "
-        "CI-yesil kapisinin TAMAMI short-circuit edilebilir (S192, tuzak 4 regresyonu)."
+    # DELIK 4 (S192 sertlestirme): `next(...)` ile YALNIZ ILK workflow_dispatch
+    # alternatifine bakmak yeterli DEGIL -- preflight.if'in SONUNA ikinci,
+    # ciplak bir workflow_dispatch alternatifi eklenirse ilk (dogru korunmus)
+    # alternatif testi gecirir ama yeni ciplak alternatif hic kontrol
+    # EDILMEZ. `all(...)` ile TUM workflow_dispatch iceren alternatifler
+    # kontrol edilir -- docstring'in "TUM workflow_dispatch iceren
+    # alternatifler" iddiasini gercekten karsilar.
+    assert all("&&" in alt for alt in dispatch_alts), (
+        f"workflow_dispatch iceren alternatiflerden biri '&&' icermiyor "
+        f"({dispatch_alts!r}) -- ciplak bir '||' ile CI-yesil kapisinin TAMAMI "
+        "short-circuit edilebilir (S192, tuzak 4 regresyonu)."
     )
-    assert main_kisitlamasi_re.search(dispatch_alt), (
-        f"workflow_dispatch alternatifi ('{dispatch_alt}') main-kisitlamasi ICERMIYOR -- "
-        "main disindaki bir daldan elle tetik, CI hic dogrulanmadan gecebilir."
+    assert all(main_kisitlamasi_re.search(alt) for alt in dispatch_alts), (
+        f"workflow_dispatch iceren alternatiflerden biri main-kisitlamasi ICERMIYOR "
+        f"({dispatch_alts!r}) -- main disindaki bir daldan elle tetik, CI hic "
+        "dogrulanmadan gecebilir."
     )
 
 
@@ -354,16 +396,26 @@ def test_elle_tetikte_ci_dogrulama_adimi_var_ve_basarisizlikta_ci_ok_false_yazar
         "github.repository run govdesine dogrudan enterpole edilmis -- env uzerinden verilmeli "
         "(dosyadaki 'github.sha icin uygulanan ama repository icin uygulanmayan' tuzagi kapatildi)."
     )
+    # DELIK 2 (S192 sertlestirme): alt-dizgi "herhangi bir degerde var mi"
+    # YERINE anahtar-bazli TAM ESITLIK -- aksi halde SHA/REPO degerleri
+    # birbiriyle TAKAS edilse de (kopyala-yapistir hatasi) ya da EVENT_NAME
+    # "github.event_name == 'push'" gibi bir KARSILASTIRMA ifadesine
+    # cevrilse de (runtime'da 'false' -> govde otomatik-yol dalini secer ->
+    # gh HIC CAGRILMADAN ci_ok=true olur, fail-open) alt-dizgi kontrolu
+    # farki gormezdi.
     step_env = ci_check_step.get("env", {})
-    assert any("github.sha" in str(v) for v in step_env.values()), (
-        "CI-dogrulama adiminin env'inde github.sha referansi yok -- SHA hicbir yerden gecmiyor olabilir."
+    assert _norm_expr(step_env.get("EVENT_NAME", "")) == "${{github.event_name}}", (
+        f"CI-dogrulama adiminin env.EVENT_NAME degeri {step_env.get('EVENT_NAME')!r} -- "
+        "tam olarak '${{ github.event_name }}' degil (fail-open riski: bir karsilastirma "
+        "ifadesine cevrilirse elle tetik CI hic sorgulanmadan gecebilir)."
     )
-    assert any("github.repository" in str(v) for v in step_env.values()), (
-        "CI-dogrulama adiminin env'inde github.repository referansi yok -- REPO hicbir yerden gecmiyor olabilir."
+    assert _norm_expr(step_env.get("SHA", "")) == "${{github.sha}}", (
+        f"CI-dogrulama adiminin env.SHA degeri {step_env.get('SHA')!r} -- tam olarak "
+        "'${{ github.sha }}' degil (SHA/REPO takasi gibi kopyala-yapistir hatalarina karsi)."
     )
-    assert any("github.event_name" in str(v) for v in step_env.values()), (
-        "CI-dogrulama adiminin env'inde github.event_name referansi yok -- adim hangi tetikleyici "
-        "yolda oldugunu bilemez, tek output iki yolda da anlamli olamaz."
+    assert _norm_expr(step_env.get("REPO", "")) == "${{github.repository}}", (
+        f"CI-dogrulama adiminin env.REPO degeri {step_env.get('REPO')!r} -- tam olarak "
+        "'${{ github.repository }}' degil (SHA/REPO takasi gibi kopyala-yapistir hatalarina karsi)."
     )
 
 
@@ -383,6 +435,18 @@ def test_ci_dogrulama_sorgusu_event_ve_branch_filtreli():
     )
     assert "event=push" in run_body, "gh api sorgusunda 'event=push' filtresi yok."
     assert "branch=main" in run_body, "gh api sorgusunda 'branch=main' filtresi yok."
+    # DELIK 3 (S192 sertlestirme): status=completed filtresi olmadan henuz
+    # bitmemis (in_progress/queued) bir ci.yml kosumu da sonuc kumesine
+    # girebilir -- conclusion alani boyle bir kosumda anlamli/kararli degildir.
+    assert "status=completed" in run_body, "gh api sorgusunda 'status=completed' filtresi yok."
+    # GH_TOKEN olmadan `gh api` cagrisi kimliksiz kalir (adim GITHUB_TOKEN'i
+    # env uzerinden GH_TOKEN'e aktarmali -- has_token/FLY_API_TOKEN deseniyle
+    # ayni yontem).
+    step_env = ci_check_step.get("env", {})
+    assert _norm_expr(step_env.get("GH_TOKEN", "")) == "${{secrets.GITHUB_TOKEN}}", (
+        f"CI-dogrulama adiminin env.GH_TOKEN degeri {step_env.get('GH_TOKEN')!r} -- tam olarak "
+        "'${{ secrets.GITHUB_TOKEN }}' degil, 'gh api' cagrisi kimliksiz kalabilir."
+    )
 
 
 def test_ci_check_adiminda_devre_disi_birakan_if_yok():
@@ -413,6 +477,37 @@ def test_preflight_outputs_ci_ok_step_ciktisina_baglanir():
     outputs = DEPLOY["jobs"]["preflight"].get("outputs", {})
     assert outputs.get("ci_ok") == "${{ steps.ci_check.outputs.ci_ok }}", (
         f"preflight.outputs.ci_ok={outputs.get('ci_ok')!r} -- steps.ci_check.outputs.ci_ok'a baglanmamis."
+    )
+
+
+def test_preflight_outputs_has_token_step_ciktisina_baglanir():
+    """DELIK 5 (S192 sertlestirme): `ci_ok` icin yazilan tam-esitlik
+    baglanma testinin esi -- `preflight.outputs.has_token` dogrudan
+    `steps.token.outputs.has_token`'a baglanmali. Aksi halde has_token sabit
+    'true' gibi bir degere sabitlenebilir ve token-varlik kapisi tamamen
+    etkisizlesir (uretim davranis testleri bunu YAKALAMAZ -- output baglantisi
+    YAML-seviyeli, run govdesi degismeden delinebilir)."""
+    outputs = DEPLOY["jobs"]["preflight"].get("outputs", {})
+    assert outputs.get("has_token") == "${{ steps.token.outputs.has_token }}", (
+        f"preflight.outputs.has_token={outputs.get('has_token')!r} -- "
+        "steps.token.outputs.has_token'a baglanmamis (kapi sabit bir degere sabitlenmis olabilir)."
+    )
+
+
+def test_preflight_outputs_sha_workflow_run_ve_github_sha_fallback_icerir():
+    """DELIK 5 (S192 sertlestirme): `ci_ok` icin yazilan tam-esitlik baglanma
+    testinin esi -- `preflight.outputs.sha` TAM olarak
+    `github.event.workflow_run.head_sha || github.sha` ifadesine esit olmali.
+    Bu fallback silinip yalniz `github.sha` birakilirsa, otomatik yolda
+    CI'in dogruladigi commit YERINE deploy anindaki dal-tepesi checkout
+    edilir -- dosya basliginin "deploy TAM O commit'i checkout eder" vaadi
+    sessizce cignenir (run govdesi degismedigi icin davranis testleri
+    bunu YAKALAMAZ)."""
+    outputs = DEPLOY["jobs"]["preflight"].get("outputs", {})
+    assert _norm_expr(outputs.get("sha", "")) == "${{github.event.workflow_run.head_sha||github.sha}}", (
+        f"preflight.outputs.sha={outputs.get('sha')!r} -- tam olarak "
+        "'${{ github.event.workflow_run.head_sha || github.sha }}' degil "
+        "(fallback eksikse otomatik yolda yanlis commit deploy edilir)."
     )
 
 
@@ -600,6 +695,27 @@ def test_setup_flyctl_pinli_ve_remote_only():
     assert deploy_run_step is not None, "'flyctl deploy' kosan bir adim bulunamadi."
     assert "--remote-only" in deploy_run_step["run"], (
         "flyctl deploy '--remote-only' bayragi olmadan kosuyor."
+    )
+
+
+def test_deploy_shell_bash_defaults_acik_belirtilir():
+    """DELIK 6 (S192 sertlestirme): bu dosyanin test harness'i ('_run_ci_check')
+    GitHub'in Linux runner varsayilaniymis GIBI davranarak `bash --noprofile
+    --norc -eo pipefail {0}` ile kosar -- ama GitHub'in GERCEK varsayilani
+    (hicbir `shell:` belirtilmemisse) `pipefail` OLMAYAN `bash -e`dir. Bugun
+    govdede pipe yok, fark uretmiyor, ama latent bir fail-open: govdeye
+    ileride bir pipe girerse (`cmd1 | cmd2`), uretimde ilk komutun hatasi
+    sessizce yutulur -- test bunu pipefail altinda kostugu icin YAKALAYAMAZ,
+    yani test uretimden DAHA SIKI olurdu. `defaults.run.shell: bash` acikca
+    beyan edilerek uretim GERCEKTEN pipefail'li hale getirilir (GitHub Actions
+    bash icin bu beyani gordugunde `-eo pipefail` bayraklarini ekler) -- test
+    harness'inin iddiasi boylece dogru olur."""
+    defaults = DEPLOY.get("defaults") or {}
+    run_defaults = defaults.get("run") or {}
+    assert run_defaults.get("shell") == "bash", (
+        f"deploy.yml defaults.run.shell={run_defaults.get('shell')!r} -- 'bash' degil; "
+        "GitHub'in gercek varsayilani pipefail'siz 'bash -e'dir, workflow'un kendi "
+        "pipefail iddiasi acikca beyan edilmeden dogru olmaz."
     )
 
 

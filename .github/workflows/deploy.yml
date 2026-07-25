@@ -105,6 +105,14 @@
 # ACTION PIN: upstream README `@master` gosteriyor; repo konvansiyonu hareketli
 # `latest`/`master` KULLANMA diyor (bkz. Dockerfile ust basligi). `@v1` bugun
 # 1.x'e isaret ediyor ve mevcut `actions/checkout@v4` tarziyla tutarli.
+#
+# SHELL: GitHub'in Linux runner varsayilani `bash -e`dir -- `pipefail` YOK.
+# `defaults.run.shell: bash` acikca burada beyan edilir; GitHub Actions bash
+# icin bu beyani gordugunde adimlari `bash --noprofile --norc -eo pipefail
+# {0}` ile kosturur (dokumantasyon). Bugun govdede pipe yok, fark uretmiyor --
+# ama gelecekte bir `run:` adimina pipe eklenirse (orn. `cmd1 | cmd2`) bu
+# beyan olmadan bir ust komut sessizce basarisiz olsa da pipeline yine de
+# 0 ile doner (pipefail yoksa). Acik beyan bunu simdiden kapatir.
 name: Deploy (Fly)
 
 on:
@@ -117,6 +125,10 @@ on:
 permissions:
   contents: read # workflow_run'da GITHUB_TOKEN varsayilan yazma alabilir -- kapatiyoruz
   actions: read # elle tetikte ayni SHA icin basarili ci.yml kosumu var mi kontrolu (preflight, `gh api actions/workflows/ci.yml/runs`)
+
+defaults:
+  run:
+    shell: bash # GitHub'in gercek varsayilanindan (pipefail'siz `bash -e`) acikca `-eo pipefail`'e gecer (yukaridaki SHELL notu)
 
 concurrency:
   group: deploy
