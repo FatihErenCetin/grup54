@@ -76,10 +76,10 @@ def test_live_postgres_pgvector_integration():
             session.commit()
 
         index = PgVectorIndex(session_factory, dimensions=2, table_name="test_vector_smoke")
-        
+
         index.upsert("near", [1.0, 0.0], {"source": "integration-test"})
         index.upsert("far", [0.0, 1.0], {"source": "integration-test"})
-        
+
         results = index.query([1.0, 0.0], k=2)
 
         assert len(results) == 2
