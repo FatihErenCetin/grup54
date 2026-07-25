@@ -799,13 +799,18 @@ def test_deploy_prod_compose_dosyasini_acikca_kullanir():
     """T-192 self-host donusumu (eski `test_setup_flyctl_pinli_ve_remote_only`
     yerine -- en yuksek degerli yeni test): `docker compose` kosan HER adim
     `-f deploy/docker-compose.prod.yml` icermeli, o adimin AYNI govdesinde
-    baska bir `docker-compose.yml` referansi OLMAMALI, VE adim `compose_check`
-    fail-safe kapisina (`steps.compose_check.outputs.ready`) bagli olmali.
-    Neden davranissal: `-f` düşerse compose cwd'deki KOK docker-compose.yml'i
-    okur -- o dosya Postgres'i 0.0.0.0:5432'de ensemble/ensemble parolasiyla
-    YAYINLAR (public IP'li VDS'te aninda ele gecirme). Ayrica hem 'build' hem
-    'up -d' iceren en az birer adim var olmali -- biri silinirse (M1) bu test
-    kirilir."""
+    baska bir `docker-compose.yml` referansi OLMAMALI. Neden davranissal: `-f`
+    düşerse compose cwd'deki KOK docker-compose.yml'i okur -- o dosya
+    Postgres'i 0.0.0.0:5432'de ensemble/ensemble parolasiyla YAYINLAR (public
+    IP'li VDS'te aninda ele gecirme). Ayrica hem 'build' hem 'up -d' iceren en
+    az birer adim var olmali -- biri silinirse (M1) bu test kirilir.
+
+    S192 review Blocker 1'den sonra: build/up adimlari artik `compose_check`
+    outputuna bir `if:` ile BAGLI DEGIL -- `compose_check` FAIL-CLOSED oldugu
+    (dosya yoksa `exit 1`) icin bu adimlarin ayrica bir kosula ihtiyaci yok;
+    bir onceki adim basarisiz olunca GitHub'in varsayilan davranisi zaten
+    sonraki adimlari calistirmaz. Bu yuzden burada artik step-if BEKLENMEZ --
+    beklenirse eski (fail-safe atlama) davranisi geri gelmis demektir."""
     deploy_steps = _all_steps(DEPLOY["jobs"]["deploy"])
     compose_steps = [s for s in deploy_steps if "docker compose" in (s.get("run") or "")]
     assert compose_steps, "deploy job'inda 'docker compose' kosan hicbir adim yok."
@@ -820,16 +825,19 @@ def test_deploy_prod_compose_dosyasini_acikca_kullanir():
             f"{step.get('name')!r} adimi kok 'docker-compose.yml'e de referans veriyor gibi "
             f"gorunuyor (public Postgres portu acik dosya -- YASAK): {run_body!r}"
         )
-        step_if = str(step.get("if") or "")
-        assert "steps.compose_check.outputs.ready" in step_if, (
-            f"{step.get('name')!r} adiminin if={step_if!r} -- compose_check fail-safe "
-            "kapisina bagli degil (compose dosyasi henuz repoda yoksa da calisabilir)."
-        )
 
     compose_check_step = next((s for s in deploy_steps if s.get("id") == "compose_check"), None)
     assert compose_check_step is not None, (
         "deploy job'inda id: compose_check olan bir adim yok -- prod compose dosyasinin "
-        "varligini kontrol eden fail-safe adim tamamen silinmis olabilir (M5)."
+        "varligini kontrol eden fail-closed adim tamamen silinmis olabilir (M5)."
+    )
+    # Blocker 1: compose_check govdesinde 'exit 1' olmali (fail-CLOSED) --
+    # olmazsa eski `ready=false` fail-safe atlama davranisi geri getirilmis
+    # olabilir (govde YAML-seviyeli burada, davranissal kanit asagidaki
+    # _run_compose_check testlerinde).
+    assert "exit 1" in compose_check_step["run"], (
+        f"compose_check govdesinde 'exit 1' yok: {compose_check_step['run']!r} -- fail-CLOSED "
+        "davranisi kaldirilmis, eski fail-safe atlama davranisina donulmus olabilir (Blocker 1)."
     )
 
     build_steps = [s for s in compose_steps if "build" in s["run"]]
@@ -911,30 +919,122 @@ def _run_compose_check(tmp_path: Path, *, dosya_var: bool) -> dict:
     }
 
 
-def test_compose_check_govdesi_dosya_varsa_ready_true_yazar(tmp_path):
-    """DELIK 2 (S192, ONEMLI -- bagimsiz dogrulayici bulgusu): compose_check
+def test_compose_check_govdesi_dosya_varsa_basarili_biter(tmp_path):
+    """DELIK 2 (S192, ONEMLI -- bagimsiz dogrulayici bulgusu) + Blocker 1 (S192
+    review, Semih -- fail-safe atlamadan fail-CLOSED'a gecis): compose_check
     govdesini `_run_ci_check`/`_run_target_check` ile AYNI desende GERCEKTEN
-    calistirir -- dosya varken ready=true beklenir."""
+    calistirir -- dosya varken adim basarili (exit 0) bitmeli. Artik bir
+    `ready` output'u YOK: adim ya basarili biter (dosya var) ya da job'i
+    KIRAR (dosya yok, asagidaki fail-CLOSED testine bkz.) -- eski 'basarili
+    donup ready=false yazma' fail-safe atlama davranisi tamamen kaldirildi."""
     res = _run_compose_check(tmp_path, dosya_var=True)
     assert res["returncode"] == 0, res
-    assert res["outputs"].get("ready") == "true", res
 
 
-def test_compose_check_govdesi_dosya_yoksa_ready_false_ve_notice_yazar(tmp_path):
-    """DELIK 2 (S192, ONEMLI -- bagimsiz dogrulayici bulgusu): compose_check'in
-    yeni eklenen kapisi, dosyadaki diger iki kapinin (target, ci_check) sahip
-    oldugu execution testinden yoksundu -- kanit: dosya-varlik kosulunu her
-    zaman dogru olacak sekilde degistiren bir mutasyon (M12/S12,
-    `[ -f ... ]` -> `if true`) onceki yalniz-YAML-yapisi testiyle (
-    test_deploy_prod_compose_dosyasini_acikca_kullanir) YAKALANMAZDI -- o test
-    yalniz if-baglantisina bakar, govde ICERIGINE degil. Bu test govdeyi
-    GERCEKTEN bos bir dizinde (dosya YOK) calistirir: ready=false VE gorunur
-    bir ::notice:: beklenir -- M12 mutasyonu (kosul her-zaman-dogru) bu
-    vakada ready=true yazardi ve bu assert kirilirdi."""
+def test_compose_check_govdesi_dosya_yoksa_exit1_ve_error_yazar(tmp_path):
+    """BLOCKER 1 (S192 review, Semih -- en kritik bulgu): eskiden dosya
+    yoksa compose_check `ready=false` yazip job'i YINE DE basarili
+    donduruyordu (fail-safe ATLAMA) -- bu, EYLEYICI bir adimda (deploy'un on
+    kosulu) "basarili" derken DOGRULANAN SHA'nin HIC DEPLOY EDILMEMIS olmasi
+    demekti (bir YALAN, dosya basligindaki DOGRULAYICI-vs-EYLEYICI ayrimina
+    gore mesru bir fail-safe DEGIL). Artik FAIL-CLOSED: compose_check govdesini
+    GERCEKTEN bos bir dizinde (dosya YOK) calistirir -- exit kodu 1 VE gorunur
+    bir ::error:: beklenir. DELIK 2'nin (S192) yakaladigi `if true` gibi bir
+    kosul-her-zaman-dogru mutasyonu bu vakada da exit 0 doner ve bu test
+    kirilir; B1 (eski fail-safe atlama davranisi geri getirilir) ve B2 (exit 1
+    yerine exit 0) mutasyonlari da AYNI assert'i kirar."""
     res = _run_compose_check(tmp_path, dosya_var=False)
+    assert res["returncode"] == 1, res
+    assert "::error::" in res["stdout"], f"Dosya yokken ::error:: basilmadi: {res}"
+
+
+# --- Davranis testi: smoke_check adiminin run govdesini de GERCEKTEN bash
+# altinda calistirir (_run_compose_check/_run_ci_check ile AYNI desen) --
+# B3 (S192 review, Semih): DOGRULAYICI bir adimda (smoke, atlanmasi mesru)
+# atlama mesajinin gorunurlugu ::notice::'dan ::warning::'a yukseltildi;
+# YAML-metni degil, adimin GERCEK calistirilan govdesi uzerinden dogrulanir.
+
+
+def _smoke_check_run_body() -> str:
+    step = next(s for s in _all_steps(DEPLOY["jobs"]["smoke"]) if s.get("id") == "smoke_check")
+    return step["run"]
+
+
+def _run_smoke_check(tmp_path: Path, *, smoke_api_url: str, makefile_body: str) -> dict:
+    """`smoke_check` adiminin run govdesini GERCEKTEN calistirir (cwd=
+    tmp_path -- govde GORELI 'Makefile' yolunu kontrol eder). `_run_compose_
+    check`/`_run_ci_check` ile AYNI desen: metnin kopyasi DEGIL, YAML'dan
+    cikarilan govdenin GERCEK calistirilan hali."""
+    (tmp_path / "Makefile").write_text(makefile_body)
+
+    run_script = tmp_path / "run_smoke_check.sh"
+    run_script.write_text(_smoke_check_run_body())
+    run_script.chmod(run_script.stat().st_mode | stat.S_IEXEC)
+
+    output_file = tmp_path / "github_output_smoke.txt"
+    output_file.write_text("")
+
+    env = {
+        "PATH": os.environ.get("PATH", ""),
+        "SMOKE_API_URL": smoke_api_url,
+        "GITHUB_OUTPUT": str(output_file),
+    }
+    result = subprocess.run(
+        ["bash", "--noprofile", "--norc", "-eo", "pipefail", str(run_script)],
+        cwd=tmp_path,
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    outputs: dict[str, str] = {}
+    for line in output_file.read_text().splitlines():
+        if "=" in line:
+            key, value = line.split("=", 1)
+            outputs[key] = value
+    return {
+        "outputs": outputs,
+        "returncode": result.returncode,
+        "stdout": result.stdout,
+        "stderr": result.stderr,
+    }
+
+
+def test_smoke_check_govdesi_smoke_api_url_bossa_warning_yazar(tmp_path):
+    """B3 (S192 review, Semih -- en kritik ucuncu mutasyon): SMOKE_API_URL
+    tanimsizken adim ready=false VE gorunur bir ::warning:: (ARTIK ::notice::
+    DEGIL) basmali -- dogrulanmamis bir deploy kosusu ozetinde ACIKCA
+    gorunsun. Adim yine de basarili (exit 0) biter -- smoke DOGRULAYICI bir
+    adim (bkz. dosya basligi), atlanmasi mesru, yalniz gorunurlugu artirildi.
+    B3 mutasyonu (::warning:: -> ::notice:: geri alinirsa) bu testi kirar."""
+    res = _run_smoke_check(tmp_path, smoke_api_url="", makefile_body="smoke:\n\techo ok\n")
     assert res["returncode"] == 0, res
     assert res["outputs"].get("ready") == "false", res
-    assert "::notice::" in res["stdout"], f"Dosya yokken ::notice:: basilmadi: {res}"
+    assert "::warning::" in res["stdout"], f"::warning:: basilmadi: {res}"
+    assert "::notice::" not in res["stdout"], f"Hala ::notice:: basiliyor (B3 regresyonu): {res}"
+
+
+def test_smoke_check_govdesi_makefile_hedefi_yoksa_warning_yazar(tmp_path):
+    """B3'un ikinci kolu: SMOKE_API_URL tanimli ama Makefile'da 'smoke:'
+    hedefi yoksa da (#189 henuz main'e inmemis senaryosu) ayni sekilde
+    ::warning:: beklenir (::notice:: DEGIL)."""
+    res = _run_smoke_check(
+        tmp_path, smoke_api_url="https://example.test", makefile_body="build:\n\techo ok\n"
+    )
+    assert res["returncode"] == 0, res
+    assert res["outputs"].get("ready") == "false", res
+    assert "::warning::" in res["stdout"], f"::warning:: basilmadi: {res}"
+    assert "::notice::" not in res["stdout"], f"Hala ::notice:: basiliyor (B3 regresyonu): {res}"
+
+
+def test_smoke_check_govdesi_hersey_hazirsa_ready_true_yazar(tmp_path):
+    """Sanity: hem SMOKE_API_URL tanimli hem Makefile'da 'smoke:' hedefi
+    varsa adim hicbir uyari basmadan ready=true yazmali."""
+    res = _run_smoke_check(
+        tmp_path, smoke_api_url="https://example.test", makefile_body="smoke:\n\techo ok\n"
+    )
+    assert res["returncode"] == 0, res
+    assert res["outputs"].get("ready") == "true", res
 
 
 def test_deploy_timeout_minutes_tanimli():

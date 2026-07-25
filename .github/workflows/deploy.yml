@@ -92,27 +92,52 @@
 # Actions -> Runners'da Idle gorundukten SONRA set etmeli. `timeout-minutes:
 # 30` job'in CALISMA suresini sinirlar (kuyruk suresini degil).
 #
-# PROD COMPOSE DOSYASI FAIL-SAFE (T-192/#246 bagimliligi): `deploy/docker-
-# compose.prod.yml` bu daldan AYRI bir PR'da (#246) ekleniyor; iki dalin
-# main'e inis sirasi garanti degil. `smoke` job'inin Makefile-hedefi
-# kontroluyle AYNI desen: deploy job'i once dosyanin VARLIGINI kontrol eder
-# (`compose_check` adimi, `ready` output'u), build/up adimlari bu output'a
-# `if:` ile baglidir -- dosya henuz yoksa (#246 inmemis) adimlar fail-safe
-# ATLANIR, job yine de basarili sayilir (kirmizi verilmez, sessiz-ama-gorunur
-# ::notice::).
+# DOGRULAYICI vs EYLEYICI ATLAMA (kritik ayrim, S192 review -- Semih): bu
+# dosyada iki farkli "adimi atla" deseni var, ve BIREBIR AYNI degiller.
+# Fail-safe atlamak DOGRULAYICI bir adimda (bir seyi KANITLAMAYA calisan,
+# ama kendisi bir sey DEGISTIRMEYEN adim -- orn. `smoke`, asagida; ya da
+# elle-tetikte `ci_check`) MESRUDUR: kosamayan bir kontrolu atlamak
+# zararsizdir, cunku "dogrulayamadim" ile "dogruladim" arasinda bir YALAN
+# yoktur -- adim yalnizca sessiz kalir. Ama EYLEYICI bir adimda (bir sey
+# DEGISTIREN/URETEN adim -- orn. `compose_check`, asagida, deploy'un on
+# kosulu) DEGILDIR: deploy'u atlayip job'i yine de basarili dondurmek
+# "main'e giden her commit otomatik deploy edilir" vaadini SESSIZCE
+# CIGNEMEK, yani DEPLOY BASARILI derken DOGRULANAN SHA HIC DEPLOY
+# EDILMEMIS olmasidir -- bu bir YALAN, fail-safe degil. Asagidaki iki
+# paragraf bu ayrimi somutlastirir.
 #
-# SMOKE (deploy-sonrasi canli dogrulama, #189 BAGIMLILIGI): `deploy` basarili
-# olunca `smoke` job'i `make smoke` calistirir (bkz. asagida). Bu dal (#192)
-# #189'dan (T-189-live-smoke, `make smoke` hedefini ekleyen dal) ONCE main'e
-# inebilir -- o yuzden `smoke` job'i calistirmadan once Makefile'da `smoke:`
-# hedefinin GERCEKTEN var olup olmadigini kontrol eder; yoksa (#189 henuz
-# merge olmamissa) adimi fail-safe ATLAR, kirmizi vermez. #189 merge olunca
-# hedef belirir ve smoke kendiliginden aktiflesir -- bu dosyaya bir daha
-# DOKUNMAYA gerek YOK. `smoke` BILINCLI olarak GitHub-hosted'da kalir (self-
-# hosted'da DEGIL): prod kutusunun ICINDEN kosarsa loopback/ic ag uzerinden
-# yesil olur ve DNS + Caddy + TLS + firewall zincirini hic kanitlamaz --
-# disaridan gercek bir HTTP istegi atmasi gerekir (runbook'un SMOKE_STRICT
-# ilkesiyle ayni mantik).
+# PROD COMPOSE DOSYASI FAIL-CLOSED (T-192/#246 bagimliligi, EYLEYICI adim --
+# S192 review, Semih): `deploy/docker-compose.prod.yml` bu daldan AYRI bir
+# PR'da (#246) ekleniyor; iki dalin main'e inis sirasi garanti degil. Eskiden
+# `compose_check` adimi dosya yoksa build/up adimlarini `ready` cikisiyla
+# fail-safe ATLIYOR, job yine de basarili donuyordu -- yukaridaki ayrima gore
+# bu YANLISTI: `vars.DEPLOY_ENABLED` zaten "kurulum bitti" beyanidir (bkz.
+# asagida FAIL-SAFE HEDEF KAPISI); operator onu `true` yaptiysa prod
+# manifestinin YOKLUGU masum bir eksiklik degil, bir yanlis-yapilandirmadir.
+# Kapatildi: `compose_check` artik FAIL-CLOSED -- dosya yoksa gorunur bir
+# `::error::` basip `exit 1` verir, build/up adimlari (job zaten basarisiz
+# oldugu icin, adimlarin kendi `if:`'ine gerek kalmadan) hic calismaz. (Hedef
+# hic tanimli DEGILSE -- `vars.DEPLOY_ENABLED` != 'true' -- job zaten
+# preflight kapisinda SKIP olur; o, DEGISMEYEN, mesru bir "deploy hic
+# istenmedi" atlamasidir -- burasi BAMBASKA bir kapi.)
+#
+# SMOKE (deploy-sonrasi canli dogrulama, #189 BAGIMLILIGI, DOGRULAYICI adim):
+# `deploy` basarili olunca `smoke` job'i `make smoke` calistirir (bkz.
+# asagida). Bu dal (#192) #189'dan (T-189-live-smoke, `make smoke` hedefini
+# ekleyen dal) ONCE main'e inebilir -- o yuzden `smoke` job'i calistirmadan
+# once Makefile'da `smoke:` hedefinin GERCEKTEN var olup olmadigini kontrol
+# eder; yoksa (#189 henuz merge olmamissa) adimi fail-safe ATLAR -- bu MESRU
+# bir atlama (yukaridaki ayrima gore: smoke bir sey DEGISTIRMEZ, yalniz
+# DOGRULAR), kirmizi vermez. Ama gorunurlugu artirilmisti (S192 review,
+# Blocker 1): atlama mesaji artik `::notice::` DEGIL, `::warning::`
+# seviyesindedir -- dogrulanmamis bir deploy kosusu ozetinde acikca GORUNSUN
+# (deploy'un kendisi basarili olsa da, onu KANITLAYAN adim atlanmis olabilir).
+# #189 merge olunca hedef belirir ve smoke kendiliginden aktiflesir -- bu
+# dosyaya bir daha DOKUNMAYA gerek YOK. `smoke` BILINCLI olarak GitHub-
+# hosted'da kalir (self-hosted'da DEGIL): prod kutusunun ICINDEN kosarsa
+# loopback/ic ag uzerinden yesil olur ve DNS + Caddy + TLS + firewall
+# zincirini hic kanitlamaz -- disaridan gercek bir HTTP istegi atmasi
+# gerekir (runbook'un SMOKE_STRICT ilkesiyle ayni mantik).
 #
 # RELEASE/MIGRATE: bu workflow'un `docker compose ... up -d` adimi hicbir
 # migration'i OTOMATIK kosturmaz (Fly'daki `release_command` esdegeri
@@ -241,33 +266,37 @@ jobs:
 
       # Kapi 4 -- prod compose dosyasi (deploy/docker-compose.prod.yml) bu
       # daldan AYRI bir PR'da (#246) ekleniyor; iki dalin main'e inis sirasi
-      # garanti degil. `smoke` job'inin Makefile-hedefi kontroluyle AYNI
-      # desen: dosya yoksa asagidaki build/up adimlari fail-safe ATLANIR, job
-      # yine de basarili sayilir (kirmizi verilmez).
-      - name: Prod compose dosyasi var mi?
+      # garanti degil. Bu EYLEYICI bir kapi (bkz. dosya basligi, DOGRULAYICI
+      # vs EYLEYICI ATLAMA): dosya yoksa adim gorunur bir `::error::` basip
+      # `exit 1` ile FAIL-CLOSED olur -- job derhal basarisiz olur, asagidaki
+      # build/up adimlari (kendi `if:`'lerine gerek KALMADAN, bir onceki adim
+      # basarisiz oldugu icin GitHub'in varsayilan davranisiyla) hic calismaz.
+      # Fail-safe ATLAMA burada YOK: `vars.DEPLOY_ENABLED=true` operatorun
+      # kurulumu bitirdigi beyanidir, manifestin YOKLUGU bir yanlis-
+      # yapilandirmadir, masum bir eksiklik degil.
+      - name: Prod compose dosyasi var mi? (EYLEYICI kapi -- fail-CLOSED)
         id: compose_check
         run: |
           if [ -f deploy/docker-compose.prod.yml ]; then
-            echo "ready=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "ready=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::deploy/docker-compose.prod.yml repoda yok (#246 henuz main'e inmemis olabilir) - deploy adimlari atlaniyor (fail-safe)."
+            exit 0
           fi
+          echo "::error::deploy/docker-compose.prod.yml repoda yok (#246 henuz main'e inmemis olabilir). Bu EYLEYICI bir adimdir (deploy'un on kosulu) -- fail-safe ATLANAMAZ: vars.DEPLOY_ENABLED='true' zaten kurulumun bittigi beyanidir, prod manifestinin YOKLUGU bir yanlis-yapilandirmadir. Once #246'yi main'e indir."
+          exit 1
 
       # Imaji ONCE kur, SONRA recreate et: build patlarsa calisan servis
       # ayakta kalir (kesinti yalnizca `up -d`nin recreate penceresi kadar).
       # `-f` HICBIR ZAMAN atlanmaz: ciplak `docker compose up -d --build`
       # cwd'deki KOK docker-compose.yml'i okur -- o dosya Postgres'i
       # 0.0.0.0:5432'de ensemble/ensemble parolasiyla YAYINLAR (public IP'li
-      # VDS'te aninda ele gecirme).
+      # VDS'te aninda ele gecirme). `compose_check` yukarida zaten fail-closed
+      # oldugu icin bu adimlarin ayrica bir `if:` kapisina ihtiyaci YOK --
+      # dosya yoksa job zaten bu satira hic ulasmaz.
       - name: Prod imajini kur
-        if: steps.compose_check.outputs.ready == 'true'
         env:
           IMAGE_TAG: ${{ needs.preflight.outputs.sha }}
         run: docker compose -f deploy/docker-compose.prod.yml build api
 
       - name: Prod servisleri ayaga kaldir
-        if: steps.compose_check.outputs.ready == 'true'
         env:
           IMAGE_TAG: ${{ needs.preflight.outputs.sha }}
         run: docker compose -f deploy/docker-compose.prod.yml up -d --remove-orphans
@@ -278,10 +307,11 @@ jobs:
     # (SKIP DEGIL) olmasini sart kosar: `deploy` preflight-hedef-yoklugundan
     # SKIP edilirse `smoke` de kendiliginden SKIP olur (kaskad fail-safe,
     # ustteki "FAIL-SAFE HEDEF KAPISI" notuyla TUTARLI -- ekstra kosul
-    # yazmaya gerek yok). NOT: deploy job'inin KENDI ic compose-check'i
-    # (yukarida) bir STEP-seviyesi atlama -- job yine de basarili doner, bu
-    # yuzden smoke o durumda da kosar (smoke job'inin kendi SMOKE_API_URL
-    # kapisi bunu ayrica ele alir, bkz. asagida).
+    # yazmaya gerek yok). NOT: `deploy` job'inin KENDI ic `compose_check`'i
+    # (yukarida) artik FAIL-CLOSED -- dosya yoksa `deploy` job'inin KENDISI
+    # basarisiz olur, bu yuzden bu durumda `smoke` de (needs=[preflight,
+    # deploy] kaskadiyla) kendiliginden SKIP olur; smoke YALNIZCA `deploy`
+    # gercekten basarili (prod'a bir sey uygulanmis) oldugunda kosar.
     needs: [preflight, deploy]
     runs-on: ubuntu-latest # BILINCLI: self-hosted DEGIL (bkz. dosya basligi, SMOKE notu)
     steps:
@@ -296,7 +326,12 @@ jobs:
       # Kapi 3b -- Makefile'da `smoke:` hedefi VAR MI: bu dal (#192) #189'dan
       # (T-189-live-smoke, hedefi ekleyen dal) ONCE main'e inebilir; hedef
       # yoksa `make smoke` "No rule to make target" ile PATLAR -- bu da
-      # fail-safe atlanir (#189 bagimliligi, bkz. dosya basligi).
+      # fail-safe atlanir (#189 bagimliligi, bkz. dosya basligi). Bu, smoke
+      # DOGRULAYICI bir adim oldugu icin MESRU bir atlama (bkz. dosya
+      # basligi, DOGRULAYICI vs EYLEYICI ATLAMA) -- ama gorunurlugu
+      # `::notice::` yerine `::warning::` seviyesine yukseltildi (S192
+      # review, Blocker 1): deploy basarili gorunse de onu KANITLAYAN adim
+      # atlanmis olabilir, bu kosu ozetinde ACIKCA gorunmeli.
       - name: SMOKE_API_URL tanimli mi + make smoke hedefi var mi?
         id: smoke_check
         env:
@@ -304,12 +339,12 @@ jobs:
         run: |
           if [ -z "$SMOKE_API_URL" ]; then
             echo "ready=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::vars.SMOKE_API_URL tanimli degil - smoke adimi atlaniyor (fail-safe)."
+            echo "::warning::vars.SMOKE_API_URL tanimli degil - smoke adimi atlaniyor (fail-safe, dogrulanmamis deploy)."
             exit 0
           fi
           if ! grep -qE '^smoke:' Makefile; then
             echo "ready=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::Makefile'da 'smoke' hedefi yok (#189 henuz main'e inmemis olabilir) - adim atlaniyor (fail-safe)."
+            echo "::warning::Makefile'da 'smoke' hedefi yok (#189 henuz main'e inmemis olabilir) - adim atlaniyor (fail-safe, dogrulanmamis deploy)."
             exit 0
           fi
           echo "ready=true" >> "$GITHUB_OUTPUT"
