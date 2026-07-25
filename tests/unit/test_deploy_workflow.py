@@ -872,6 +872,29 @@ def test_deploy_build_ve_up_adimlarinda_step_if_yok():
         )
 
 
+def test_deploy_job_hicbir_adiminda_continue_on_error_yok():
+    """Hata bastirma kilidi (ikinci bosluk): 'Prod servisleri ayaga kaldir'
+    (ya da deploy job'indaki BASKA herhangi bir adim) `continue-on-error: true`
+    alirsa, `docker compose up -d` GERCEKTEN patlasa bile (port cakismasi,
+    imaj hatasi, disk dolu, vs.) adim 'basarili' sayilir ve job yesil biter --
+    ama prod'da HICBIR SEY GERCEKTEN AYAGA KALKMAMIS olabilir (sessiz hata
+    bastirma, deploy job'inin 'basarili = gercekten deploy edildi' vaadini
+    cignemesi). deploy job'inin NE job seviyesinde NE DE herhangi bir adiminda
+    `continue-on-error` TASIMADIGINI dogrula."""
+    deploy_job = DEPLOY["jobs"]["deploy"]
+    assert "continue-on-error" not in deploy_job, (
+        f"deploy job'inda job-seviyesinde continue-on-error var: "
+        f"{deploy_job.get('continue-on-error')!r} -- job icindeki herhangi bir adim patlasa "
+        "bile job yesil donebilir."
+    )
+    for step in _all_steps(deploy_job):
+        assert "continue-on-error" not in step, (
+            f"{step.get('name')!r} adiminda continue-on-error var: "
+            f"{step.get('continue-on-error')!r} -- adim GERCEKTEN patlasa bile job yesil "
+            "biter, prod'a hicbir sey uygulanmamis olabilir (sessiz hata bastirma)."
+        )
+
+
 def test_compose_check_yolu_build_up_yollariyla_tutarli():
     """Ufak sertlestirme (bagimsiz dogrulayici bulgusu): compose_check'in
     VARLIK kontrol ettigi yol ile build/up adimlarinin 'docker compose -f
