@@ -62,6 +62,7 @@ Her iş bir **GitHub Issue**'dan başlar — **`<id>` = issue numarası**.
 - **Review:** merge'den önce **≥1 takım arkadaşı onayı** — **[`docs/review-rehberi.md`](docs/review-rehberi.md)'ne göre** (AI aracınla: rehberi okut, PR'ı incelet; karar sende). **SLA:** ≤24 saat (blocker'lar daha hızlı).
 - **Merge yöntemi: Merge commit** (commit'ler korunur → katkı görünür). **Kim merge'ler:** PR'ı **açan kişi** (≥1 onaydan sonra). **Merge sonrası branch otomatik silinir.**
 - **Çakışma:** PR'dan önce `main`'i branch'e çekip çakışmayı çöz.
+- **Kontrat drift (openapi.json ↔ TS client):** router/şemaya dokunduysan `make contracts` çalıştır, ikisini de commit'le — CI'nin iki drift-check'i + neden/nasıl için [`docs/kontrat-drift-guardrail.md`](docs/kontrat-drift-guardrail.md).
 
 ## Manuel vs Otomatik
 
