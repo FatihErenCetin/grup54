@@ -15,6 +15,14 @@ from ensemble.integrations.gemini.errors import GeminiPermanentError, GeminiTran
 _TRANSIENT_CODES = {408, 429, 500, 502, 503, 504}
 _PERMANENT_CODES = {400, 401, 403, 404}
 
+# `wait_random_exponential(multiplier=..., max=...)`'in üst sınırı - iki retry
+# dekoratöründe (`_call_with_retry` + `_embed_with_retry`) AYNI olmalı (ikisi
+# de tek noktadan okusun diye tek sabite çıkarıldı). #63 takip: `app.py::
+# _gemini_single_flight_wait_s` bu sabiti, tek bir judge/embeddings çağrısının
+# GERÇEK en-kötü-durum süresini türetmek için kullanır (bkz. o fonksiyonun
+# docstring'i) - burada değişirse oradaki türetme de otomatik güncel kalır.
+RETRY_WAIT_CAP_S = 8.0
+
 
 def _classify(exc: Exception) -> GeminiTransientError | GeminiPermanentError:
     """Ham SDK hatasını retry-karar noktası olan iki sınıftan birine çevirir."""
@@ -68,7 +76,7 @@ class ResilientGeminiClient:
         @retry(
             retry=retry_if_exception_type(GeminiTransientError),
             stop=stop_after_attempt(self._settings.GEMINI_MAX_RETRIES),
-            wait=wait_random_exponential(multiplier=0.5, max=8),
+            wait=wait_random_exponential(multiplier=0.5, max=RETRY_WAIT_CAP_S),
             reraise=True,
         )
         def _attempt() -> str:
@@ -95,7 +103,7 @@ class ResilientGeminiClient:
         @retry(
             retry=retry_if_exception_type(GeminiTransientError),
             stop=stop_after_attempt(self._settings.GEMINI_MAX_RETRIES),
-            wait=wait_random_exponential(multiplier=0.5, max=8),
+            wait=wait_random_exponential(multiplier=0.5, max=RETRY_WAIT_CAP_S),
             reraise=True,
         )
         def _attempt() -> list[list[float]]:

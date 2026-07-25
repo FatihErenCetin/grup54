@@ -3,7 +3,7 @@ from pathlib import Path
 from typing import Annotated, Literal
 from urllib.parse import urlparse
 
-from pydantic import field_validator
+from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 # .env her zaman repo kökünden yüklenir (cwd'den bağımsız — alt dizinden
@@ -100,6 +100,58 @@ class Settings(BaseSettings):
     RADAR_WINDOW_DAYS: int = 14
     RADAR_MIN_JACCARD: float = 0.0
     RADAR_MIN_SIMILARITY: float = 0.0
+
+    # --- Hosted public demo sertlestirme (#63) — VARSAYILAN KAPALI ---
+    # local/dev davranisi bu bayrak acilmadan HIC degismez.
+    DEMO_MODE: bool = False
+    DEMO_RATE_WINDOW_S: int = 60
+    DEMO_AI_RATE_LIMIT: int = 10  # IP basina, KULLANICI-GIRDILI AI yollari (/query, /scope/check)
+    DEMO_AI_GLOBAL_LIMIT: int = 60  # tum IP'ler toplami — asil fatura tavani
+    DEMO_RATE_LIMIT: int = 120  # IP basina, diger (poll'lanan) yollar
+    DEMO_CACHE_TTL_S: int = 900
+    # 256'ydi -> RADAR_WINDOW_DAYS(14)+GITHUB_BACKFILL_LIMIT(50) altinda calisma
+    # kumesi (~300 farkli metin: commit/diff cifti + query/scope adaylari)
+    # bu siniri asiyor ve LRU tahliyesi surekli TERS etki yapiyordu (thrashing:
+    # sinirsizken ~300 embed cagrisi, 256-limitli calismada ~900'e cikiyordu -
+    # ayni metinler pencere icinde tekrar tekrar Gemini'ye gidiyordu, tam da
+    # bu cache'in onlemesi gereken sey). 1024: calisma kumesinin ~3.4x'i (guvenli
+    # pay) - bellek olcumu (768-dim float listesi, gercek Python nesnesi):
+    # sys.getsizeof ile ~24.6 KB/vektor -> 1024 * 24.6 KB =~ 25 MB, 512 MB Fly
+    # VM'in ~%5'i (F1 kontrat kaydi #63 - deger burada ve .env.example'da,
+    # docs/sprint3-kontratlar.md Ek F/F1'deki kod blogu da 1024 gosterir - AYNI
+    # commit'te senkronlandi; test_config.py::
+    # test_demo_cache_max_entries_dokuman_ile_ayni bu ikisinin bir daha
+    # kaymamasini kilitler).
+    DEMO_CACHE_MAX_ENTRIES: int = 1024
+
+    @model_validator(mode="after")
+    def _validate_demo_mode(self) -> "Settings":
+        # Fail-closed acilis: DEMO_MODE acikken tek read-only repo'ya sabitlenme
+        # ZORUNLU (#63) - yoksa uygulama hic ayaga kalkmaz (auth_blocked kanit
+        # yerine tasarim-anı garanti).
+        if self.DEMO_MODE and not (self.GITHUB_REPO_OWNER and self.GITHUB_REPO_NAME):
+            raise ValueError(
+                "DEMO_MODE tek repo'ya sabitlenmeden acilamaz (#63) — "
+                "GITHUB_REPO_OWNER ve GITHUB_REPO_NAME zorunlu"
+            )
+        _positive_fields = (
+            "DEMO_RATE_WINDOW_S",
+            "DEMO_AI_RATE_LIMIT",
+            "DEMO_AI_GLOBAL_LIMIT",
+            "DEMO_RATE_LIMIT",
+            "DEMO_CACHE_TTL_S",
+            "DEMO_CACHE_MAX_ENTRIES",
+        )
+        for field in _positive_fields:
+            if getattr(self, field) <= 0:
+                raise ValueError(f"{field} pozitif olmali (#63)")
+        return self
+
+    @property
+    def demo_repo_full_name(self) -> str | None:
+        if not (self.GITHUB_REPO_OWNER and self.GITHUB_REPO_NAME):
+            return None
+        return f"{self.GITHUB_REPO_OWNER}/{self.GITHUB_REPO_NAME}"
 
 
 @lru_cache

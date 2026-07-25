@@ -51,6 +51,24 @@
                 }
               }
             }
+          },
+          "429": {
+            "description": "Demo istek limiti aşıldı (yalnız DEMO_MODE)",
+            "headers": {
+              "Retry-After": {
+                "description": "Saniye — pencere kayınca tekrar denenebilir",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
           }
         }
       }
@@ -88,6 +106,24 @@
             "headers": {
               "Retry-After": {
                 "description": "Saniye — yalniz kendiliginden duzelebilir durumlarda",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Demo istek limiti aşıldı (yalnız DEMO_MODE)",
+            "headers": {
+              "Retry-After": {
+                "description": "Saniye — pencere kayınca tekrar denenebilir",
                 "schema": {
                   "type": "integer"
                 }
@@ -148,6 +184,24 @@
             "headers": {
               "Retry-After": {
                 "description": "Saniye — yalniz kendiliginden duzelebilir durumlarda",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Demo istek limiti aşıldı (yalnız DEMO_MODE)",
+            "headers": {
+              "Retry-After": {
+                "description": "Saniye — pencere kayınca tekrar denenebilir",
                 "schema": {
                   "type": "integer"
                 }
@@ -229,6 +283,24 @@
                 }
               }
             }
+          },
+          "429": {
+            "description": "Demo istek limiti aşıldı (yalnız DEMO_MODE)",
+            "headers": {
+              "Retry-After": {
+                "description": "Saniye — pencere kayınca tekrar denenebilir",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
           }
         }
       }
@@ -278,6 +350,24 @@
                 }
               }
             }
+          },
+          "429": {
+            "description": "Demo istek limiti aşıldı (yalnız DEMO_MODE)",
+            "headers": {
+              "Retry-After": {
+                "description": "Saniye — pencere kayınca tekrar denenebilir",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
           }
         }
       }
@@ -315,6 +405,24 @@
             "headers": {
               "Retry-After": {
                 "description": "Saniye — yalniz kendiliginden duzelebilir durumlarda",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Demo istek limiti aşıldı (yalnız DEMO_MODE)",
+            "headers": {
+              "Retry-After": {
+                "description": "Saniye — pencere kayınca tekrar denenebilir",
                 "schema": {
                   "type": "integer"
                 }
@@ -377,6 +485,24 @@
             "headers": {
               "Retry-After": {
                 "description": "Saniye — yalniz kendiliginden duzelebilir durumlarda",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Demo istek limiti aşıldı (yalnız DEMO_MODE)",
+            "headers": {
+              "Retry-After": {
+                "description": "Saniye — pencere kayınca tekrar denenebilir",
                 "schema": {
                   "type": "integer"
                 }
@@ -471,6 +597,24 @@
               }
             }
           },
+          "429": {
+            "description": "Demo istek limiti aşıldı (yalnız DEMO_MODE)",
+            "headers": {
+              "Retry-After": {
+                "description": "Saniye — pencere kayınca tekrar denenebilir",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -518,6 +662,24 @@
             "headers": {
               "Retry-After": {
                 "description": "Saniye — yalniz kendiliginden duzelebilir durumlarda",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Demo istek limiti aşıldı (yalnız DEMO_MODE)",
+            "headers": {
+              "Retry-After": {
+                "description": "Saniye — pencere kayınca tekrar denenebilir",
                 "schema": {
                   "type": "integer"
                 }
@@ -603,6 +765,24 @@
             "headers": {
               "Retry-After": {
                 "description": "Saniye — yalniz kendiliginden duzelebilir durumlarda",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Demo istek limiti aşıldı (yalnız DEMO_MODE)",
+            "headers": {
+              "Retry-After": {
+                "description": "Saniye — pencere kayınca tekrar denenebilir",
                 "schema": {
                   "type": "integer"
                 }
