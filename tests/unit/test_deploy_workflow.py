@@ -846,6 +846,32 @@ def test_deploy_prod_compose_dosyasini_acikca_kullanir():
     assert up_steps, "deploy job'inda servisleri ayaga kaldiran (up -d) bir docker compose adimi yok (M1)."
 
 
+def test_deploy_build_ve_up_adimlarinda_step_if_yok():
+    """CAGRI YERI kilidi (yukaridaki testin dogrulamadigi bosluk): compose_check
+    TANIMI (fail-closed, exit 1) kilitli olsa da, build/up adimlarina bayat
+    bir step-level `if: steps.compose_check.outputs...` geri konursa
+    (compose_check artik bir `ready`/benzeri output YAZMIYOR -- yalniz basarili
+    biter ya da job'i kirar) bu kosul HER ZAMAN 'skip' sonucu dogurur: build/up
+    SESSIZCE atlanir ama job yine de yesil biter (deploy hic yapilmamis olur,
+    S192 review Blocker 1'in aynen geri gelmis hali). Build ve up adimlarinin
+    (compose_check disinda, ozellikle) hicbir step-level `if:` anahtari
+    TASIMADIGINI dogrudan assert eder -- job-level kapi (needs.preflight...)
+    zaten deploy'un tamamini kapsiyor, adim seviyesinde ek bir kosula gerek
+    yok ve boyle bir kosul yalniz sessiz-atlama riski katar."""
+    deploy_steps = _all_steps(DEPLOY["jobs"]["deploy"])
+    compose_steps = [s for s in deploy_steps if "docker compose" in (s.get("run") or "")]
+    build_steps = [s for s in compose_steps if "build" in s["run"]]
+    up_steps = [s for s in compose_steps if "up -d" in s["run"]]
+    assert build_steps and up_steps, "build/up adimlari bulunamadi (test kurulumu bozuk)."
+    for step in build_steps + up_steps:
+        assert "if" not in step, (
+            f"{step.get('name')!r} adiminda step-level bir 'if' var: {step.get('if')!r} -- "
+            "compose_check zaten FAIL-CLOSED (exit 1); bu adimlarin ayrica bir kosula "
+            "ihtiyaci yok. Boyle bir 'if' geri konursa deploy sessizce atlanabilir "
+            "(S192 Blocker 1'in cagri-yerinde geri gelmis hali)."
+        )
+
+
 def test_compose_check_yolu_build_up_yollariyla_tutarli():
     """Ufak sertlestirme (bagimsiz dogrulayici bulgusu): compose_check'in
     VARLIK kontrol ettigi yol ile build/up adimlarinin 'docker compose -f
