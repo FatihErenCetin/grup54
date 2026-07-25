@@ -1,6 +1,6 @@
 ---
 title: Sprint 3 — go-live (canliya alma) + web MVP'nin gerisi
-status: accepted
+status: frozen
 owner: Fatih Eren Cetin (PO)
 version: '1'
 ref: main
@@ -32,7 +32,7 @@ non_goals:
 type: scope
 sprint: '3'
 ---
-[.harness/scope/ — PO tarafindan kabul edilmis Sprint-3 kapsami]
+[.harness/scope/ — PO tarafindan dondurulmus (frozen) Sprint-3 kapsami]
 
 Amac (docs/sprint3-kontratlar.md, satir 3): go-live (canliya alma) + web MVP'nin gerisi — deploy mekanigi, kalan router'lar, store/pgvector'un canli baglanmasi, MCP okuma yuzu ve uc frontend sayfasi ayni anda, farkli kisilerde ilerliyor. Arayuzler sprint basinda donduruldu (retro aksiyonu R2 · D-22: kontrat-once parallellesme).
 

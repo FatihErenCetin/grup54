@@ -102,6 +102,17 @@ metninden birebir taşındı. `commit_sha`/`frozen_at`, o dosyaya en son dokunan
 gerçek commit'e (`5cf2009`) işaret eder. Kapsam değişirse **PO** bu dosyayı
 düzenler/dondurur (`internal/grup54_dizin_yapisi.md` §3).
 
+`status` alanının **`ScopeService`'in okuduğu tek geçerli "kullanılabilir"
+değeri `frozen`'dır** (`engine/scope.py::get_current_scope`, `casefold`
+karşılaştırması — `GET /scope/current`). `draft` **açıkça** yasak
+(`scope_context.py::scope_items` — judge hiç çalışmaz, `check_scope` de
+kapanır). PO taslağı gözden geçirip dondurana kadar başka bir ara değer
+(`accepted` gibi) kullanılabilir ama bu durumda `GET /scope/current` **503
+`scope_unavailable`** döner — "PO onayı bekleniyor" durumu kanıtsız
+görünmesin diye kasıtlı (#242 BLOCKER 2: bu dosya bir süre `status: accepted`
+taşıdı ve endpoint'i sessizce 503'te bıraktı — `docs/sprint3-kontratlar.md`
+zaten FROZEN işaretliyken front-matter'ın kendisi geride kalmıştı).
+
 ## 6. `active/` — henüz boş
 
 Canlı beyanlar kişiye/ajana ait; kimse başkasının dosyasına dokunmaz. Bugün
@@ -129,6 +140,26 @@ yaratır ve özel bağlamı public repoya sızdırma riski taşır (hangi karar�
 public'e taşınabilir olduğuna PO karar vermeli). Bu yüzden `decisions/`
 bugün **boş** (`.gitkeep`) başlıyor; geriye dönük migrasyon — hangi D-NN'lerin
 buraya taşınacağı — ayrı bir PO kararı bekliyor.
+
+## 9. Açılış (boot) sözleşmesi — fail-closed + `/board` ön koşulu
+
+- **Fail-closed açılış kontrolü** (`ensemble.app.lifespan`, #242 BLOCKER 1b):
+  uygulama açılırken `harness_port.read_scope(sprint)` başarısız olursa
+  (`HarnessError`) süreç **gürültülü** çöker — sessizce boş board/scope'a
+  düşmez. Gerekçe: bir konteyner dağıtımında `.harness/` host'tan salt-okunur
+  bind-mount edilirse ve host'ta dizin yoksa, Docker orada **boş bir dizin**
+  yaratıp imaja gömülü kopyayı maskeler; bu kontrol olmadan uygulama
+  `read_tasks() == []` / `read_scope()` hatasıyla sessizce yarım açılırdı.
+  Kontrol **yalnız uygulama açılışında** koşar (port/servis kurulumunda
+  değil) — `tmp_path` köklü `FileHarnessPort` kullanan mevcut testler
+  (`test_scope.py`, `test_harness.py`, ...) bundan etkilenmez.
+- **`GET /board` belgelenmemiş ön koşulu:** taze bir checkout'ta `task_projection`
+  tablosu henüz yok — `alembic upgrade head` (`cd src/backend && uv run alembic
+  upgrade head`, ya da `make rebuild`) koşulmadan `GET /board`
+  `sqlite3.OperationalError: no such table: task_projection` ile **500**
+  döner. `.harness/` ile ilgisi yok (DB projeksiyonu, §7 "DB vs `.harness/`"
+  kuralı) ama aynı "açılış ön koşulu" ailesinde olduğu için burada not
+  düşülüyor — bkz. `tests/unit/test_harness_git.py` tüketici-seviyesi kilidi.
 
 ---
 
