@@ -9,13 +9,24 @@ spot-check listesi).
 
 from __future__ import annotations
 
+import http.server
 import json
+import threading
 from urllib.error import URLError
 from urllib.parse import urlsplit
 
 import pytest
 
-from scripts.smoke import ROUTES, HTML_MARKER, Response, _parse_strict, main, normalize_base, origin_of
+from scripts.smoke import (
+    ROUTES,
+    HTML_MARKER,
+    Response,
+    _parse_strict,
+    http_fetch,
+    main,
+    normalize_base,
+    origin_of,
+)
 
 API = "https://api.test"
 WEB = "https://web.test"
@@ -71,8 +82,17 @@ class FakeTransport:
         self.calls: list[tuple[str, str]] = []
 
     def __call__(
-        self, url: str, *, method: str = "GET", headers=None, timeout: float = 15.0
+        self,
+        url: str,
+        *,
+        method: str = "GET",
+        headers=None,
+        timeout: float = 15.0,
+        allow_redirects: bool = True,
     ) -> Response:
+        del allow_redirects  # FakeTransport script'i literal cevap döner; gerçek
+        # redirect-izleme davranışı `test_http_fetch_allow_redirects_gercek_urllib`
+        # (gerçek urllib) tarafından kilitlenir — burada yalnız imza uyumu için var.
         self.calls.append((method, url))
         path = urlsplit(url).path or "/"
         entry = self.script.get((method, path), self.default)
@@ -311,6 +331,89 @@ def test_alti_route_iki_gecis_isteniyor():
     assert len(spa_calls) == len(ROUTES) * 2
     for route in ROUTES:
         assert spa_calls.count(("GET", route)) == 2
+
+
+def test_spa_302_yonlendirme_fail_open_kirmizi(capsys):
+    """DOĞRULANMIŞ BLOCKER (#189, Semih): eski davranış `http_fetch`'in
+    `urlopen`'i çıplak kullanmasıydı — GET için 3xx VARSAYILAN OLARAK
+    izlenir, redirect sonunda `/` (index.html) 200+marker döndüğü için
+    hem doğrudan hem refresh geçişi "yeşil" görünüyordu; halbuki deep-link
+    DOĞRUDAN servis edilmiyordu (SPA rewrite kuralı eksikti). Bu test 6
+    route'un da `/` adresine 302 ile yönlendirildiği bir sahte transport
+    kurar — `allow_redirects=False` çekirdeği çalışıyorsa exit 1 olmalı VE
+    rapor redirect'i (Location dahil) açıkça anlatmalı."""
+    script = _base_ok_script()
+    for route in ROUTES:
+        script[("GET", route)] = Response(302, {"location": f"{WEB}/"}, "")
+    fake = FakeTransport(script)
+    rc = main(env=base_env(), fetch=fake, sleep=lambda s: None)
+    assert rc == 1
+    out = capsys.readouterr().out
+    assert "302" in out
+    assert "Location:" in out
+    assert "deep-link doğrudan servis edilmiyor" in out
+    # Redirect izlenip `/`'e "geldiği" için sahte-yeşil vermemeli: `/`
+    # dışındaki route'lar için hiçbir OK satırı görünmemeli.
+    for route in ROUTES:
+        if route == "/":
+            continue
+        assert f"OK   SPA doğrudan GET {WEB}{route}" not in out
+        assert f"OK   SPA refresh GET {WEB}{route}" not in out
+
+
+class _RedirectingSpaHandler(http.server.BaseHTTPRequestHandler):
+    """Gerçek bir "bozuk deploy"u taklit eden minik HTTP sunucusu: `/`
+    dışındaki HER yolu `/`'e 302 ile yönlendirir; `/` 200 + `HTML_MARKER`
+    döner. `test_http_fetch_allow_redirects_gercek_urllib` bunun üzerinden
+    `urllib`'in GERÇEK `HTTPRedirectHandler` zincirini koşar (sahte
+    transport'un ölçemeyeceği kısım — urlopen'in varsayılan izleme
+    davranışının kendisi)."""
+
+    def do_GET(self) -> None:  # noqa: N802 - BaseHTTPRequestHandler sözleşmesi
+        if self.path == "/":
+            body = f'<html><body><div {HTML_MARKER}></div></body></html>'.encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+        else:
+            self.send_response(302)
+            self.send_header("Location", "/")
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+
+    def log_message(self, format: str, *args: object) -> None:  # pragma: no cover
+        pass  # test çıktısını http.server access-log'uyla kirletme
+
+
+def test_http_fetch_allow_redirects_gercek_urllib():
+    """(a) testi (yukarısı) yalnız SAHTE transport'u ölçer — tek başına
+    yetersizdir çünkü `FakeTransport` zaten `allow_redirects`'i yok sayıp
+    script'teki literal cevabı döner. Bu test kritik boşluğu kapatır:
+    GERÇEK `urllib` + gerçek bir 127.0.0.1 sunucusu üzerinden hem (1)
+    `allow_redirects=False`'in gerçekten 302'yi İZLEMEDİĞİNİ hem de (2)
+    varsayılanın (`allow_redirects=True`) gerçekten izleyip 200'e vardığını
+    kilitler — ikisi de doğrulanmazsa fail-open regresyonu sessizce geri
+    gelebilir."""
+    server = http.server.HTTPServer(("127.0.0.1", 0), _RedirectingSpaHandler)
+    port = server.server_port
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        deep_link = f"http://127.0.0.1:{port}/board"
+
+        not_followed = http_fetch(deep_link, allow_redirects=False, timeout=2.0)
+        assert not_followed.status == 302
+        assert not_followed.header("location") == "/"
+
+        followed = http_fetch(deep_link, allow_redirects=True, timeout=2.0)
+        assert followed.status == 200
+        assert HTML_MARKER in followed.body
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2.0)
 
 
 def test_routes_sabit_liste_ile_esit():

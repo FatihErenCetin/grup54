@@ -142,20 +142,45 @@ def _is_local_host(url: str) -> bool:
     return (urlsplit(url).hostname or "") in _LOCAL_HOSTS
 
 
+class _NoRedirectHandler(urllib.request.HTTPRedirectHandler):
+    """`redirect_request()` None dönünce `HTTPRedirectHandler` "ele almadım"
+    sayılır → zincir `HTTPDefaultErrorHandler`'a düşer ve 3xx'i `HTTPError`
+    olarak fırlatır (aşağıdaki `except urllib.error.HTTPError` dalı bunu
+    `Response(status=3xx)` yapar). `allow_redirects=False`'in çekirdeği."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):  # noqa: D102
+        return None
+
+
+# Tek sefer inşa edilir (build_opener maliyeti) — `_NoRedirectHandler`
+# `HTTPRedirectHandler`'ın alt sınıfı olduğu için `build_opener` varsayılan
+# redirect-izleyen handler'ı BUNUNLA değiştirir (stdlib sözleşmesi).
+_NO_REDIRECT_OPENER = urllib.request.build_opener(_NoRedirectHandler)
+
+
 def http_fetch(
     url: str,
     *,
     method: str = "GET",
     headers: Mapping[str, str] | None = None,
     timeout: float = DEFAULT_TIMEOUT_S,
+    allow_redirects: bool = True,
 ) -> Response:
     """Gerçek ağ transportu (stdlib urllib). Hiçbir zaman raise etmez —
     `HTTPError` (4xx/5xx) bir `Response`'a çevrilir; `URLError`/timeout/DNS
     hatası `Response(status=0, body="<tip>: <mesaj>")` olur (traceback yerine
-    tek satır FAIL — main() akışı hiç kesilmez)."""
+    tek satır FAIL — main() akışı hiç kesilmez).
+
+    `allow_redirects=False` (varsayılan `True`) → 3xx cevabı SESSİZCE izlenip
+    hedefe (örn. `index.html`) varılmaz; 3xx'in kendisi `Response(status=3xx,
+    headers={"location": ...})` olarak döner. #189 blocker'ı: `urlopen`
+    GET için 3xx'i varsayılan olarak izler — SPA route kontrolü (K2) deep-link'in
+    DOĞRUDAN servis edildiğini kanıtlamalı, redirect sonrası index.html'e
+    varılmasını değil (bkz. `check_spa_routes`)."""
     req = urllib.request.Request(url, method=method, headers=dict(headers or {}))
+    opener_open = urllib.request.urlopen if allow_redirects else _NO_REDIRECT_OPENER.open
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:  # noqa: S310
+        with opener_open(req, timeout=timeout) as resp:  # noqa: S310
             body = resp.read().decode("utf-8", errors="replace")
             hdrs = {k.lower(): v for k, v in resp.headers.items()}
             return Response(status=resp.status, headers=hdrs, body=body)
@@ -170,6 +195,8 @@ def http_fetch(
         return Response(status=0, headers={}, body=f"{type(exc).__name__}: {exc}")
 
 
+# `allow_redirects` `http_fetch` imzasında keyword-only (varsayılan True);
+# testteki `FakeTransport.__call__` de aynı imzayı taşır (bkz. test_smoke.py).
 FetchFn = Callable[..., Response]
 
 
@@ -311,6 +338,13 @@ def check_cors(api: str, web_origin: str, rep: Report, fetch: FetchFn, *, timeou
 
 
 def _check_spa_response(resp: Response, url: str, pass_label: str, rep: Report) -> None:
+    if resp.status in _REDIRECT_STATUSES:
+        location = resp.header("location") or "?"
+        rep.fail(
+            f"SPA {pass_label} GET {url} -> {resp.status} (Location: {location}); "
+            "deep-link doğrudan servis edilmiyor - SPA rewrite kuralı eksik"
+        )
+        return
     if resp.status != 200:
         label = resp.status if resp.status else "bağlantı yok"
         rep.fail(f"SPA {pass_label} GET {url} -> {label}")
@@ -331,7 +365,14 @@ def check_spa_routes(web: str, rep: Report, fetch: FetchFn, *, timeout: float) -
     for route in ROUTES:
         url = f"{web}{route}"
 
-        direct = _call(fetch, url, method="GET", headers={"Accept": "text/html"}, timeout=timeout)
+        direct = _call(
+            fetch,
+            url,
+            method="GET",
+            headers={"Accept": "text/html"},
+            timeout=timeout,
+            allow_redirects=False,
+        )
         _check_spa_response(direct, url, "doğrudan", rep)
 
         refresh_url = f"{url}?_smoke={int(time.time())}"
@@ -341,6 +382,7 @@ def check_spa_routes(web: str, rep: Report, fetch: FetchFn, *, timeout: float) -
             method="GET",
             headers={"Accept": "text/html", "Cache-Control": "no-cache"},
             timeout=timeout,
+            allow_redirects=False,
         )
         _check_spa_response(refreshed, refresh_url, "refresh", rep)
 
