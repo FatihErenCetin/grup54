@@ -94,4 +94,3 @@ def rebuild_projection(
         vector_index.replace_all(staged_vectors)
 
     return {"tasks": len(task_rows), "presence": len(presence_rows), "events": len(event_rows)}
-

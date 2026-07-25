@@ -34,17 +34,17 @@ def test_postgres_engine_creation_url_normalization():
 def test_sqlite_engine_creation():
     settings = Settings(DATABASE_URL="sqlite:///:memory:")
     engine = get_engine(settings)
-    
+
     # In-memory veritabanında tabloları oluştur
     Base.metadata.create_all(engine)
-    
+
     session_factory = get_session_factory(engine)
     with session_factory() as session:
         # CRUD testi
         task = TaskProjectionRow(task_id="T-1", title="Test", status="todo")
         session.add(task)
         session.commit()
-        
+
         saved = session.query(TaskProjectionRow).filter_by(task_id="T-1").first()
         assert saved is not None
         assert saved.title == "Test"
@@ -55,10 +55,10 @@ def test_rebuild_projection():
     settings = Settings(DATABASE_URL="sqlite:///:memory:")
     engine = get_engine(settings)
     Base.metadata.create_all(engine)
-    
+
     session_factory = get_session_factory(engine)
     session = session_factory()
-    
+
     # Mock HarnessPort
     mock_harness = MagicMock(spec=HarnessPort)
     mock_harness.read_tasks.return_value = [
@@ -69,21 +69,21 @@ def test_rebuild_projection():
         {"handle": "enes", "task_id": "T-41"},
         {"handle": "esma", "task_id": "T-24"}
     ]
-    
+
     # Başlangıçta boş
     assert session.query(TaskProjectionRow).count() == 0
     assert session.query(PresenceRow).count() == 0
-    
+
     # Rebuild
     res = rebuild_projection(session, mock_harness)
-    
+
     assert res["tasks"] == 2
     assert res["presence"] == 2
-    
+
     # Doğrulama
     assert session.query(TaskProjectionRow).count() == 2
     assert session.query(PresenceRow).count() == 2
-    
+
     enes = session.query(PresenceRow).filter_by(handle="enes").first()
     assert enes.task == "T-41"
 
@@ -249,22 +249,22 @@ def test_vector_index_untouched_on_db_rollback():
     from ensemble.ports import GitHubPort, EmbeddingsPort
     from ensemble.models import NormalizedEvent
     from datetime import datetime, timezone
-    
+
     mock_github = MagicMock(spec=GitHubPort)
     mock_github.fetch_backfill_events.return_value = [
         NormalizedEvent(id="ev1", type="commit", actor="user", branch="main", ref="123", files=[], ts=datetime.now(timezone.utc))
     ]
-    
+
     mock_embeddings = MagicMock(spec=EmbeddingsPort)
     mock_embeddings.embed.side_effect = RuntimeError("Embed fail")
 
     import pytest
     with pytest.raises(RuntimeError):
         rebuild_projection(
-            session, 
-            mock_harness, 
-            github=mock_github, 
-            vector_index=vector_index, 
+            session,
+            mock_harness,
+            github=mock_github,
+            vector_index=vector_index,
             embeddings=mock_embeddings
         )
 
@@ -274,4 +274,3 @@ def test_vector_index_untouched_on_db_rollback():
     assert result[0][0] == "existing-vec", "Vector index DB hatasından etkilenmemeli"
 
     session.close()
-
