@@ -1,4 +1,4 @@
-# Deploy CD: main -> Fly otomatik deploy (#192).
+# Deploy CD: main -> self-hosted VDS otomatik deploy (#192).
 #
 # KAPININ GERCEK TANIMI (onemli, ucu yerde farkli olmasin diye buraya acikca
 # yazildi): `workflow_run` tetikleyicisi bu dosyayi CI workflow'u (ci.yml,
@@ -8,8 +8,7 @@
 # conclusion, workflow'un TUMUNUN sonucudur. Ham `push` tetikleyicisi bunu TEK
 # BASINA saglayamaz: push aninda CI henuz sonuclanmamis olur. `workflow_run`
 # CI'in BITTIGI ani + onun dogruladigi `head_sha`'yi verir; deploy TAM O
-# commit'i checkout eder (kriter 6, asagida). Yerel esdeger `make deploy`
-# (Makefile, #181) -- bu workflow onu CI-yesil kapisina baglar.
+# commit'i checkout eder (kriter 6, asagida).
 #
 # FRONTEND ARTIK REQUIRED CHECK (main icin GitHub branch-protection required
 # check listesi guncellendi: lint-test + check-single-issue + frontend).
@@ -50,44 +49,57 @@
 #      `exit 1` ile preflight job'ini FAIL ediyordu, deploy'un atlanmasi
 #      "needs: preflight" + "job basarisiz olunca kendi if'i olan sonraki
 #      job da SKIP edilir" varsayimina baliydi -- bu, dosyanin KENDI
-#      "FAIL-SAFE SECRET KAPISI" paragrafinin ogrettigi desenle
+#      "FAIL-SAFE HEDEF KAPISI" paragrafinin ogrettigi desenle
 #      CELISIYORDU (ortuk needs-semantigine guvenme, acik bir OUTPUT'a
-#      bagla; `has_token` deseni). Kapatildi: adim artik `exit 1` ATMAZ;
+#      bagla; `has_target` deseni). Kapatildi: adim artik `exit 1` ATMAZ;
 #      sonucu acikca `ci_ok=true|false` OUTPUT'una yazar (false iken
 #      ::error:: ile gorunur bir aciklama basar), preflight bunu disari
-#      verir, `deploy.if` hem `has_token` hem `ci_ok` outputlarina birlikte
-#      BAGLIDIR -- `has_token` deseniyle BIREBIR ayni yontem, iki farkli
+#      verir, `deploy.if` hem `has_target` hem `ci_ok` outputlarina birlikte
+#      BAGLIDIR -- `has_target` deseniyle BIREBIR ayni yontem, iki farkli
 #      mekanizma degil. Otomatik (workflow_run) yolunda adim `event_name`'e
 #      bakip DOGRUDAN `ci_ok=true` yazar (o yolda kapi zaten
 #      `workflow_run.conclusion` ile saglaniyor) -- tek bir output her iki
 #      tetikleyici yolunda da anlamli kalir.
 #
-# FAIL-SAFE SECRET KAPISI (kritik kisit): GitHub Actions `if:` ifadelerinde
-# `secrets` context'i KULLANILAMAZ (`if: secrets.X != ''` sessizce yanlis
-# degerlendirilir -> kapi ters calisir). Bu yuzden `preflight` job'i token
-# varligini `env:` uzerinden okuyup boolean bir OUTPUT'a cevirir; `deploy`
-# job'i o output'a `needs.` ile baglanir. Token yoksa `deploy` SKIP edilir
-# (failure DEGIL) -> main asla kirmizi olmaz. Ayni fail-safe CI kirmizi/PR
-# kosusu icin de gecerli: `preflight` skip -> `needs` uzerinden `deploy` de
-# skip. Token'in DEGERI hicbir yere yazilmaz/echo'lanmaz. `smoke` job'i de
-# (asagida) AYNI deseni tekrar kullanir -- `vars.SMOKE_API_URL` icin.
+# FAIL-SAFE HEDEF KAPISI (kritik kisit, T-192 self-host donusumu): self-host
+# topolojisinde CD'nin hicbir kimlik bilgisine (secret) ihtiyaci YOK -- prod
+# sirlari (DATABASE_URL, GEMINI_API_KEY, GITHUB_APP_*, GITHUB_WEBHOOK_SECRET,
+# CORS_ORIGINS) sunucudaki `/etc/ensemble/ensemble.env` dosyasinda yasar ve
+# compose'un `env_file:` alaniyla okunur -- GitHub'a hic girmezler. Geriye
+# "deploy edilecek bir hedef var mi" sorusunun tek durust cevabi kaliyor:
+# operator kurulumu bitirdigini beyan etti mi. Bu yuzden kapi bir SECRET
+# degil, bir repo VARIABLE'i (`vars.DEPLOY_ENABLED`). `vars` `if:` icinde
+# YASAK degil (secrets'in aksine), ama AYNI TUTARLI deseni (env -> step
+# output -> job output -> `needs.` ile deploy.if) yine de kullaniyoruz --
+# `smoke` job'i `vars.SMOKE_API_URL` icin zaten bunu yapiyor, ve testlerin
+# tutamagi `needs.<job>.outputs.*` uzerinden (yarin ikinci bir deploy job'i
+# eklenirse de yakalanabilsin diye). `[ "$DEPLOY_ENABLED" = "true" ]` TAM
+# esitligi bilincli: kill-switch olarak `gh variable set DEPLOY_ENABLED
+# --body false` ile CD 5 saniyede kapanir (token silmekte bu yoktu -- silinen
+# deger geri gelmez). Deger SIR OLMADIGI icin `::notice::` ile yazdirilabilir
+# (buyuk/kucuk harf tuzagini teshis kolaylastirir).
 #
-# DAR KAPSAM TOKEN: FLY_API_TOKEN hesap token'i DEGIL, app-scoped deploy
-# token'i olmali:
-#   fly tokens create deploy -a ensemble-backend -x 8760h
-#   gh secret set FLY_API_TOKEN --repo FatihErenCetin/grup54   # deger stdin'den
-# Eslemenin kanonik kaynagi: docs/sprint3-kontratlar.md Ek A (satir zaten var).
+# SELF-HOSTED RUNNER (PULL modeli): sunucuya SSH anahtari KOYULMAZ, sunucuda
+# inbound port ACILMAZ -- runner kendi outbound HTTPS baglantisini kurar ve
+# GitHub'dan is ceker. `runs-on: [self-hosted, linux, x64, ensemble-prod]` --
+# `linux`/`x64` GitHub'in otomatik etiketleri (yanlis OS/mimarideki bir
+# runner'a yanlislikla eslesmeyi engeller), `ensemble-prod` bizim ozel
+# etiketimiz. SIRALAMA (fail-safe DEGIL -- bu bir gercek risk): `preflight`
+# GitHub-hosted'da kalir (runner canliligindan BAGIMSIZ degerlendirilir), ama
+# `DEPLOY_ENABLED=true` set edilirken runner henuz Idle degilse `deploy`
+# job'i KUYRUGA girer ve orada bekler (kirmizi olmaz ama sessizce asili
+# kalir) -- operator `DEPLOY_ENABLED=true`'yu HER ZAMAN runner Settings ->
+# Actions -> Runners'da Idle gorundukten SONRA set etmeli. `timeout-minutes:
+# 30` job'in CALISMA suresini sinirlar (kuyruk suresini degil).
 #
-# SIRALAMA UYARISI (fail-safe DEGIL -- bu bir gercek patlama riski): "secret
-# VAR ama Fly app'i (`fly.toml`'daki `app = "ensemble-backend"`) HENUZ YOK"
-# hali yukaridaki token-yoklugu kapisindan GECER (has_token=true, deploy
-# SKIP edilmez) ama `flyctl deploy` olmayan bir app'e deploy etmeye
-# calisinca PATLAR -- bu sessiz bir atlama DEGIL, kirmizi bir is. Dogru
-# sira: ONCE `fly launch` (ya da `fly apps create ensemble-backend`) ile
-# app'i olustur, SONRA `gh secret set FLY_API_TOKEN` ile token'i set et.
-# (`fly tokens create deploy -a ensemble-backend` zaten app'in var olmasini
-# sart kosar -- app yoksa komutun kendisi hata verir; bu sirayi tersine
-# cevirmemek icin acikca burada yaziyor.)
+# PROD COMPOSE DOSYASI FAIL-SAFE (T-192/#246 bagimliligi): `deploy/docker-
+# compose.prod.yml` bu daldan AYRI bir PR'da (#246) ekleniyor; iki dalin
+# main'e inis sirasi garanti degil. `smoke` job'inin Makefile-hedefi
+# kontroluyle AYNI desen: deploy job'i once dosyanin VARLIGINI kontrol eder
+# (`compose_check` adimi, `ready` output'u), build/up adimlari bu output'a
+# `if:` ile baglidir -- dosya henuz yoksa (#246 inmemis) adimlar fail-safe
+# ATLANIR, job yine de basarili sayilir (kirmizi verilmez, sessiz-ama-gorunur
+# ::notice::).
 #
 # SMOKE (deploy-sonrasi canli dogrulama, #189 BAGIMLILIGI): `deploy` basarili
 # olunca `smoke` job'i `make smoke` calistirir (bkz. asagida). Bu dal (#192)
@@ -96,15 +108,20 @@
 # hedefinin GERCEKTEN var olup olmadigini kontrol eder; yoksa (#189 henuz
 # merge olmamissa) adimi fail-safe ATLAR, kirmizi vermez. #189 merge olunca
 # hedef belirir ve smoke kendiliginden aktiflesir -- bu dosyaya bir daha
-# DOKUNMAYA gerek YOK.
+# DOKUNMAYA gerek YOK. `smoke` BILINCLI olarak GitHub-hosted'da kalir (self-
+# hosted'da DEGIL): prod kutusunun ICINDEN kosarsa loopback/ic ag uzerinden
+# yesil olur ve DNS + Caddy + TLS + firewall zincirini hic kanitlamaz --
+# disaridan gercek bir HTTP istegi atmasi gerekir (runbook'un SMOKE_STRICT
+# ilkesiyle ayni mantik).
 #
-# RELEASE/MIGRATE: `flyctl deploy` fly.toml'daki `release_command`'i otomatik
-# kosar; o satir henuz YOK ve #187'nin (Enes) isi -- bu workflow fly.toml'a
-# DOKUNMAZ, yalnizca bu bagimliligi belgeler (kriter 6, kanit S192 review'da).
+# RELEASE/MIGRATE: bu workflow'un `docker compose ... up -d` adimi hicbir
+# migration'i OTOMATIK kosturmaz (Fly'daki `release_command` esdegeri
+# self-host compose'ta yok) -- migration hala elle `make migrate` ile (ya da
+# sunucuda `docker compose exec api alembic upgrade head` ile) kosulur; bu
+# workflow'a otomatik-migrate eklenmesi ayri bir karar/PR gerektirir.
 #
-# ACTION PIN: upstream README `@master` gosteriyor; repo konvansiyonu hareketli
-# `latest`/`master` KULLANMA diyor (bkz. Dockerfile ust basligi). `@v1` bugun
-# 1.x'e isaret ediyor ve mevcut `actions/checkout@v4` tarziyla tutarli.
+# ACTION PIN: repo konvansiyonu hareketli `latest`/`master` KULLANMA diyor
+# (bkz. Dockerfile ust basligi). `actions/checkout@v4` bu konvansiyona uyar.
 #
 # SHELL: GitHub'in Linux runner varsayilani `bash -e`dir -- `pipefail` YOK.
 # `defaults.run.shell: bash` acikca burada beyan edilir; GitHub Actions bash
@@ -113,7 +130,7 @@
 # ama gelecekte bir `run:` adimina pipe eklenirse (orn. `cmd1 | cmd2`) bu
 # beyan olmadan bir ust komut sessizce basarisiz olsa da pipeline yine de
 # 0 ile doner (pipefail yoksa). Acik beyan bunu simdiden kapatir.
-name: Deploy (Fly)
+name: Deploy (Self-host)
 
 on:
   workflow_run:
@@ -150,26 +167,28 @@ jobs:
        github.event.workflow_run.head_repository.full_name == github.repository)
     runs-on: ubuntu-latest
     outputs:
-      has_token: ${{ steps.token.outputs.has_token }}
+      has_target: ${{ steps.target.outputs.has_target }}
       ci_ok: ${{ steps.ci_check.outputs.ci_ok }}
       sha: ${{ github.event.workflow_run.head_sha || github.sha }}
     steps:
-      # Kapi 2 -- secret VARLIK kontrolu; `if:` degil `env:` uzerinden okunur
-      # (secrets context if icinde calismaz), deger asla yazdirilmaz/loglanmaz.
-      - name: FLY_API_TOKEN tanimli mi?
-        id: token
+      # Kapi 2 -- deploy HEDEFI yapilandirilmis mi. `vars` `if:` icinde
+      # YASAKLI degil, ama secrets'la BIREBIR ayni fail-safe deseni (env
+      # uzerinden okuyup boolean bir OUTPUT'a cevirmek) burada da uygulanir --
+      # tutarlilik icin (bkz. dosya basligi, FAIL-SAFE HEDEF KAPISI).
+      - name: Deploy hedefi tanimli mi? (vars.DEPLOY_ENABLED)
+        id: target
         env:
-          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+          DEPLOY_ENABLED: ${{ vars.DEPLOY_ENABLED }}
         run: |
-          if [ -n "$FLY_API_TOKEN" ]; then
-            echo "has_token=true" >> "$GITHUB_OUTPUT"
+          if [ "$DEPLOY_ENABLED" = "true" ]; then
+            echo "has_target=true" >> "$GITHUB_OUTPUT"
           else
-            echo "has_token=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::FLY_API_TOKEN repo secret'i yok - deploy atlaniyor (fail-safe)."
+            echo "has_target=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::vars.DEPLOY_ENABLED='${DEPLOY_ENABLED}' (beklenen TAM deger: 'true') - deploy atlaniyor (fail-safe)."
           fi
 
       # Kapi 1b -- elle tetikte CI-yesil dogrulamasi; ACIK bir OUTPUT'a
-      # baglanir (has_token deseniyle BIREBIR ayni -- bkz. tuzak 5). Adim
+      # baglanir (has_target deseniyle BIREBIR ayni -- bkz. tuzak 5). Adim
       # HER iki tetikleyicide de kosar (step-level `if` YOK -- kendi karari
       # icin EVENT_NAME'e bakar): otomatik (workflow_run) yolunda kapi zaten
       # workflow_run.conclusion ile saglandigindan dogrudan ci_ok=true yazar.
@@ -208,32 +227,63 @@ jobs:
 
   deploy:
     needs: preflight
-    # Iki kapi BIRLIKTE: token varligi VE CI-yesilligi -- her ikisi de acik
+    # Iki kapi BIRLIKTE: deploy hedefi VE CI-yesilligi -- her ikisi de acik
     # OUTPUT'a bagli (ortuk needs-basarisizlik semantigine DEGIL, tuzak 5).
-    if: needs.preflight.outputs.has_token == 'true' && needs.preflight.outputs.ci_ok == 'true'
-    runs-on: ubuntu-latest
+    if: needs.preflight.outputs.has_target == 'true' && needs.preflight.outputs.ci_ok == 'true'
+    # Sunucudaki self-hosted runner (PULL modeli, bkz. dosya basligi). `linux`/
+    # `x64` GitHub'in otomatik etiketleri, `ensemble-prod` bizim ozel etiketimiz.
+    runs-on: [self-hosted, linux, x64, ensemble-prod]
+    timeout-minutes: 30 # job'in CALISMA suresini sinirlar (kuyruk suresini degil) -- asili bir build/up'i keser
     steps:
       - uses: actions/checkout@v4
         with:
           ref: ${{ needs.preflight.outputs.sha }} # CI'in dogruladigi TAM commit
 
-      - name: flyctl kur
-        uses: superfly/flyctl-actions/setup-flyctl@v1
+      # Kapi 4 -- prod compose dosyasi (deploy/docker-compose.prod.yml) bu
+      # daldan AYRI bir PR'da (#246) ekleniyor; iki dalin main'e inis sirasi
+      # garanti degil. `smoke` job'inin Makefile-hedefi kontroluyle AYNI
+      # desen: dosya yoksa asagidaki build/up adimlari fail-safe ATLANIR, job
+      # yine de basarili sayilir (kirmizi verilmez).
+      - name: Prod compose dosyasi var mi?
+        id: compose_check
+        run: |
+          if [ -f deploy/docker-compose.prod.yml ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::deploy/docker-compose.prod.yml repoda yok (#246 henuz main'e inmemis olabilir) - deploy adimlari atlaniyor (fail-safe)."
+          fi
 
-      - name: Fly'a deploy
+      # Imaji ONCE kur, SONRA recreate et: build patlarsa calisan servis
+      # ayakta kalir (kesinti yalnizca `up -d`nin recreate penceresi kadar).
+      # `-f` HICBIR ZAMAN atlanmaz: ciplak `docker compose up -d --build`
+      # cwd'deki KOK docker-compose.yml'i okur -- o dosya Postgres'i
+      # 0.0.0.0:5432'de ensemble/ensemble parolasiyla YAYINLAR (public IP'li
+      # VDS'te aninda ele gecirme).
+      - name: Prod imajini kur
+        if: steps.compose_check.outputs.ready == 'true'
         env:
-          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
-        run: flyctl deploy --config fly.toml --remote-only
+          IMAGE_TAG: ${{ needs.preflight.outputs.sha }}
+        run: docker compose -f deploy/docker-compose.prod.yml build api
+
+      - name: Prod servisleri ayaga kaldir
+        if: steps.compose_check.outputs.ready == 'true'
+        env:
+          IMAGE_TAG: ${{ needs.preflight.outputs.sha }}
+        run: docker compose -f deploy/docker-compose.prod.yml up -d --remove-orphans
 
   smoke:
     # `deploy` disinda hicbir `if:` YOK -- job-level `if:` verilmezse
     # varsayilan davranis zaten `needs`'teki TUM job'larin basarili
-    # (SKIP DEGIL) olmasini sart kosar: `deploy` preflight-token-yoklugundan
+    # (SKIP DEGIL) olmasini sart kosar: `deploy` preflight-hedef-yoklugundan
     # SKIP edilirse `smoke` de kendiliginden SKIP olur (kaskad fail-safe,
-    # ustteki "FAIL-SAFE SECRET KAPISI" notuyla TUTARLI -- ekstra kosul
-    # yazmaya gerek yok).
+    # ustteki "FAIL-SAFE HEDEF KAPISI" notuyla TUTARLI -- ekstra kosul
+    # yazmaya gerek yok). NOT: deploy job'inin KENDI ic compose-check'i
+    # (yukarida) bir STEP-seviyesi atlama -- job yine de basarili doner, bu
+    # yuzden smoke o durumda da kosar (smoke job'inin kendi SMOKE_API_URL
+    # kapisi bunu ayrica ele alir, bkz. asagida).
     needs: [preflight, deploy]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-latest # BILINCLI: self-hosted DEGIL (bkz. dosya basligi, SMOKE notu)
     steps:
       - uses: actions/checkout@v4
         with:
@@ -241,7 +291,7 @@ jobs:
 
       # Kapi 3a -- SMOKE_API_URL repo variable'i VARLIK kontrolu. `vars`
       # `secrets` gibi `if:` icinde YASAKLI degil, ama ayni TUTARLI deseni
-      # (env -> output -> sonraki adimlarin `if:`'i) kullaniyoruz: token
+      # (env -> output -> sonraki adimlarin `if:`'i) kullaniyoruz: hedef
       # kapisiyla BIREBIR ayni fail-safe mantigi, iki farkli yontem degil.
       # Kapi 3b -- Makefile'da `smoke:` hedefi VAR MI: bu dal (#192) #189'dan
       # (T-189-live-smoke, hedefi ekleyen dal) ONCE main'e inebilir; hedef

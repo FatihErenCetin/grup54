@@ -1,17 +1,26 @@
 """Deploy CD workflow (#192) sozlesme testleri.
 
-Kabul kriteri odagi: `.github/workflows/deploy.yml`'in main->Fly CD kapisi
-GERCEKTEN fail-safe mi (token yoksa/CI kirmiziysa main asla kirilmiyor mu),
-ve `ci.yml` ile capraz-dosya baglantisi kirilgan noktalarda dogru mu.
+Kabul kriteri odagi: `.github/workflows/deploy.yml`'in main->self-host CD
+kapisi GERCEKTEN fail-safe mi (deploy hedefi yapilandirilmamissa/CI
+kirmiziysa main asla kirilmiyor mu), ve `ci.yml` ile capraz-dosya baglantisi
+kirilgan noktalarda dogru mu. (T-192 self-host donusumu: eskiden kapi
+`FLY_API_TOKEN` secret'inin varligiydi -- simdi `vars.DEPLOY_ENABLED` repo
+variable'i; tel BIREBIR ayni desende kaldi, bkz. deploy.yml basligi.)
 
 PyYAML 1.1 tuzagi: `on:` anahtari `safe_load` ile boolean `True`'ya cevrilir
 (repodaki 6 mevcut workflow'da da deneysel olarak dogrulandi) -- `_triggers()`
 bunu telafi eder.
 
-Tautoloji-karsiti not: testlerin cogu (1, 2, 6, 7, 8, 9, 13) tek dosyanin
-metnini tekrar etmez -- ya iki dosyanin (ci.yml <-> deploy.yml) birbiriyle
-tutarliligini, ya da TUM workflow'lara uygulanan bir GitHub-semantigi kuralini
-olcer; bu yuzden bu PR'dan bagimsiz gelecek regresyonlari da yakalar.
+Tautoloji-karsiti not: testlerin cogu tek dosyanin metnini tekrar etmez --
+ya iki dosyanin (ci.yml <-> deploy.yml) birbiriyle tutarliligini, ya da TUM
+workflow'lara uygulanan bir GitHub-semantigi kuralini olcer; bu yuzden bu
+PR'dan bagimsiz gelecek regresyonlari da yakalar. Predicate uyarisi (S192
+self-host donusumunden cikarilan ders): bir test bir dizgiyi (`"flyctl" in
+run`, eskiden) PREDICATE olarak kullanirsa, o dizgi ortadan kalktiginda
+dongu govdesi HIC calismadan testi yesil birakabilir -- olcmeden yesil.
+Bu dosyadaki platform-bagimli predicate'ler (`_deploy_eden_job`) bu yuzden
+'flyctl kosuyor mu' yerine 'prod'a dokunuyor mu' (self-hosted VEYA docker
+compose) seklinde, platform-bagimsiz tanimlanir.
 """
 
 import os
@@ -138,32 +147,45 @@ def test_hicbir_workflow_if_icinde_secrets_kullanmiyor():
     )
 
 
-def test_flyctl_kosan_her_job_token_kapisina_bagli():
-    """Generik: `flyctl` kosan HER job, bir `has_token` VE bir `ci_ok`
-    output'u ureten job'a `needs` ile baglanmali VE `if`'i HER IKI output'u
-    da referans almali -- yarin ikinci bir flyctl job'i (orn. `deploy2`)
-    eklenirse, `ci_ok` kontrolu olmadan da (yalniz has_token'a bagliyken) bu
-    test onu yakalar (DELIK 1, S192 sertlestirme: token varsa ama CI kirmiziyken
-    de flyctl kosabilecek bir job sessizce eklenebilirdi)."""
+def _deploy_eden_job(job: dict) -> bool:
+    """Platform-bagimsiz: prod'a DOKUNAN job. (a) self-hosted runner'da
+    kosuyorsa ya da (b) bir `docker compose` komutu calistiriyorsa. (T-192
+    self-host donusumu: eskiden bu predicate 'flyctl' dizgisiydi -- flyctl
+    ortadan kalkinca boyle bir predicate SESSIZCE hicbir seyi olcmez hale
+    gelirdi, bu yuzden platform-bagimsiz hale getirildi.)"""
+    runs_on = job.get("runs-on")
+    labels = [runs_on] if isinstance(runs_on, str) else list(runs_on or [])
+    if any("self-hosted" == str(label).lower() for label in labels):
+        return True
+    return any("docker compose" in (step.get("run") or "") for step in _all_steps(job))
+
+
+def test_deploy_eden_her_job_iki_kapiya_bagli():
+    """Generik: prod'a DOKUNAN (self-hosted'ta kosan ya da docker compose
+    calistiran) HER job, bir `has_target` VE bir `ci_ok` output'u ureten
+    job'a `needs` ile baglanmali VE `if`'i HER IKI output'u da referans
+    almali -- yarin ikinci bir deploy job'i (orn. `deploy2`) eklenirse,
+    `ci_ok` kontrolu olmadan da (yalniz has_target'a bagliyken) bu test onu
+    yakalar (DELIK 1, S192 sertlestirme: hedef varsa ama CI kirmiziyken de
+    prod'a dokunabilecek bir job sessizce eklenebilirdi)."""
     for wf_name, wf in _all_workflows():
         for job_id, job in (wf.get("jobs") or {}).items():
-            runs_flyctl = any("flyctl" in (step.get("run") or "") for step in _all_steps(job))
-            if not runs_flyctl:
+            if not _deploy_eden_job(job):
                 continue
             needs = job.get("needs")
             needs_list = [needs] if isinstance(needs, str) else list(needs or [])
             assert needs_list, (
-                f"{wf_name}:{job_id} 'flyctl' kosuyor ama 'needs' tanimlamiyor -- "
-                "token varlik kapisina bagli olmadan calisabilir."
+                f"{wf_name}:{job_id} prod'a dokunuyor ama 'needs' tanimlamiyor -- "
+                "hedef varlik kapisina bagli olmadan calisabilir."
             )
             job_if = str(job.get("if") or "")
-            assert any(f"needs.{n}.outputs.has_token" in job_if for n in needs_list), (
-                f"{wf_name}:{job_id} 'flyctl' kosuyor ama if kosulunda "
-                "'needs.<job>.outputs.has_token' referansi yok -- token "
-                "yokken de calisabilir (fail-safe kapi delinmis)."
+            assert any(f"needs.{n}.outputs.has_target" in job_if for n in needs_list), (
+                f"{wf_name}:{job_id} prod'a dokunuyor ama if kosulunda "
+                "'needs.<job>.outputs.has_target' referansi yok -- hedef "
+                "yapilandirilmamisken de calisabilir (fail-safe kapi delinmis)."
             )
             assert any(f"needs.{n}.outputs.ci_ok" in job_if for n in needs_list), (
-                f"{wf_name}:{job_id} 'flyctl' kosuyor ama if kosulunda "
+                f"{wf_name}:{job_id} prod'a dokunuyor ama if kosulunda "
                 "'needs.<job>.outputs.ci_ok' referansi yok -- CI kirmiziyken de "
                 "calisabilir (fail-safe kapi delinmis, DELIK 1)."
             )
@@ -172,69 +194,58 @@ def test_flyctl_kosan_her_job_token_kapisina_bagli():
 def test_deploy_if_ciplak_or_alternatifi_yok():
     """DELIK 1 (S192 sertlestirme): deploy.if bugun ciplak bir '||' icermiyor,
     ama biri `|| github.event_name == 'workflow_dispatch'` gibi bir alternatif
-    eklerse iki kapiyi (has_token + ci_ok) birden short-circuit eder -- bu,
+    eklerse iki kapiyi (has_target + ci_ok) birden short-circuit eder -- bu,
     dosyanin kendi "tuzak 4" paragrafinda preflight.if icin belgelenen ve
     kapatilan anti-kalibin AYNISIDIR, burada deploy.if icin tekrarlanir:
-    tepe-seviye '||' ile bol, HER alternatifin hem has_token hem ci_ok
+    tepe-seviye '||' ile bol, HER alternatifin hem has_target hem ci_ok
     kontrolu icerdigini dogrula (ciplak/kosulsuz bir alternatif kalmamali)."""
     deploy_if = str(DEPLOY["jobs"]["deploy"].get("if") or "")
     alternatifler = [alt.strip() for alt in deploy_if.split("||")]
     for alt in alternatifler:
-        assert "has_token" in alt and "ci_ok" in alt, (
-            f"deploy.if alternatiflerinden biri ('{alt}') hem has_token hem ci_ok "
+        assert "has_target" in alt and "ci_ok" in alt, (
+            f"deploy.if alternatiflerinden biri ('{alt}') hem has_target hem ci_ok "
             f"kontrolu icermiyor -- ciplak bir '||' ile kapi(lar) short-circuit "
             f"edilebilir (tam if={deploy_if!r})."
         )
 
 
-def test_token_degeri_asla_loglanmaz():
-    """Hijyen: hicbir `run:` adimi FLY_API_TOKEN'in DEGERINI echo/printf ile
-    yazdirmiyor ve GITHUB_OUTPUT/GITHUB_ENV'e degeri yazmiyor; `${{ secrets.
-    FLY_API_TOKEN }}` yalniz `env:`/`with:` haritalarinda gecmeli, `run:`
-    metninde degil. (Var-mi-yok-mu kontrolu -- `[ -n "$FLY_API_TOKEN" ]` --
-    degeri LOGLAMADIGI icin bilincli olarak SERBEST birakilir.)"""
-    # echo/printf + ayni satirda $FLY_API_TOKEN -> degeri stdout'a yazdirir.
-    echo_leak_re = re.compile(r"\b(echo|printf)\b[^\n]*\$\{?FLY_API_TOKEN\}?")
-    # $FLY_API_TOKEN degeri ayni satirda GITHUB_OUTPUT/GITHUB_ENV'e akiyor.
-    output_leak_re = re.compile(
-        r"\$\{?FLY_API_TOKEN\}?[^\n]*>>\s*\"?\$\{?(GITHUB_OUTPUT|GITHUB_ENV)\}?\"?"
-    )
-
+def test_hicbir_run_govdesi_secret_referansi_tasimaz():
+    """Kural: `${{ secrets.* }}` YALNIZ env:/with: haritalarinda gecebilir,
+    `run:` govdesinde ASLA -- gecerse deger komut satirina/loglara sizabilir.
+    (T-192 self-host donusumu: eskiden bu test yalniz FLY_API_TOKEN'a ozel
+    echo/printf/GITHUB_OUTPUT sizinti desenlerini araniyordu -- token
+    ortadan kalkinca o desen SESSIZCE hicbir seyi olcmezdi. Genellestirilmis
+    hali repo-geneli, surum-bagimsiz bir GitHub-hijyen kurali: bugun repoda
+    `secrets.*` yalniz `env:` icinde geciyor -- ci.yml gitleaks GITHUB_TOKEN,
+    deploy.yml GH_TOKEN -- bu yuzden bu hali GERCEKTEN yesil VE GERCEKTEN
+    baglayici.)"""
+    violations = []
     for wf_name, wf in _all_workflows():
         for job_id, job in (wf.get("jobs") or {}).items():
             for step in _all_steps(job):
                 run_body = step.get("run")
                 if not run_body:
                     continue
-                assert "secrets.FLY_API_TOKEN" not in run_body, (
-                    f"{wf_name}:{job_id} bir 'run:' adiminda '${{{{ secrets.FLY_API_TOKEN }}}}' "
-                    "dogrudan geciyor -- token yalniz env:/with: uzerinden akitilmali."
-                )
-                leak = echo_leak_re.search(run_body)
-                assert not leak, (
-                    f"{wf_name}:{job_id} bir echo/printf FLY_API_TOKEN degerini yazdiriyor: "
-                    f"{leak.group(0)!r}"
-                )
-                output_leak = output_leak_re.search(run_body)
-                assert not output_leak, (
-                    f"{wf_name}:{job_id} FLY_API_TOKEN degeri GITHUB_OUTPUT/GITHUB_ENV'e "
-                    f"yaziliyor: {output_leak.group(0)!r}"
-                )
+                if "secrets." in run_body:
+                    step_name = step.get("name", step.get("id", "?"))
+                    violations.append(f"{wf_name}:{job_id}:{step_name}")
+    assert not violations, (
+        "'run:' govdesinde 'secrets.' referansi bulundu (deger komut satirina/loglara "
+        f"sizabilir, secrets. yalniz env:/with: haritalarinda gecmeli): {violations}"
+    )
 
 
 def test_deploy_concurrency_iptal_edilemez():
     """`group=='deploy'` + `cancel-in-progress: false` -- generik varyant:
-    flyctl kosan HER workflow iptal-edilemez olmali (yarim deploy/yarim
-    release-migrate riskine karsi)."""
+    prod'a dokunan (self-hosted'ta kosan ya da docker compose calistiran)
+    HER workflow iptal-edilemez olmali (yarim deploy/yarim compose-up
+    riskine karsi)."""
     for wf_name, wf in _all_workflows():
         jobs = wf.get("jobs") or {}
-        runs_flyctl = any(
-            "flyctl" in (step.get("run") or "") for job in jobs.values() for step in _all_steps(job)
-        )
-        if not runs_flyctl:
+        if not any(_deploy_eden_job(job) for job in jobs.values()):
             continue
         concurrency = wf.get("concurrency")
-        assert concurrency, f"{wf_name} flyctl kosuyor ama workflow-level concurrency tanimlamiyor."
+        assert concurrency, f"{wf_name} prod'a dokunuyor ama workflow-level concurrency tanimlamiyor."
         assert concurrency.get("group") == "deploy", (
             f"{wf_name} concurrency.group == {concurrency.get('group')!r} -- 'deploy' degil."
         )
@@ -369,7 +380,7 @@ def test_elle_tetikte_ci_dogrulama_adimi_var_ve_basarisizlikta_ci_ok_false_yazar
     kosumu YOKSA adim ::error:: basip GITHUB_OUTPUT'a ci_ok=false yazmali --
     artik `exit 1` ile preflight job'ini KIRMAZ (S192 review, acik 2): kapi
     ACIK bir `ci_ok` outputuna needs. ile baglanir (bkz.
-    test_deploy_if_hem_has_token_hem_ci_ok_sart_kosar), ortuk needs-
+    test_deploy_if_hem_has_target_hem_ci_ok_sart_kosar), ortuk needs-
     basarisizlik semantigine guvenilmez."""
     preflight_steps = _all_steps(DEPLOY["jobs"]["preflight"])
     ci_check_step = next((s for s in preflight_steps if s.get("id") == "ci_check"), None)
@@ -440,8 +451,8 @@ def test_ci_dogrulama_sorgusu_event_ve_branch_filtreli():
     # girebilir -- conclusion alani boyle bir kosumda anlamli/kararli degildir.
     assert "status=completed" in run_body, "gh api sorgusunda 'status=completed' filtresi yok."
     # GH_TOKEN olmadan `gh api` cagrisi kimliksiz kalir (adim GITHUB_TOKEN'i
-    # env uzerinden GH_TOKEN'e aktarmali -- has_token/FLY_API_TOKEN deseniyle
-    # ayni yontem).
+    # env uzerinden GH_TOKEN'e aktarmali -- has_target/DEPLOY_ENABLED
+    # deseniyle ayni yontem).
     step_env = ci_check_step.get("env", {})
     assert _norm_expr(step_env.get("GH_TOKEN", "")) == "${{secrets.GITHUB_TOKEN}}", (
         f"CI-dogrulama adiminin env.GH_TOKEN degeri {step_env.get('GH_TOKEN')!r} -- tam olarak "
@@ -473,24 +484,24 @@ def test_ci_check_adiminda_devre_disi_birakan_if_yok():
 
 def test_preflight_outputs_ci_ok_step_ciktisina_baglanir():
     """`preflight.outputs.ci_ok` dogrudan `steps.ci_check.outputs.ci_ok`'a
-    baglanmali -- `has_token`/`token` deseniyle BIREBIR ayni tel."""
+    baglanmali -- `has_target`/`target` deseniyle BIREBIR ayni tel."""
     outputs = DEPLOY["jobs"]["preflight"].get("outputs", {})
     assert outputs.get("ci_ok") == "${{ steps.ci_check.outputs.ci_ok }}", (
         f"preflight.outputs.ci_ok={outputs.get('ci_ok')!r} -- steps.ci_check.outputs.ci_ok'a baglanmamis."
     )
 
 
-def test_preflight_outputs_has_token_step_ciktisina_baglanir():
+def test_preflight_outputs_has_target_step_ciktisina_baglanir():
     """DELIK 5 (S192 sertlestirme): `ci_ok` icin yazilan tam-esitlik
-    baglanma testinin esi -- `preflight.outputs.has_token` dogrudan
-    `steps.token.outputs.has_token`'a baglanmali. Aksi halde has_token sabit
-    'true' gibi bir degere sabitlenebilir ve token-varlik kapisi tamamen
-    etkisizlesir (uretim davranis testleri bunu YAKALAMAZ -- output baglantisi
-    YAML-seviyeli, run govdesi degismeden delinebilir)."""
+    baglanma testinin esi -- `preflight.outputs.has_target` dogrudan
+    `steps.target.outputs.has_target`'a baglanmali. Aksi halde has_target
+    sabit 'true' gibi bir degere sabitlenebilir ve hedef-varlik kapisi
+    tamamen etkisizlesir (uretim davranis testleri bunu YAKALAMAZ -- output
+    baglantisi YAML-seviyeli, run govdesi degismeden delinebilir)."""
     outputs = DEPLOY["jobs"]["preflight"].get("outputs", {})
-    assert outputs.get("has_token") == "${{ steps.token.outputs.has_token }}", (
-        f"preflight.outputs.has_token={outputs.get('has_token')!r} -- "
-        "steps.token.outputs.has_token'a baglanmamis (kapi sabit bir degere sabitlenmis olabilir)."
+    assert outputs.get("has_target") == "${{ steps.target.outputs.has_target }}", (
+        f"preflight.outputs.has_target={outputs.get('has_target')!r} -- "
+        "steps.target.outputs.has_target'a baglanmamis (kapi sabit bir degere sabitlenmis olabilir)."
     )
 
 
@@ -511,13 +522,13 @@ def test_preflight_outputs_sha_workflow_run_ve_github_sha_fallback_icerir():
     )
 
 
-def test_deploy_if_hem_has_token_hem_ci_ok_sart_kosar():
-    """S192 review acik 2: deploy job'i yalniz `has_token`'a degil, artik
+def test_deploy_if_hem_has_target_hem_ci_ok_sart_kosar():
+    """S192 review acik 2: deploy job'i yalniz `has_target`'a degil, artik
     `ci_ok` outputuna da ACIKCA baglanmali -- ortuk needs-basarisizlik
     semantigine guvenilmemeli (bkz. deploy.yml basligi, tuzak 5)."""
     deploy_if = str(DEPLOY["jobs"]["deploy"].get("if") or "")
-    assert "needs.preflight.outputs.has_token == 'true'" in deploy_if, (
-        f"deploy.if={deploy_if!r} -- has_token kontrolu yok."
+    assert "needs.preflight.outputs.has_target == 'true'" in deploy_if, (
+        f"deploy.if={deploy_if!r} -- has_target kontrolu yok."
     )
     assert "needs.preflight.outputs.ci_ok == 'true'" in deploy_if, (
         f"deploy.if={deploy_if!r} -- ci_ok kontrolu yok (S192 review acik 2)."
@@ -666,6 +677,73 @@ def test_ci_check_govdesi_otomatik_yolda_daima_ci_ok_true_yazar(tmp_path):
     assert res["outputs"].get("ci_ok") == "true", res
 
 
+def _target_run_body() -> str:
+    step = next(s for s in _all_steps(DEPLOY["jobs"]["preflight"]) if s.get("id") == "target")
+    return step["run"]
+
+
+def _run_target_check(tmp_path: Path, *, deploy_enabled: str) -> dict:
+    """`target` adiminin (Deploy hedefi tanimli mi?) run govdesini GERCEKTEN
+    calistirir ve GITHUB_OUTPUT dosyasini + exit kodunu dondurur -- `deploy_enabled`
+    olarak verilen deger dogrudan `DEPLOY_ENABLED` ortam degiskenine (`vars.
+    DEPLOY_ENABLED`in yerine gecer) atanir; bos dizgi, GitHub'da tanimsiz bir
+    repo variable'inin `vars.X` ifadesinin bos dizgiye cozulmesiyle ayni davranisi
+    taklit eder."""
+    run_script = tmp_path / "run_target.sh"
+    run_script.write_text(_target_run_body())
+    run_script.chmod(run_script.stat().st_mode | stat.S_IEXEC)
+
+    output_file = tmp_path / "github_output_target.txt"
+    output_file.write_text("")
+
+    env = {
+        "PATH": os.environ.get("PATH", ""),
+        "DEPLOY_ENABLED": deploy_enabled,
+        "GITHUB_OUTPUT": str(output_file),
+    }
+    result = subprocess.run(
+        ["bash", "--noprofile", "--norc", "-eo", "pipefail", str(run_script)],
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    outputs: dict[str, str] = {}
+    for line in output_file.read_text().splitlines():
+        if "=" in line:
+            key, value = line.split("=", 1)
+            outputs[key] = value
+    return {
+        "outputs": outputs,
+        "returncode": result.returncode,
+        "stdout": result.stdout,
+        "stderr": result.stderr,
+    }
+
+
+@pytest.mark.parametrize(
+    ("deploy_enabled", "beklenen"),
+    [
+        pytest.param("", "false", id="tanimsiz-bos"),
+        pytest.param("false", "false", id="false"),
+        pytest.param("True", "false", id="buyuk-kucuk-harf-tuzagi"),
+        pytest.param("true", "true", id="true"),
+    ],
+)
+def test_target_govdesi_deploy_enabled_davranisini_dogru_degerlendirir(tmp_path, deploy_enabled, beklenen):
+    """`_run_ci_check` desenin esi: `target` adiminin run govdesi -- metnin
+    kopyasi degil, YAML'dan cikarilip GERCEKTEN bash altinda calistirilan
+    hali -- her vakada dogru `has_target` degerini yazmali. `True` (buyuk T)
+    vakasi bilincli olarak kilitlenir: `[ "$DEPLOY_ENABLED" = "true" ]` TAM
+    esitligi kullanildigi icin buyuk/kucuk harf farki bile fail-safe tarafa
+    (false) dusmeli -- bu, token adiminin govdesi icin hic yazilmamis olan
+    bir davranis testi bosluguna da eslik eder (S192 review'da yalniz output
+    baglanma testi vardi, gercek execution testi yoktu)."""
+    res = _run_target_check(tmp_path, deploy_enabled=deploy_enabled)
+    assert res["returncode"] == 0, res
+    assert res["outputs"].get("has_target") == beklenen, res
+
+
 def test_deploy_permissions_actions_read_icerir():
     """`gh api actions/workflows/ci.yml/runs` cagrisi icin `actions: read`
     sart -- olmadan elle-tetik CI-dogrulama adimi 403 ile patlar (deploy
@@ -675,27 +753,126 @@ def test_deploy_permissions_actions_read_icerir():
     )
 
 
-def test_setup_flyctl_pinli_ve_remote_only():
-    """setup-flyctl `master`/`main`/`latest`'e PINLENMEMIS olmamali (repo
-    konvansiyonu hareketli pin'i reddeder) ve flyctl deploy `--remote-only`
-    ile kosmali."""
-    forbidden_refs = {"master", "main", "latest"}
-    all_steps = _all_steps(DEPLOY["jobs"]["preflight"]) + _all_steps(DEPLOY["jobs"]["deploy"])
+def test_deploy_prod_compose_dosyasini_acikca_kullanir():
+    """T-192 self-host donusumu (eski `test_setup_flyctl_pinli_ve_remote_only`
+    yerine -- en yuksek degerli yeni test): `docker compose` kosan HER adim
+    `-f deploy/docker-compose.prod.yml` icermeli, o adimin AYNI govdesinde
+    baska bir `docker-compose.yml` referansi OLMAMALI, VE adim `compose_check`
+    fail-safe kapisina (`steps.compose_check.outputs.ready`) bagli olmali.
+    Neden davranissal: `-f` düşerse compose cwd'deki KOK docker-compose.yml'i
+    okur -- o dosya Postgres'i 0.0.0.0:5432'de ensemble/ensemble parolasiyla
+    YAYINLAR (public IP'li VDS'te aninda ele gecirme). Ayrica hem 'build' hem
+    'up -d' iceren en az birer adim var olmali -- biri silinirse (M1) bu test
+    kirilir."""
+    deploy_steps = _all_steps(DEPLOY["jobs"]["deploy"])
+    compose_steps = [s for s in deploy_steps if "docker compose" in (s.get("run") or "")]
+    assert compose_steps, "deploy job'inda 'docker compose' kosan hicbir adim yok."
 
-    setup_step = next(
-        (s for s in all_steps if "flyctl-actions/setup-flyctl" in s.get("uses", "")), None
-    )
-    assert setup_step is not None, "superfly/flyctl-actions/setup-flyctl adimi bulunamadi."
-    ref = setup_step["uses"].split("@")[-1]
-    assert ref not in forbidden_refs, (
-        f"setup-flyctl {ref!r}'e pinli -- hareketli pin repo konvansiyonunu ihlal eder."
+    for step in compose_steps:
+        run_body = step["run"]
+        assert "-f deploy/docker-compose.prod.yml" in run_body, (
+            f"{step.get('name')!r} adimi '-f deploy/docker-compose.prod.yml' icermiyor: {run_body!r}"
+        )
+        kalan = run_body.replace("deploy/docker-compose.prod.yml", "")
+        assert "docker-compose.yml" not in kalan, (
+            f"{step.get('name')!r} adimi kok 'docker-compose.yml'e de referans veriyor gibi "
+            f"gorunuyor (public Postgres portu acik dosya -- YASAK): {run_body!r}"
+        )
+        step_if = str(step.get("if") or "")
+        assert "steps.compose_check.outputs.ready" in step_if, (
+            f"{step.get('name')!r} adiminin if={step_if!r} -- compose_check fail-safe "
+            "kapisina bagli degil (compose dosyasi henuz repoda yoksa da calisabilir)."
+        )
+
+    compose_check_step = next((s for s in deploy_steps if s.get("id") == "compose_check"), None)
+    assert compose_check_step is not None, (
+        "deploy job'inda id: compose_check olan bir adim yok -- prod compose dosyasinin "
+        "varligini kontrol eden fail-safe adim tamamen silinmis olabilir (M5)."
     )
 
-    deploy_run_step = next((s for s in all_steps if "flyctl deploy" in (s.get("run") or "")), None)
-    assert deploy_run_step is not None, "'flyctl deploy' kosan bir adim bulunamadi."
-    assert "--remote-only" in deploy_run_step["run"], (
-        "flyctl deploy '--remote-only' bayragi olmadan kosuyor."
+    build_steps = [s for s in compose_steps if "build" in s["run"]]
+    up_steps = [s for s in compose_steps if "up -d" in s["run"]]
+    assert build_steps, "deploy job'inda imaji kuran (build) bir docker compose adimi yok."
+    assert up_steps, "deploy job'inda servisleri ayaga kaldiran (up -d) bir docker compose adimi yok (M1)."
+
+
+def test_deploy_self_hosted_runner_etiketinde_kosar():
+    """`deploy.runs-on` bir liste, `self-hosted` VE `ensemble-prod` iceriyor,
+    GitHub-hosted etiketler (ubuntu/macos/windows) icermiyor. Neden: etiket
+    duserse is GitHub-hosted bir runner'da kosar ve `docker compose up`
+    prod'a hic dokunmadan yesil biter -- sessiz no-op (fail-open, M4)."""
+    runs_on = DEPLOY["jobs"]["deploy"].get("runs-on")
+    labels = [runs_on] if isinstance(runs_on, str) else list(runs_on or [])
+    normalized = [str(label).lower() for label in labels]
+    assert "self-hosted" in normalized, (
+        f"deploy.runs-on={runs_on!r} -- 'self-hosted' etiketi yok (job GitHub-hosted bir "
+        "runner'da kosup prod'a hic dokunmadan yesil biter)."
     )
+    assert "ensemble-prod" in normalized, (
+        f"deploy.runs-on={runs_on!r} -- 'ensemble-prod' ozel etiketi yok."
+    )
+    forbidden = {"ubuntu-latest", "macos-latest", "windows-latest"}
+    assert not (forbidden & set(normalized)), (
+        f"deploy.runs-on={runs_on!r} -- GitHub-hosted bir etiket iceriyor (M4: self-hosted "
+        "etiketi kalksin mutasyonu)."
+    )
+
+
+def test_preflight_ve_smoke_github_hosted_kalir():
+    """`preflight` ve `smoke` `self-hosted` ICERMEMELI. Iki ayri davranis
+    iddiasi: (a) kapi, runner canliligindan bagimsiz degerlendirilmeli --
+    `preflight` GitHub-hosted'da kalirsa self-hosted runner'in kayitli/canli
+    olup olmamasi kapiyi hic etkilemez; (b) `smoke` prod kutusunun ICINDEN
+    kosarsa loopback/ic ag uzerinden yesil olur ve DNS + Caddy + TLS +
+    firewall zincirini hic kanitlamaz -- yanlis-pozitif go-live kaniti
+    (runbook'un SMOKE_STRICT ilkesinin topolojik esi)."""
+    for job_id in ("preflight", "smoke"):
+        runs_on = DEPLOY["jobs"][job_id].get("runs-on")
+        labels = [runs_on] if isinstance(runs_on, str) else list(runs_on or [])
+        normalized = [str(label).lower() for label in labels]
+        assert "self-hosted" not in normalized, (
+            f"{job_id}.runs-on={runs_on!r} -- 'self-hosted' icermemeli."
+        )
+
+
+def test_deploy_imaj_etiketi_dogrulanan_shaya_baglanir():
+    """`docker compose` adimlarinin `env.IMAGE_TAG`'i
+    `needs.preflight.outputs.sha`'ya referans vermeli -- test 11'in (checkout
+    ref) artefakt seviyesindeki esi: bag kopunca hangi imajin hangi commit
+    oldugu kaybolur ve rollback (`IMAGE_TAG=<eski-sha> docker compose up -d`)
+    kanitlanamaz hale gelir."""
+    deploy_steps = _all_steps(DEPLOY["jobs"]["deploy"])
+    compose_steps = [s for s in deploy_steps if "docker compose" in (s.get("run") or "")]
+    assert compose_steps, "deploy job'inda 'docker compose' kosan hicbir adim yok."
+    for step in compose_steps:
+        env = step.get("env", {})
+        assert _norm_expr(env.get("IMAGE_TAG", "")) == "${{needs.preflight.outputs.sha}}", (
+            f"{step.get('name')!r} adiminin env.IMAGE_TAG degeri {env.get('IMAGE_TAG')!r} -- "
+            "needs.preflight.outputs.sha'ya baglanmamis."
+        )
+
+
+def test_pull_request_tetikli_hicbir_workflow_self_hosted_kosmaz():
+    """Repo-geneli guvenlik: tetikleyicileri arasinda `pull_request` /
+    `pull_request_target` / `issue_comment` olan hicbir workflow'un hicbir
+    job'i `self-hosted` etiketi istememeli. Test 6'nin ("hicbir if'te
+    secrets") repo-geneli usluyla ayni sinif -- #236'nin uclu guard'inin
+    KAPSAMADIGI riski kapatir: guard bu dosyayi (deploy.yml) korur, yarin
+    baska bir dosyaya `runs-on: [self-hosted, ...]` eklenmesini engellemez."""
+    riskli_tetikleyiciler = {"pull_request", "pull_request_target", "issue_comment"}
+    for wf_name, wf in _all_workflows():
+        triggers = _triggers(wf)
+        if not (set(triggers.keys()) & riskli_tetikleyiciler):
+            continue
+        for job_id, job in (wf.get("jobs") or {}).items():
+            runs_on = job.get("runs-on")
+            labels = [runs_on] if isinstance(runs_on, str) else list(runs_on or [])
+            normalized = [str(label).lower() for label in labels]
+            assert "self-hosted" not in normalized, (
+                f"{wf_name}:{job_id} pull_request/pull_request_target/issue_comment "
+                "tetikleyicisiyle kosuyor VE 'self-hosted' etiketi istiyor -- fork/PR'dan "
+                "gelen kod prod runner'inda calisabilir."
+            )
 
 
 def test_deploy_shell_bash_defaults_acik_belirtilir():
