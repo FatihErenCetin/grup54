@@ -10,7 +10,12 @@ import logging
 import pytest
 from fastapi.testclient import TestClient
 
-from ensemble.app import _build_radar_service, _gemini_single_flight_wait_s, create_app
+from ensemble.app import (
+    _build_radar_service,
+    _gemini_single_flight_wait_s,
+    _ollama_single_flight_wait_s,
+    create_app,
+)
 from ensemble.config import Settings
 from ensemble.engine.cache import CachedConflictJudge, CachedQueryJudge, CachedScopeJudge
 from ensemble.engine.embeddings import CachedEmbeddings, HashEmbeddings
@@ -23,6 +28,7 @@ from ensemble.integrations.gemini.scope_judge import FakeScopeJudgeAdapter, Gemi
 from ensemble.integrations.github.adapter import GitHubAdapter
 from ensemble.integrations.github.fake import FakeGitHubAdapter
 from ensemble.integrations.ollama.adapter import OllamaAdapter
+from ensemble.integrations.ollama.client import RETRY_WAIT_CAP_S as OLLAMA_RETRY_WAIT_CAP_S
 from ensemble.integrations.query_source import HarnessEventQuerySource
 from ensemble.store.vector_store import LocalVectorIndex
 
@@ -256,6 +262,50 @@ def test_gemini_single_flight_wait_s_tek_denemede_bekleme_yok():
     settings = Settings(_env_file=None, GEMINI_TIMEOUT_S=5.0, GEMINI_MAX_RETRIES=1)
 
     assert _gemini_single_flight_wait_s(settings) == 5.0
+
+
+def test_ollama_single_flight_wait_s_formulu():
+    """#63 sertlestirme turu: `_build_embeddings_port` Ollama dalina daha
+    once GEMINI'den turetilen degeri enjekte ediyordu ("Ollama/Fake
+    provider'da hic kullanilmaz" yorumu YANLISTI). Varsayilan ayarlarla
+    (OLLAMA_TIMEOUT_S=60.0, OLLAMA_MAX_RETRIES=2, RETRY_WAIT_CAP_S=2.0):
+    2*60 + 1*2 = 122.0 - PR govdesindeki "Ollama en-kotu-durum ~122 sn"
+    iddiasiyla birebir (enjekte edilen Gemini degerinin - 46 sn - NEDEN
+    erken zaman asimina ugrattigini kanitlar)."""
+    settings = Settings(_env_file=None, OLLAMA_TIMEOUT_S=60.0, OLLAMA_MAX_RETRIES=2)
+
+    assert _ollama_single_flight_wait_s(settings) == 2 * 60.0 + 1 * OLLAMA_RETRY_WAIT_CAP_S
+    assert _ollama_single_flight_wait_s(settings) == 122.0
+
+
+def test_ollama_single_flight_wait_s_tek_denemede_bekleme_yok():
+    settings = Settings(_env_file=None, OLLAMA_TIMEOUT_S=15.0, OLLAMA_MAX_RETRIES=1)
+
+    assert _ollama_single_flight_wait_s(settings) == 15.0
+
+
+def test_embeddings_ollama_dalinda_kendi_single_flight_degerini_kullanir():
+    """#63 sertlestirme turu: `_build_embeddings_port`in Ollama dali artik
+    GEMINI'den DEGIL, KENDI `_ollama_single_flight_wait_s` turetmesinden
+    beslenir - iki deger farkli kalsin diye ayarlar BILEREK Gemini
+    varsayilanindan (46.0) FARKLI secilir."""
+    settings = _settings(
+        ENSEMBLE_MODE="local",
+        LLM_PROVIDER="ollama",
+        OLLAMA_TIMEOUT_S=60.0,
+        OLLAMA_MAX_RETRIES=2,
+        GEMINI_TIMEOUT_S=10.0,
+        GEMINI_MAX_RETRIES=3,
+    )
+    expected_ollama = _ollama_single_flight_wait_s(settings)
+    expected_gemini = _gemini_single_flight_wait_s(settings)
+    assert expected_ollama != expected_gemini  # iki formul birbirinden BAGIMSIZ
+
+    service = _build_radar_service(settings)
+
+    assert isinstance(service.embeddings_port, CachedEmbeddings)
+    assert isinstance(service.embeddings_port.inner, OllamaAdapter)
+    assert service.embeddings_port.cache.single_flight_wait_s == expected_ollama
 
 
 def test_demo_acikken_judge_kilit_bekleme_suresi_gemini_ayarlarindan_turer(tmp_path):

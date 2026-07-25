@@ -29,6 +29,7 @@ from ensemble.integrations.github.adapter import GitHubAdapter
 from ensemble.integrations.github.errors import GitHubConfigError
 from ensemble.integrations.github.fake import FakeGitHubAdapter
 from ensemble.integrations.ollama.adapter import OllamaAdapter
+from ensemble.integrations.ollama.client import RETRY_WAIT_CAP_S as OLLAMA_RETRY_WAIT_CAP_S
 from ensemble.integrations.query_source import HarnessEventQuerySource
 from ensemble.ports import EmbeddingsPort, GitHubPort, JudgePort, VectorIndexPort
 from ensemble.store.engine import get_engine, get_session_factory
@@ -63,6 +64,22 @@ def _gemini_single_flight_wait_s(settings: Settings) -> float:
     attempts = settings.GEMINI_MAX_RETRIES
     waits_between_attempts = max(attempts - 1, 0)
     return attempts * settings.GEMINI_TIMEOUT_S + waits_between_attempts * RETRY_WAIT_CAP_S
+
+
+def _ollama_single_flight_wait_s(settings: Settings) -> float:
+    """`_gemini_single_flight_wait_s` ile AYNI formül, Ollama'nın KENDİ
+    ayarlarından (#63 sertleştirme turu — dogrulayici bulgusu):
+    `_build_embeddings_port` daha önce Ollama dalına da Gemini'den türetilen
+    değeri enjekte ediyordu ("Ollama/Fake provider'da hiç kullanılmaz"
+    yorumu YANLIŞTI — `CachedEmbeddings` DEMO_MODE'dan bağımsız, LLM_PROVIDER
+    ollama/gemini olduğu SÜRECE her zaman devrededir). Varsayılan ayarlarla
+    (OLLAMA_TIMEOUT_S=60.0, OLLAMA_MAX_RETRIES=2, OLLAMA_RETRY_WAIT_CAP_S=2.0)
+    Ollama'nın gerçek en-kötü-durumu 2*60 + 1*2 = 122 sn'dir - Gemini'den
+    türetilen 46 sn bu senaryoda ERKEN zaman aşımına uğrardı (tekil-uçuş
+    katmanının amacını deler)."""
+    attempts = settings.OLLAMA_MAX_RETRIES
+    waits_between_attempts = max(attempts - 1, 0)
+    return attempts * settings.OLLAMA_TIMEOUT_S + waits_between_attempts * OLLAMA_RETRY_WAIT_CAP_S
 
 
 def _build_github_port(settings: Settings) -> GitHubPort:
@@ -115,22 +132,27 @@ def _build_embeddings_port(settings: Settings) -> EmbeddingsPort:
     # büyümesin — 512 MB Fly VM); local/dev'de max_entries=None (mevcut sınırsız
     # davranış, sıfır regresyon).
     max_entries = settings.DEMO_CACHE_MAX_ENTRIES if settings.DEMO_MODE else None
-    # Tekil-uçuş bekleme süresi DEMO_MODE'dan bağımsız hesaplanır (Ollama/Fake
-    # provider'da hiç kullanılmaz - TtlLruCache yalnız DEMO_MODE'da anlamlı
-    # şekilde sınırlı max_entries alır - ama enjekte etmek zararsız, local/dev
-    # davranışını değiştirmez).
-    single_flight_wait_s = _gemini_single_flight_wait_s(settings)
+    # Tekil-uçuş bekleme süresi DEMO_MODE'dan BAĞIMSIZ hesaplanır - ama
+    # `CachedEmbeddings` sarmalayıcısının KENDİSİ (dolayısıyla `_fill_misses`
+    # tekil-uçuşu) LLM_PROVIDER ollama/gemini olduğu sürece HER ZAMAN
+    # DEVREDEDİR (yalnız `max_entries` DEMO_MODE'a bağlıdır - #63
+    # sertleştirme turu, dogrulayıcı bulgusu: eski yorum "Ollama/Fake
+    # provider'da hiç kullanılmaz" diyordu, bu YANLIŞTI). Bu yüzden HER
+    # provider KENDİ gerçek en-kötü-durum formülünü almalı - Gemini'nin
+    # değerini Ollama dalına enjekte etmek, Ollama'nın (daha yavaş) gerçek
+    # timeout'undan ERKEN vazgeçilmesine yol açardı (bkz.
+    # `_ollama_single_flight_wait_s` docstring'i).
     if settings.LLM_PROVIDER == "ollama":
         return CachedEmbeddings(
             OllamaAdapter(settings),
             max_entries=max_entries,
-            single_flight_wait_s=single_flight_wait_s,
+            single_flight_wait_s=_ollama_single_flight_wait_s(settings),
         )
     if settings.GEMINI_API_KEY:
         return CachedEmbeddings(
             GeminiEmbeddingsAdapter(settings),
             max_entries=max_entries,
-            single_flight_wait_s=single_flight_wait_s,
+            single_flight_wait_s=_gemini_single_flight_wait_s(settings),
         )
     logger.warning("GEMINI_API_KEY tanımlı değil — HashEmbeddings kullanılıyor.")
     return HashEmbeddings()

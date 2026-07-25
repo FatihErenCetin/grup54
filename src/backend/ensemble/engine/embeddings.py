@@ -86,7 +86,23 @@ class CachedEmbeddings:
     YAZARKEN (`self.cache.set`) ve OKURKEN (çağırana dönüşte) her zaman bir
     KOPYA kullanılır - çağıran döndürülen listeyi yerinde mutasyona uğratırsa
     (`vector[0] = 0.0` gibi) cache'in kendi kopyası ASLA kirlenmez (bkz.
-    `test_embeddings_cache_donen_vektor_mutasyona_kapali`).
+    `test_embeddings_cache_donen_vektor_mutasyona_kapali`). Bu KOPYA iki AYRI
+    yerde uygulanır - okuma (HIT hızlı-yolu `embed()` satır ~135 VE MISS
+    dönüşü `_fill_misses` sonu) ile yazma (`_fill_misses` içi
+    `stored = list(vector)`) birbirinden BAĞIMSIZDIR; biri kaldırılsa bile
+    diğeri testi YEŞİL tutabileceği için ayrı ayrı kilitlenmiştir (bkz.
+    `test_embeddings_cache_hit_yolundan_donen_vektor_mutasyona_kapali` +
+    `test_embeddings_cache_yazma_tarafi_kopyasi_izole`).
+
+    **Kilit defteri temizliği (#63 sertleştirme turu):** `_fill_misses`'in
+    edinme döngüsü yarıda kesilirse (ör. bir kilit `.acquire()` istisna
+    fırlatırsa) `finally`, YALNIZ gerçekten kayıt defterine YAZILMIŞ
+    anahtarları (`registered_keys`) serbest bırakır - `unique_miss_keys`'in
+    TAMAMINI DEĞİL. Aksi halde hiç kaydedilmemiş bir anahtar için
+    `self._locks.release()` çağırmak `KeyError` fırlatıp orijinal istisnayı
+    MASKELER (bkz.
+    `test_embeddings_cache_fill_misses_kilit_edinmede_istisna_orijinali_maskelemez`) -
+    `cache.py::TtlLruCache.get_or_compute`'daki AYNI disiplin.
     """
 
     def __init__(
@@ -154,10 +170,21 @@ class CachedEmbeddings:
         # kilitleri AYNI global sırada alır - çapraz bekleme (deadlock)
         # oluşamaz (klasik "sıralı kaynak edinme" garantisi).
         unique_miss_keys = sorted({keys[i] for i in miss_positions})
+        # `registered_keys`, `self._locks.acquire(key)` GERÇEKTEN başarıyla
+        # çağrılmış (kayıt defterine yazılmış) anahtarları tutar -
+        # `unique_miss_keys`'İN KENDİSİNİ DEĞİL. Edinme döngüsü yarıda
+        # kesilirse (ör. `lock.acquire(timeout=...)` istisna fırlatırsa),
+        # kalan anahtarlar kayıt defterine HİÇ YAZILMAMIŞTIR - `finally`
+        # bunlar için `release()` çağırırsa `KeyedLockRegistry.release()`
+        # `KeyError` fırlatır ve ORİJİNAL istisnayı MASKELER (bkz.
+        # `test_embeddings_cache_fill_misses_kilit_edinmede_istisna_orijinali_maskelemez`).
+        # `cache.py::get_or_compute`'daki AYNI disiplin burada da uygulanır.
+        registered_keys: list[str] = []
         held_locks: list[tuple[str, Lock]] = []
         try:
             for key in unique_miss_keys:
                 lock = self._locks.acquire(key)
+                registered_keys.append(key)
                 if lock.acquire(timeout=self._single_flight_wait_s):
                     held_locks.append((key, lock))
                 # Zaman aşımında kilitsiz devam edilir - `TtlLruCache.
@@ -200,5 +227,5 @@ class CachedEmbeddings:
         finally:
             for key, lock in held_locks:
                 lock.release()
-            for key in unique_miss_keys:
+            for key in registered_keys:
                 self._locks.release(key)

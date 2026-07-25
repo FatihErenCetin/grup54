@@ -23,7 +23,7 @@ from ensemble.engine.cache import (
     CachedScopeJudge,
     TtlLruCache,
 )
-from ensemble.engine.embeddings import CachedEmbeddings
+from ensemble.engine.embeddings import CachedEmbeddings, content_hash
 from ensemble.engine.radar import RadarService
 from ensemble.integrations.github.fake import FakeGitHubAdapter
 from ensemble.models import (
@@ -532,6 +532,244 @@ def test_embeddings_cache_es_zamanlilikta_keyerror_vermez():
         sys.setswitchinterval(old_interval)
 
 
+# --- CachedEmbeddings sertlestirme turu (T-63 hosted-demo-hardening) ---
+#
+# Bagimsiz dogrulayicinin bulgulari: (1) `_fill_misses`in kilit-edinme
+# dongusu yarida kesilirse eski `finally` TUM `unique_miss_keys` icin
+# release() cagiriyordu - hic kaydedilmemis anahtarlar icin bu KeyError
+# firlatip orijinal istisnayi maskeliyordu. (2) kopya disiplini testi
+# yalniz MISS donusunu mutate ediyordu, HIT hizli-yolunu VE yazma-tarafi
+# kopyasini AYRI AYRI kanitlamiyordu. Asagidaki testler bunlari kapatir.
+
+
+def test_embeddings_cache_fill_misses_kilit_edinmede_istisna_orijinali_maskelemez():
+    """HATA 1 (#63 sertlestirme turu): eski `finally` blogu, edinme dongusu
+    YARIDA KESILSE BILE `unique_miss_keys`'in TAMAMI icin `self._locks.
+    release()` cagiriyordu - ama dongu yarida kesilirse kalan anahtarlar
+    kayit defterine HIC yazilmamis oluyordu, bu da `KeyError` firlatip
+    orijinal istisnayi MASKELIYORDU. `cache.py`'nin kendi testindeki
+    `_ExplodingLock` desenini burada 4 metinle, 2. anahtarda patlatarak
+    tekrarliyoruz (bkz. `test_get_or_compute_lock_acquire_istisnasinda_kayit_sizmiyor`)."""
+
+    class _CountingEmbeddings:
+        def embed(self, texts, task_type):
+            return [[float(len(t))] for t in texts]
+
+    cached = CachedEmbeddings(_CountingEmbeddings())
+
+    class _ExplodingLock:
+        def acquire(self, timeout=None):
+            raise RuntimeError("lock patladi")
+
+        def release(self):  # pragma: no cover - hicbir zaman cagrilmamali
+            pass
+
+    original_acquire = cached._locks.acquire
+    call_count = [0]
+
+    def _acquire_explode_on_second(key: str):
+        lock = original_acquire(key)  # gercek refcount kaydi YINE artirilir
+        call_count[0] += 1
+        if call_count[0] == 2:
+            return _ExplodingLock()
+        return lock
+
+    cached._locks.acquire = _acquire_explode_on_second
+
+    with pytest.raises(RuntimeError, match="lock patladi"):
+        cached.embed(["bir", "iki", "uc", "dort"], "T")
+
+    assert len(cached._locks) == 0  # kayit defterinde sizinti kalmadi (KeyError'a fena dusmedi)
+
+
+def test_embeddings_cache_hit_yolundan_donen_vektor_mutasyona_kapali():
+    """HATA 2a (#63 sertlestirme turu): mevcut
+    `test_embeddings_cache_donen_vektor_mutasyona_kapali` yalniz ILK (MISS)
+    cagrinin donusunu mutate ediyordu - `embed()` icindeki HIT hizli-yolunun
+    (`result_by_position[index] = list(cached)`) KENDI kopyasini kanitlamiyordu.
+    Bu test HIT donusunu mutate edip SONRAKI cagrinin temiz geldigini dogrular."""
+
+    class _CountingEmbeddings:
+        def __init__(self):
+            self.calls = 0
+
+        def embed(self, texts, task_type):
+            self.calls += 1
+            return [[1.0, 2.0] for _ in texts]
+
+    inner = _CountingEmbeddings()
+    cached = CachedEmbeddings(inner)
+
+    cached.embed(["metin"], "T")  # ilk cagri: MISS, cache'e yazar
+    second = cached.embed(["metin"], "T")[0]  # HIT hizli yolundan doner
+    second[0] = 999.0  # HIT donusunu mutate et
+
+    third = cached.embed(["metin"], "T")[0]  # yine HIT
+
+    assert third == [1.0, 2.0]  # cache'teki orijinal etkilenmedi
+    assert inner.calls == 1  # hala HIT (yeniden hesaplanmadi)
+
+
+def test_embeddings_cache_yazma_tarafi_kopyasi_izole():
+    """HATA 2b (#63 sertlestirme turu): yazma-tarafi kopyasini (`stored =
+    list(vector)`) TEK BASINA kanitlayan test - caginin OKUMA kopyasina hic
+    dokunmadan, `inner.embed()`'in DONDURDUGU orijinal vektor nesnesini
+    sonradan mutate ediyoruz; cache'teki deger etkilenmemeli. (Bugune kadar
+    okuma ve yazma kopyalari HEP BIRLIKTE mutate edilip kanitlanmisti.)"""
+    produced_vectors: list[list[float]] = []
+
+    class _CapturingEmbeddings:
+        def embed(self, texts, task_type):
+            vectors = [[1.0, 2.0] for _ in texts]
+            produced_vectors.extend(vectors)
+            return vectors
+
+    cached = CachedEmbeddings(_CapturingEmbeddings())
+    cached.embed(["metin"], "T")  # MISS - inner cagrilir, produced_vectors doldurulur
+
+    produced_vectors[0][0] = 999.0  # inner'in orijinal donen nesnesini mutate et (caller DEGIL)
+
+    result = cached.embed(["metin"], "T")[0]  # HIT
+
+    assert result == [1.0, 2.0]  # cache'teki `stored` inner'in nesnesinden BAGIMSIZDI
+
+
+def test_embeddings_cache_fill_misses_kendi_single_flight_alanini_kullanir():
+    """KUCUK KAPANIS: `_fill_misses` `self._single_flight_wait_s`'i okur -
+    mevcut wiring testi (`test_demo_acikken_judge_kilit_bekleme_suresi_gemini_ayarlarindan_turer`)
+    yalniz `.cache.single_flight_wait_s` alanini dogruluyordu; constructor'daki
+    `self._single_flight_wait_s = self.cache.single_flight_wait_s` satiri sabit
+    `30.0` ile degistirilse bile o test yesil kalirdi. Enjekte edilen KUCUK bir
+    deger (0.05sn) ile GERCEK kilit-timeout suresini olcerek `_fill_misses`in
+    HANGI alani okudugunu dogrudan kanitliyoruz."""
+    lock_holder_ready = threading.Event()
+    release_holder = threading.Event()
+
+    class _CountingEmbeddings:
+        def __init__(self):
+            self.calls = 0
+
+        def embed(self, texts, task_type):
+            self.calls += 1
+            return [[1.0] for _ in texts]
+
+    inner = _CountingEmbeddings()
+    cached = CachedEmbeddings(inner, single_flight_wait_s=0.05)
+    key = content_hash("metin", "T")
+
+    # Anahtarin GERCEK kilidini disaridan tutarak `_fill_misses`i timeout
+    # yoluna zorla.
+    def holder():
+        lock = cached._locks.acquire(key)
+        lock.acquire()
+        lock_holder_ready.set()
+        release_holder.wait(timeout=10)
+        lock.release()
+        cached._locks.release(key)
+
+    holder_thread = threading.Thread(target=holder)
+    holder_thread.start()
+    assert lock_holder_ready.wait(timeout=5)
+
+    result_holder: dict[str, list] = {}
+
+    def worker():
+        result_holder["result"] = cached.embed(["metin"], "T")
+
+    worker_thread = threading.Thread(target=worker)
+    start = time.monotonic()
+    worker_thread.start()
+    worker_thread.join(timeout=1.0)
+    elapsed = time.monotonic() - start
+    still_alive = worker_thread.is_alive()
+
+    release_holder.set()
+    holder_thread.join(timeout=5)
+    worker_thread.join(timeout=35)  # mutasyonlu (sabit 30sn) durumda dahi temiz bitsin
+
+    assert not still_alive, "worker thread 1sn icinde bitmedi (30sn sabite dusmus olabilir)"
+    assert elapsed < 1.0, f"enjekte edilen 0.05sn yerine cok daha uzun beklendi ({elapsed}s)"
+    assert result_holder["result"] == [[1.0]]
+    assert inner.calls == 1  # kilit timeout sonrasi kilitsiz hesaplandi
+
+
+def test_embeddings_cache_fill_misses_kilitleri_sirali_alir():
+    """KUCUK KAPANIS: `unique_miss_keys = sorted({...})` deterministik
+    (alfabetik) kilit sirasi ile capraz-kilitlenmeyi (deadlock) onler (bkz.
+    `_fill_misses` docstring'i) - ama bu SIRA test edilmiyordu; `sorted(...)`
+    yerine `list(...)` yazilsa (set iterasyon sirasi ozel durumda
+    sozde-rastgele) suite yesil kalirdi. Bu test kilit-edinme SIRASINI
+    dogrudan gozlemleyip alfabetik sirayla eslestigini dogrular."""
+
+    class _CountingEmbeddings:
+        def embed(self, texts, task_type):
+            return [[float(len(t))] for t in texts]
+
+    cached = CachedEmbeddings(_CountingEmbeddings())
+    acquired_order: list[str] = []
+    original_acquire = cached._locks.acquire
+
+    def _tracking_acquire(key: str):
+        acquired_order.append(key)
+        return original_acquire(key)
+
+    cached._locks.acquire = _tracking_acquire
+
+    texts = ["cok", "az", "orta", "bir", "iki"]
+    cached.embed(texts, "T")
+
+    expected_keys = sorted({content_hash(t, "T") for t in texts})
+    assert acquired_order == expected_keys
+
+
+def test_embeddings_cache_fill_misses_zaman_asiminda_disaridaki_kilidi_zorla_acmaz():
+    """KUCUK KAPANIS: `_fill_misses`in ZAMAN ASIMI yolunun (bkz. `if lock.
+    acquire(timeout=...): held_locks.append(...)`) hic testi yoktu. Kosul
+    kaldirilip kosulsuz append yapilirsa: zaman asimina ugrayan (GERCEKTE
+    TUTULMAYAN) kilit yine de finally'de release() edilir - sahiplik takibi
+    olmayan `threading.Lock` icin bu, BASKA bir thread'in (dis tutucunun)
+    HALA GECERLI kilidini FORCE-UNLOCK eder; o tutucu sonra KENDI
+    release()'ini cagirdiginda `RuntimeError` alir (thread SESSIZCE olur -
+    `not holder.is_alive()` bunu YAKALAMAZ, cunku olen thread de 'alive
+    degil'dir). Bu test dis tutucu thread'in istisnasiz bittigini ACIKCA
+    (paylasilan hata listesiyle) dogrular."""
+
+    class _CountingEmbeddings:
+        def embed(self, texts, task_type):
+            return [[float(len(t))] for t in texts]
+
+    cached = CachedEmbeddings(_CountingEmbeddings(), single_flight_wait_s=0.05)
+    key = content_hash("metin", "T")
+
+    holder_ready = threading.Event()
+    release_holder = threading.Event()
+    holder_errors: list[BaseException] = []
+
+    def holder_target():
+        try:
+            lock = cached._locks.acquire(key)
+            lock.acquire()
+            holder_ready.set()
+            release_holder.wait(timeout=5)
+            lock.release()
+            cached._locks.release(key)
+        except BaseException as exc:  # noqa: BLE001 - testte hatayi yakala
+            holder_errors.append(exc)
+
+    holder_thread = threading.Thread(target=holder_target)
+    holder_thread.start()
+    assert holder_ready.wait(timeout=5)
+
+    result = cached.embed(["metin"], "T")  # zaman asimina ugrar, kilitsiz devam eder
+
+    release_holder.set()
+    holder_thread.join(timeout=5)
+
+    assert result == [[5.0]]
+    assert not holder_thread.is_alive()
+    assert holder_errors == [], f"dis tutucu thread istisnayla oldu: {holder_errors}"
+
+
 # --- TtlLruCache.get_or_compute (tekil-ucus / single-flight cekirdegi) ---
 #
 # DOGRULANMIS BLOCKER (#63 takip): get()->miss->inner->set() deseni get/set
@@ -677,6 +915,58 @@ def test_get_or_compute_kilit_zaman_asiminda_kilitsiz_devam_eder(monkeypatch):
     blocked_event.set()
     holder.join(timeout=5)
     assert not holder.is_alive()
+
+
+def test_get_or_compute_kilit_zaman_asiminda_holder_istisnasiz_biter(monkeypatch):
+    """KUCUK KAPANIS: yukaridaki test yalniz `not holder.is_alive()` diyordu -
+    bu, ISTISNAYLA OLEN bir thread icin de DOGRU olur (dead=dead, sebebi
+    onemsiz). `finally: if acquired: lock.release()` kosulu kaldirilip
+    kosulsuz yapilirsa: zaman asimina ugrayan (acquired=False) fallback cagri
+    AYNI PAYLASILAN Lock nesnesini holder HALA ICINDEYKEN FORCE-UNLOCK eder
+    (sahiplik takibi olmayan `threading.Lock` icin `.release()` 'kim
+    cagirdi' bakmaz, yalniz 'kilitli mi' bakar) - holder sonra KENDI
+    finally'sinde ayni (zaten acilmis) kilidi tekrar release etmeye
+    calisir -> `RuntimeError`, holder thread'i SESSIZCE oldurur. Bu test
+    holder'in hata FIRLATMADAN bittigini ACIKCA (paylasilan hata listesiyle)
+    dogrular."""
+    monkeypatch.setattr(cache_module, "_SINGLE_FLIGHT_WAIT_S", 0.05)
+    cache = TtlLruCache(ttl_s=60, max_entries=10, time_fn=lambda: 0.0)
+    blocked_event = threading.Event()
+    holder_entered = threading.Event()
+    holder_errors: list[BaseException] = []
+
+    def blocker():
+        holder_entered.set()
+        blocked_event.wait(timeout=5)
+        return "ilk"
+
+    def holder_target():
+        try:
+            cache.get_or_compute("k", blocker)
+        except BaseException as exc:  # noqa: BLE001 - testte hatayi yakala
+            holder_errors.append(exc)
+
+    holder = threading.Thread(target=holder_target)
+    holder.start()
+    assert holder_entered.wait(timeout=5)
+    time.sleep(0.1)  # holder'in gercekten kilidi almis olmasini garantiye al
+
+    fallback_calls: list[int] = []
+
+    def fallback_compute():
+        fallback_calls.append(1)
+        return "ikinci"
+
+    result = cache.get_or_compute("k", fallback_compute)  # kilit alinamaz -> zarif dusus
+
+    assert result == "ikinci"
+    assert fallback_calls == [1]
+
+    blocked_event.set()
+    holder.join(timeout=5)
+
+    assert not holder.is_alive()
+    assert holder_errors == [], f"holder thread istisnayla oldu: {holder_errors}"
 
 
 # --- Uc sarmalayicinin da tekil-ucus (single-flight) korumasi kullandigini
