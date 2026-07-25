@@ -42,6 +42,21 @@ class HarnessValidationError(HarnessError, ValueError):
 _SAFE_HANDLE = re.compile(r"^[A-Za-z0-9_.-]+$")
 _SLUG_STRIP = re.compile(r"[^a-z0-9]+")
 
+# Bu dosya adları front-matter'lı VERİ değil, klasörü açıklayan İNSAN
+# dokümanıdır (#242 — active/README.md · locks/modules.md · decisions/README.md).
+# read_tasks()/read_active() BURADA, scripts/harness_validate.py CI
+# doğrulamasında AYNI sözlüğü içe aktarır (tek kaynak — iki ayrı muafiyet
+# listesi kaymasın). "README.md" HER klasörde muaf; "modules.md" yalnız
+# `locks/`'ün belgelenmiş şablon adı (bkz. internal/grup54_dizin_yapisi.md §3)
+# — başka klasörde veri dosyası olarak kullanılabilir, orada muaf DEĞİL.
+NON_DATA_FILENAMES: dict[str, frozenset[str]] = {
+    "scope": frozenset({"README.md"}),
+    "tasks": frozenset({"README.md"}),
+    "active": frozenset({"README.md"}),
+    "locks": frozenset({"README.md", "modules.md"}),
+    "decisions": frozenset({"README.md"}),
+}
+
 
 def _slugify(text: str) -> str:
     """Serbest metni dosya-adı-güvenli slug'a indirger (path traversal kapalı)."""
@@ -180,7 +195,12 @@ class FileHarnessPort:
         directory = self.harness_dir / folder
         if not directory.exists():
             return []
-        return [self._read_markdown(path, expected_type) for path in sorted(directory.glob("*.md"))]
+        skip = NON_DATA_FILENAMES.get(folder, frozenset())
+        return [
+            self._read_markdown(path, expected_type)
+            for path in sorted(directory.glob("*.md"))
+            if path.name not in skip
+        ]
 
     def _read_markdown(self, path: Path, expected_type: str) -> HarnessMarkdown:
         try:
