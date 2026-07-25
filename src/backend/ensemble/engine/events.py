@@ -6,11 +6,22 @@ Bayat (stale) varlık beyanlarını okuma anında (read-time) filtreler (#60).
 
 from datetime import datetime, timezone
 
-from ensemble.models import ActorRef, PresenceEntry
+from ensemble.models import ActorRef, NormalizedEvent, PresenceEntry
 from ensemble.ports import GitHubPort
 from ensemble_shared.harness import HarnessPort
 
 DEFAULT_PRESENCE_TTL_SECONDS = 7200  # 2 saat
+
+
+def _to_naive_utc(value: datetime) -> datetime:
+    """Aware datetime'ı naive-UTC'ye indirger; naive olanı dokunmadan döndürür.
+
+    Presence tarafıyla aynı konvansiyon (naive-UTC) — ts karşılaştırmaları
+    aware/naive karışımında TypeError vermesin.
+    """
+    if value.tzinfo is not None:
+        return value.astimezone(timezone.utc).replace(tzinfo=None)
+    return value
 
 
 class EventService:
@@ -76,3 +87,25 @@ class EventService:
         # (current_time dönerse her çağrıda farklı ETag üretilir, Semih CR #221)
 
         return entries, latest_ts
+
+    def get_events(
+        self,
+        since: datetime | None = None,
+    ) -> tuple[list[NormalizedEvent], datetime]:
+        """GitHub event akışını artımlı polling cursor (since) ile okur (#52).
+
+        since verilmezse tüm feed döner (ilk poll). Sonraki poll'lerde istemci
+        dönen latest_ts'i since olarak geri gönderir → payload küçülür.
+
+        since ALT SINIR olarak DAHİL edilir (>=); sınırdaki event tekrar
+        gelebilir. Tekrarları istemci stabil `id` alanıyla eler, "hiç yeni yok"
+        durumunu ise router'daki ETag/304 kısa devre eder (kayıp riski yok).
+
+        Returns:
+            (ts,id'ye göre artan sıralı eventler, en son event ts'i = sonraki cursor)
+        """
+        lower_bound = _to_naive_utc(since) if since is not None else datetime.min
+        events = self.github_port.fetch_events(lower_bound)
+        ordered = sorted(events, key=lambda e: (_to_naive_utc(e.ts), e.id))
+        latest_ts = _to_naive_utc(ordered[-1].ts) if ordered else lower_bound
+        return ordered, latest_ts

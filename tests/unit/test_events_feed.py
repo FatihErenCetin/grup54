@@ -1,0 +1,103 @@
+"""#52 — /events artımlı feed cursor (since / ETag → 304) testleri."""
+
+from datetime import datetime
+from unittest.mock import MagicMock
+
+from fastapi.testclient import TestClient
+
+from ensemble.api.deps import get_event_service
+from ensemble.app import create_app
+from ensemble.config import Settings
+from ensemble.engine.events import EventService
+from ensemble.integrations.github.fake import FakeGitHubAdapter
+from ensemble.models import NormalizedEvent
+from ensemble_shared.harness import HarnessPort
+
+_EVENTS = [
+    NormalizedEvent(
+        id="issue:50", type="issue", actor="enes", branch=None, files=[],
+        ts=datetime(2026, 7, 10, 8, 0, 0), ref="50",
+    ),
+    NormalizedEvent(
+        id="commit:aaa", type="commit", actor="esma", branch=None, files=["a.py"],
+        ts=datetime(2026, 7, 10, 9, 0, 0), ref="aaa",
+    ),
+    NormalizedEvent(
+        id="pr:99", type="pr", actor="fatih", branch="T-99", files=[],
+        ts=datetime(2026, 7, 10, 10, 0, 0), ref="99",
+    ),
+]
+
+
+def _service(events: list[NormalizedEvent]) -> EventService:
+    return EventService(
+        harness_port=MagicMock(spec=HarnessPort),
+        github_port=FakeGitHubAdapter(events=list(events)),
+    )
+
+
+# --- servis katmanı -------------------------------------------------------
+
+def test_get_events_without_cursor_returns_full_feed_sorted():
+    events, latest_ts = _service(_EVENTS).get_events()
+    assert [e.id for e in events] == ["issue:50", "commit:aaa", "pr:99"]  # ts artan
+    assert latest_ts == datetime(2026, 7, 10, 10, 0, 0)  # sonraki cursor = en son ts
+
+
+def test_get_events_with_since_narrows_payload():
+    events, latest_ts = _service(_EVENTS).get_events(since=datetime(2026, 7, 10, 9, 0, 0))
+    # since dahil (>=): 09:00 ve sonrası
+    assert [e.id for e in events] == ["commit:aaa", "pr:99"]
+    assert latest_ts == datetime(2026, 7, 10, 10, 0, 0)
+
+
+def test_get_events_empty_feed_echoes_cursor():
+    since = datetime(2026, 7, 11, 0, 0, 0)
+    events, latest_ts = _service(_EVENTS).get_events(since=since)
+    assert events == []
+    assert latest_ts == since  # yeni yok → cursor ilerlemez
+
+
+# --- endpoint (ETag / 304 / since) ---------------------------------------
+
+def _client(events: list[NormalizedEvent]) -> TestClient:
+    app = create_app(Settings(DATABASE_URL="sqlite://"))
+    app.dependency_overrides[get_event_service] = lambda: _service(events)
+    return TestClient(app)
+
+
+def test_events_endpoint_returns_events_and_etag():
+    with _client(_EVENTS) as client:
+        r = client.get("/events")
+        assert r.status_code == 200
+        assert "ETag" in r.headers
+        body = r.json()
+        assert len(body["events"]) == 3
+        assert body["latest_ts"].startswith("2026-07-10T10:00:00")
+
+
+def test_events_endpoint_if_none_match_returns_304():
+    with _client(_EVENTS) as client:
+        first = client.get("/events")
+        etag = first.headers["ETag"]
+
+        second = client.get("/events", headers={"If-None-Match": etag})
+        assert second.status_code == 304
+        assert second.headers["ETag"] == etag
+        assert second.content == b""
+
+
+def test_events_endpoint_etag_changes_when_feed_changes():
+    with _client(_EVENTS[:2]) as client:
+        etag_small = client.get("/events").headers["ETag"]
+    with _client(_EVENTS) as client:
+        etag_full = client.get("/events").headers["ETag"]
+    assert etag_small != etag_full  # içerik değişti → farklı ETag → 304 vermez
+
+
+def test_events_endpoint_since_query_param_filters():
+    with _client(_EVENTS) as client:
+        r = client.get("/events", params={"since": "2026-07-10T10:00:00"})
+        assert r.status_code == 200
+        body = r.json()
+        assert [e["id"] for e in body["events"]] == ["pr:99"]
