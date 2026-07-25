@@ -46,6 +46,15 @@ def _runbook_text() -> str:
     return _RUNBOOK.read_text(encoding="utf-8")
 
 
+def _bolum_1_topoloji() -> str:
+    """'## 1. Topoloji' basligindan '## 2. Env' basligina kadarki metin —
+    CD/deploy kapisi + PR/main required-check aciklamasi burada yasiyor."""
+    runbook = _runbook_text()
+    baslangic = runbook.index("## 1. Topoloji")
+    bitis = runbook.index("## 2. Env")
+    return runbook[baslangic:bitis]
+
+
 def test_env_example_anahtarlarinin_tamami_runbookta():
     keys = _env_example_keys()
     assert keys, ".env.example'da hic anahtar bulunamadi — regex/dosya yolu kontrol et"
@@ -74,6 +83,60 @@ def test_cors_origins_yorumlu_anahtar_da_kapsanir():
     assert _COMMENT_ONLY_KEY in runbook, (
         f"{_COMMENT_ONLY_KEY} .env.example'da yorum-ornegi olsa da "
         "docs/deploy-runbook.md tablosunda satiri olmali"
+    )
+
+
+def test_deploy_kapisi_ve_pr_kapisi_kume_farki_isimle_belirtilir():
+    """Drift kilidi (#190 bulgusu): deploy kapisi (workflow_run, ci.yml'in
+    TAMAMI) ile PR/main required-check listesi ORTUSEN AMA OZDES OLMAYAN iki
+    ayri kume - deploy kapisinda `gitleaks` var `check-single-issue` yok, PR
+    kapisinda tam tersi. Runbook bu iki baglami ISIMLE ayirt etmeli: deploy
+    kapisi satirinda `gitleaks` gecmeli, PR/required-check satirinda
+    `check-single-issue` gecmeli - ayrica her satir kendi kumesinde
+    OLMAYAN uyeyi de acikca (YOK ile) belirtmeli (asil bilgi orada, §190
+    bulgusu bunun eksikligiydi). Tam cumle eslemesi YAPMAZ (bicim/kelime
+    sirasi degisikligine dayanikli); yalnizca ilgili baglam-satirinda bu
+    isimlerin birlikte gectigini kontrol eder.
+    """
+    bolum = _bolum_1_topoloji()
+    satirlar = [s for s in bolum.splitlines() if s.strip()]
+
+    deploy_satirlari = [s for s in satirlar if "deploy kapısı" in s]
+    assert deploy_satirlari, (
+        "'deploy kapısı' baglamini adlandiran bir satir bulunamadi — "
+        "deploy kapisi (workflow_run) PR/main required-check listesinden "
+        "ayri, kendi basina adlandirilmis bir kume olarak anilmali"
+    )
+    assert any("gitleaks" in s for s in deploy_satirlari), (
+        "deploy kapısı baglamindaki satir(lar) 'gitleaks'i ISIMLE anmiyor"
+    )
+    assert any("check-single-issue" in s and "YOK" in s for s in deploy_satirlari), (
+        "deploy kapısı baglaminda 'check-single-issue'nun bu kumede OLMADIGI "
+        "acikca (YOK ile) belirtilmeli — asil bilgi orada"
+    )
+
+    pr_satirlari = [s for s in satirlar if "required-check listesi" in s]
+    assert pr_satirlari, (
+        "'PR/main required-check listesi' baglamini adlandiran bir satir "
+        "bulunamadi — deploy kapisindan ayri, kendi basina adlandirilmis "
+        "bir kume olarak anilmali"
+    )
+    assert any("check-single-issue" in s for s in pr_satirlari), (
+        "PR/main required-check baglamindaki satir(lar) 'check-single-issue'u "
+        "ISIMLE anmiyor"
+    )
+    assert any("gitleaks" in s and "YOK" in s for s in pr_satirlari), (
+        "PR/main required-check baglaminda 'gitleaks'in bu kumede OLMADIGI "
+        "acikca (YOK ile) belirtilmeli — asil bilgi orada"
+    )
+
+    # Ana bulgu (#190): iki kapinin AYNI kural oldugu POZITIF iddia
+    # edilmemeli. ("aynı kural" DEGIL negasyonu serbest — bilerek kullaniliyor;
+    # yasakli olan pozitif "...kuralını uygular" ifadesi, orijinal bulgu buydu.)
+    assert "kuralını uygular" not in bolum, (
+        "runbook, deploy kapisi ile PR/main required-check listesinin ayni "
+        "kurali uyguladigini iddia ediyor gibi gorunuyor (#190 bulgusu geri "
+        "donmus olabilir) — iki kume ortusen ama ozdes DEGIL"
     )
 
 
