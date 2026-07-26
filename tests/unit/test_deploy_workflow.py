@@ -1201,6 +1201,73 @@ def test_deploy_shell_bash_defaults_acik_belirtilir():
     )
 
 
+COMPOSE_PATH = REPO_ROOT / "deploy" / "docker-compose.prod.yml"
+
+
+def test_deploy_job_env_dosyasi_mutlak_yola_isaret_eder():
+    """BLOCKER 2 (S192 review, benim canli bulgum -- review'da YOKTU):
+    `deploy` job'i `ENSEMBLE_ENV_FILE`'i job-seviyesinde, MUTLAK bir yola
+    (`/etc/ensemble/ensemble.env`, D-46 kanonik konum) baglamali. Runner
+    KENDI checkout'unda kosar -- orada `deploy/.env.production` (goreli,
+    gitignored) YOKTUR; degisken goreli birakilirsa/silinirse compose
+    dosyasinin kendi `env_file: - ${ENSEMBLE_ENV_FILE:-.env.production}`
+    varsayilanina duser ve CD ilk kosusunda "no such file" ile patlar."""
+    deploy_env = DEPLOY["jobs"]["deploy"].get("env", {})
+    assert deploy_env.get("ENSEMBLE_ENV_FILE") == "/etc/ensemble/ensemble.env", (
+        f"deploy.env.ENSEMBLE_ENV_FILE={deploy_env.get('ENSEMBLE_ENV_FILE')!r} -- "
+        "'/etc/ensemble/ensemble.env' degil (D-46 kanonik sunucu sir dosyasi)."
+    )
+
+
+def test_compose_komutlari_env_file_bayragini_tasir():
+    """BLOCKER 2 (S192 review): `deploy/docker-compose.prod.yml` `db`
+    servisinde `${POSTGRES_PASSWORD:?...}` gibi ZORUNLU interpolasyonlar
+    tasir. Bunlari Compose servis-ici `env_file:`den DEGIL kendi
+    `--env-file`'indan cozer -- ikisi AYRI mekanizma, ikisi de gerekli
+    (bkz. deploy.yml 'KAPI 5' notu). MUTASYON KILIDI: `--env-file
+    "$ENSEMBLE_ENV_FILE"` bayragini komuttan silersen bu test kirilir --
+    ve gercek CD kosusunda 'required variable POSTGRES_PASSWORD is
+    missing' ile patlardi (ilk `vars.DEPLOY_ENABLED=true` gunu)."""
+    deploy_steps = _all_steps(DEPLOY["jobs"]["deploy"])
+    compose_steps = [s for s in deploy_steps if "docker compose" in (s.get("run") or "")]
+    assert compose_steps, "deploy job'inda 'docker compose' kosan hicbir adim yok."
+    for step in compose_steps:
+        run_body = step["run"]
+        assert "--env-file" in run_body, (
+            f"{step.get('name')!r} adimi '--env-file' bayragini tasimiyor -- compose "
+            "YAML'indaki zorunlu (${VAR:?...}) interpolasyonlar cozulemez, CD ilk "
+            "kosusunda patlar."
+        )
+        assert '"$ENSEMBLE_ENV_FILE"' in run_body, (
+            f"{step.get('name')!r} adiminin '--env-file' degeri job-seviyesindeki "
+            "ENSEMBLE_ENV_FILE degiskenine baglanmamis (sabit/goreli bir yol yazilmis "
+            "olabilir) -- iki kullanimin (env-var + CLI bayragi) ayni kaynaktan "
+            "gelmedigi anlamina gelir, kayma riski."
+        )
+
+
+def test_deploy_env_dosyasi_kanali_prod_compose_ile_ayni_degiskeni_paylasir():
+    """Capraz-dosya baglanti (test_ci_ismi_deploy_kapisiyla_ayni ile AYNI sinif):
+    `deploy.yml`'in `ENSEMBLE_ENV_FILE` olarak SET ettigi degisken adi,
+    `deploy/docker-compose.prod.yml`'in `env_file: - ${ENSEMBLE_ENV_FILE:-...}`
+    olarak OKUDUGU degisken adiyla harfiyen ayni olmali -- biri yeniden
+    adlandirilip digeri unutulursa (isim driftı) CD sessizce goreli
+    varsayilana (`.env.production`) duser ve runner'in kendi checkout'unda
+    bulunamayan bir dosyayi arar."""
+    deploy_env_var = "ENSEMBLE_ENV_FILE"
+    assert deploy_env_var in DEPLOY["jobs"]["deploy"].get("env", {}), (
+        f"deploy.yml artik '{deploy_env_var}' env degiskenini set etmiyor."
+    )
+    doc = yaml.safe_load(COMPOSE_PATH.read_text(encoding="utf-8"))
+    for servis_adi in ("api", "migrate"):
+        env_file = doc["services"][servis_adi].get("env_file")
+        girdi = env_file[0] if isinstance(env_file, list) else env_file
+        assert deploy_env_var in str(girdi), (
+            f"docker-compose.prod.yml:{servis_adi}.env_file={girdi!r} -- deploy.yml'in "
+            f"set ettigi '{deploy_env_var}' adini referans almiyor (isim driftı)."
+        )
+
+
 def test_tum_workflowlar_gecerli_yaml_ve_her_job_runs_on_iceriyor():
     """Repo genelinde sanity: bugune kadar workflow YAML'ini parse eden
     hicbir test yoktu -- bu, gercek bir bosluktu."""

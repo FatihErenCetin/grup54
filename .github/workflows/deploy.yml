@@ -259,6 +259,31 @@ jobs:
     # `x64` GitHub'in otomatik etiketleri, `ensemble-prod` bizim ozel etiketimiz.
     runs-on: [self-hosted, linux, x64, ensemble-prod]
     timeout-minutes: 30 # job'in CALISMA suresini sinirlar (kuyruk suresini degil) -- asili bir build/up'i keser
+    # KAPI 5 -- prod env dosyasi (S192 review, benim canli bulgum -- review'da
+    # YOKTU): `deploy/docker-compose.prod.yml` (#246) `db`/`migrate`/`api`
+    # servislerinde `${POSTGRES_PASSWORD:?...}` gibi ZORUNLU interpolasyonlar
+    # tasir. Bunlari Compose servis-ici `env_file:`den DEGIL, KENDI
+    # `--env-file`'indan cozer -- ikisi AYRI mekanizma: `env_file:` konteynerin
+    # ICINE degisken enjekte eder (calisma-zamani), `--env-file` bu YAML
+    # metninin `${...}` yerlerini DOLDURUR (parse-zamani, komut hangi servisi
+    # hedeflerse hedeflesin TUM dosya interpolize edilir). `--env-file`
+    # verilmeden `build`/`up` cagrilirsa Compose "required variable
+    # POSTGRES_PASSWORD is missing" ile CD'nin ILK kosusunda PATLAR --
+    # `vars.DEPLOY_ENABLED=true` yapildigi gun ortaya cikan bir regresyon
+    # olurdu. Runner kendi checkout'unda kosar, orada `deploy/.env.production`
+    # YOKTUR (gitignored) -- gercek sir dosyasi sunucuda
+    # `/etc/ensemble/ensemble.env`dedir (640 root:docker). Burada job-seviyesinde
+    # TEK bir yerde tanimlaniyor (asagidaki adimlarda TEKRAR edilmiyor) ki iki
+    # kullanimi (env-var + CLI bayragi) birbirinden KAYMASIN:
+    #   1) `ENSEMBLE_ENV_FILE` env degiskeni olarak -- compose dosyasinin KENDI
+    #      `env_file: - ${ENSEMBLE_ENV_FILE:-.env.production}` satirini (elle
+    #      kurulumun varsayilanini KORUYARAK) bu mutlak yola yonlendirir.
+    #   2) `--env-file "$ENSEMBLE_ENV_FILE"` CLI bayragi olarak -- YAML'daki
+    #      `${POSTGRES_PASSWORD:?...}` gibi ZORUNLU alanlari doldurur.
+    # (Mutasyon kaniti PR govdesinde: bayrak/degisken kaldirilinca
+    # test_deploy_workflow.py kirilir.)
+    env:
+      ENSEMBLE_ENV_FILE: /etc/ensemble/ensemble.env
     steps:
       - uses: actions/checkout@v4
         with:
@@ -294,12 +319,12 @@ jobs:
       - name: Prod imajini kur
         env:
           IMAGE_TAG: ${{ needs.preflight.outputs.sha }}
-        run: docker compose -f deploy/docker-compose.prod.yml build api
+        run: docker compose -f deploy/docker-compose.prod.yml --env-file "$ENSEMBLE_ENV_FILE" build api
 
       - name: Prod servisleri ayaga kaldir
         env:
           IMAGE_TAG: ${{ needs.preflight.outputs.sha }}
-        run: docker compose -f deploy/docker-compose.prod.yml up -d --remove-orphans
+        run: docker compose -f deploy/docker-compose.prod.yml --env-file "$ENSEMBLE_ENV_FILE" up -d --remove-orphans
 
   smoke:
     # `deploy` disinda hicbir `if:` YOK -- job-level `if:` verilmezse
