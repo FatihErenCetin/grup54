@@ -178,6 +178,7 @@ def _build_radar_service(settings: Settings) -> RadarService:
         min_similarity=settings.RADAR_MIN_SIMILARITY,
         backfill_limit=settings.GITHUB_BACKFILL_LIMIT,
         default_base=settings.GITHUB_DEFAULT_BRANCH,
+        judge_concurrency=settings.RADAR_JUDGE_CONCURRENCY,
     )
 
 

@@ -1,3 +1,7 @@
+import threading
+
+import pytest
+
 from datetime import datetime, timezone
 
 from ensemble.engine.radar import (
@@ -826,8 +830,13 @@ class UnavailableJudge:
         )
 
 
-def _uc_olayli_servis(judge) -> RadarService:
-    """Aynı dosyaya dokunan 3 olay → 3 aday çift."""
+def _uc_olayli_servis(judge, judge_concurrency: int = 1) -> RadarService:
+    """Aynı dosyaya dokunan 3 olay → 3 aday çift.
+
+    Varsayılan `judge_concurrency=1`: #252 testleri çağrı SIRASINA bakıyor
+    (UnavailableJudge sayaçla davranış değiştiriyor), paralel koşuda sıra
+    belirsiz olurdu. Paralellik #254 testlerinde açıkça açılıyor.
+    """
     olaylar = [
         event("a", "semih", ["src/radar.py"]),
         event("b", "enes", ["src/radar.py"]),
@@ -837,6 +846,7 @@ def _uc_olayli_servis(judge) -> RadarService:
     return RadarService(
         github_port=StaticGitHub(olaylar),
         judge_port=judge,
+        judge_concurrency=judge_concurrency,
         embeddings_port=KeywordEmbeddings(),
         diffs_by_event={"a": ayni, "b": ayni, "c": ayni},
         window_days=100_000,
@@ -882,3 +892,95 @@ def test_get_detections_geriye_donuk_uyumlu():
     """Eski çağıranlar bozulmadı: liste döner, collect()'in görünümüdür."""
     servis = _uc_olayli_servis(RecordingJudge())
     assert servis.get_detections() == servis.collect().detections
+
+
+# ---------------------------------------------------------------------------
+# #254 — judge aşaması paralel
+#
+# Ölçüm: canlıda 131 aday SIRALI olarak 129 sn sürdü; aynı anda konteyner
+# CPU'su %0.7-6 arasındaydı. Yani darboğaz hesap değil, sıra bekleme.
+# ---------------------------------------------------------------------------
+
+
+class _BariyerJudge:
+    """`parties` thread AYNI ANDA içeride olmadan ilerlemeyen judge.
+
+    Eşzamanlılığı dolaylı ölçmez, ZORUNLU kılar: kod sıralıysa ilk `wait()`
+    zaman aşımına uğrar ve `BrokenBarrierError` fırlar. "Belki paraleldi"
+    diyebilecek bir gri alan bırakmaz.
+    """
+
+    def __init__(self, parties: int):
+        self.barrier = threading.Barrier(parties, timeout=5)
+
+    def judge_conflict(
+        self, a: NormalizedEvent, b: NormalizedEvent, overlap: list[str], sim: float | None
+    ) -> Detection:
+        self.barrier.wait()
+        return Detection(
+            id=f"{a.id}-{b.id}",
+            actors=sorted({a.actor, b.actor}),
+            branches=sorted({x for x in (a.branch, b.branch) if x}),
+            files=sorted(overlap),
+            severity="high",
+            confidence=0.9,
+            rationale="paralel",
+        )
+
+
+def test_judge_asamasi_gercekten_paralel_calisir():
+    """MUTASYON KİLİDİ: `_judge_all`'ı sıralıya çevir → BrokenBarrierError.
+
+    Üç aday, eşzamanlılık 3: üçü de aynı anda judge'ın içinde olmalı.
+    """
+    servis = _uc_olayli_servis(_BariyerJudge(parties=3), judge_concurrency=3)
+    sonuc = servis.collect()
+
+    assert len(sonuc.detections) == 3
+    assert sonuc.judge_unavailable == 0
+
+
+def test_paralel_ve_sirali_ayni_sonucu_verir():
+    """Eşzamanlılık sonucu DEĞİŞTİRMEMELİ — yalnız süreyi."""
+    sirali = _uc_olayli_servis(RecordingJudge(), judge_concurrency=1).collect()
+    paralel = _uc_olayli_servis(RecordingJudge(), judge_concurrency=8).collect()
+
+    assert [d.id for d in sirali.detections] == [d.id for d in paralel.detections]
+    assert sirali.evaluated == paralel.evaluated
+
+
+def test_paralel_koşuda_degerlendirilemeyenler_dogru_sayilir():
+    """#252 sayacı eşzamanlılık altında da doğru — future'lar girdi sırasında."""
+
+    class _HepsiDuser:
+        def judge_conflict(self, a, b, overlap, sim):
+            raise JudgeUnavailableError(f"{a.id}-{b.id}: kota bitti")
+
+    sonuc = _uc_olayli_servis(_HepsiDuser(), judge_concurrency=8).collect()
+
+    assert sonuc.detections == []
+    assert sonuc.judge_unavailable == 3
+
+
+def test_judge_disi_istisna_yayilir_yutulmaz():
+    """Yalnız JudgeUnavailableError sayılır; diğerleri isteği düşürmeli.
+
+    Aksi halde #252'nin düzelttiği hatanın aynısını daha geniş bir yakalama
+    ile geri getirirdik: her arıza sessizce "değerlendirilemedi"ye dönüşürdü.
+    """
+
+    class _AgPatliyor:
+        def judge_conflict(self, a, b, overlap, sim):
+            raise ConnectionError("ag koptu")
+
+    with pytest.raises(ConnectionError):
+        _uc_olayli_servis(_AgPatliyor(), judge_concurrency=8).collect()
+
+
+def test_gecersiz_esszamanlilik_reddedilir():
+    with pytest.raises(ValueError, match="judge_concurrency"):
+        RadarService(
+            github_port=StaticGitHub([]),
+            judge_port=RecordingJudge(),
+            judge_concurrency=0,
+        )

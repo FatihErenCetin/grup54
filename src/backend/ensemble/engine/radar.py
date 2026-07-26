@@ -1,4 +1,5 @@
 import logging
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from collections.abc import Mapping
 from datetime import datetime, timedelta, timezone
@@ -16,6 +17,9 @@ logger = logging.getLogger("ensemble.radar")
 SEMANTIC_SIMILARITY_TASK = "SEMANTIC_SIMILARITY"
 DEFAULT_RADAR_WINDOW_DAYS = 14
 DEFAULT_BACKFILL_LIMIT = 50
+# Judge asamasi I/O-bagimli (olcum: 131 aday/129 sn, CPU %0.7-6). Varsayilan
+# 8, saglayici RPM tavani ile gecikme arasindaki dengeye gore ayarlanir (#254).
+DEFAULT_JUDGE_CONCURRENCY = 8
 
 
 @dataclass(frozen=True)
@@ -214,11 +218,14 @@ class RadarService:
         include_low_severity: bool = True,
         backfill_limit: int = DEFAULT_BACKFILL_LIMIT,
         default_base: str = "main",
+        judge_concurrency: int = DEFAULT_JUDGE_CONCURRENCY,
     ):
         if window_days <= 0:
             raise ValueError("window_days must be positive")
         if backfill_limit < 0:
             raise ValueError("backfill_limit must be non-negative")
+        if judge_concurrency < 1:
+            raise ValueError("judge_concurrency must be at least 1")
         self.github_port = github_port
         self.judge_port = judge_port
         self.embeddings_port = embeddings_port or HashEmbeddings()
@@ -228,6 +235,7 @@ class RadarService:
         self.min_similarity = min_similarity
         self.include_low_severity = include_low_severity
         self.backfill_limit = backfill_limit
+        self.judge_concurrency = judge_concurrency
         self.default_base = default_base
         self._compare_cache: dict[tuple[str, str], list[str]] = {}
         self._known_events: dict[str, NormalizedEvent] = {}
@@ -254,22 +262,15 @@ class RadarService:
 
         detections: list[Detection] = []
         unavailable = 0
-        for candidate in semantic_candidates:
-            try:
-                detections.append(
-                    self.judge_port.judge_conflict(
-                        candidate.a,
-                        candidate.b,
-                        candidate.overlap,
-                        candidate.similarity,
-                    )
-                )
-            except JudgeUnavailableError as exc:
+        for verdict in self._judge_all(semantic_candidates):
+            if isinstance(verdict, JudgeUnavailableError):
                 # #252: değerlendirilemeyen çift TESPİT DEĞİLDİR. Listeye
-                # girmez ama sayılır — ham hata yalnızca burada, log'da kalır;
+                # girmez ama sayılır — ham hata yalnızca log'da kalır;
                 # kullanıcıya `RadarResult.judge_unavailable` sayısı gider.
                 unavailable += 1
-                logger.warning("judge değerlendiremedi: %s", exc)
+                logger.warning("judge değerlendiremedi: %s", verdict)
+            else:
+                detections.append(verdict)
 
         evaluated = len(detections)
         if not self.include_low_severity:
@@ -304,6 +305,49 @@ class RadarService:
             self._known_events.values(),
             key=lambda event: (_datetime_key(event.ts), event.id),
         )
+
+    def _judge_all(
+        self, candidates: list[SemanticHunkCandidate]
+    ) -> list[Detection | JudgeUnavailableError]:
+        """Adayları yargılar; sonuçları GİRDİ SIRASINDA döndürür (#254).
+
+        Neden thread havuzu, neden asyncio değil: ölçüm bu aşamanın I/O-bağımlı
+        olduğunu gösterdi — canlıda 131 aday 129 sn sürerken konteyner CPU'su
+        %0.7-6 arasındaydı. Yani süre hesapta değil, sıra beklemede geçiyor.
+        Adaptörler (Gemini SDK, httpx sync) senkron olduğu için thread havuzu
+        doğal uyum; asyncio tüm adaptör zincirini async'e çevirmeyi gerektirirdi.
+
+        Neden `.map()` değil de `submit()` + sıralı `result()`: `.map()` ilk
+        istisnada yinelemeyi bozar; burada HER adayın sonucunu ayrı ayrı ele
+        almamız gerekiyor (biri değerlendirilemedi diye diğer 130'u atmak
+        #252'nin çözdüğü sorunun başka bir biçimi olurdu). Future listesi girdi
+        sırasını koruduğu için sonuç, eşzamanlılıktan bağımsız olarak
+        DETERMİNİSTİK kalır.
+
+        `JudgeUnavailableError` bir DEĞER olarak döndürülür (fırlatılmaz):
+        çağıran onu sayar. Diğer istisnalar (GitHub/ağ) yayılır — onlar tüm
+        isteği düşürmeli, hata zarfı (api/errors.py) devralır.
+        """
+        if not candidates:
+            return []
+
+        def _judge(candidate: SemanticHunkCandidate) -> Detection | JudgeUnavailableError:
+            try:
+                return self.judge_port.judge_conflict(
+                    candidate.a, candidate.b, candidate.overlap, candidate.similarity
+                )
+            except JudgeUnavailableError as exc:
+                return exc
+
+        # concurrency<=1 → havuz hiç kurulmaz. Testlerin ve tek-çekirdekli
+        # ortamların sıralı, gözlenebilir bir yolu olsun diye kapatılabilir.
+        if self.judge_concurrency <= 1 or len(candidates) == 1:
+            return [_judge(candidate) for candidate in candidates]
+
+        workers = min(self.judge_concurrency, len(candidates))
+        with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="radar-judge") as pool:
+            futures = [pool.submit(_judge, candidate) for candidate in candidates]
+            return [future.result() for future in futures]
 
     def _diffs_for_candidates(
         self, candidates: list[FileOverlapCandidate]
