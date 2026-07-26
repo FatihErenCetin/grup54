@@ -10,6 +10,12 @@
  *   (sahte-canlılık yasak, D-34).
  * - `dataUpdatedAt` dışarı verilir → "Son güncelleme" göstergesi GERÇEK
  *   zamanı basar, uydurma değil.
+ *
+ * İki bilinçli ayar (`PollingAyari`) — projeksiyon ucu ile TEK-ATIŞ ucu farkı:
+ * - `/radar`, `/board`, `/scope`, `/graph`, `/presence` PROJEKSİYONdur → poll'lanır.
+ * - `/query` (LLM) tek-atıştır: `intervalMs=false` + `refetchOnWindowFocus:false`
+ *   ile 10 sn'de bir yeniden SORULMAZ (kota + DEMO_MODE 429 riski), `enabled`
+ *   ile de soru boşken hiç istek atılmaz.
  */
 
 import { useQuery } from "@tanstack/react-query";
@@ -18,11 +24,20 @@ export const POLL_INTERVAL_MS = 10_000;
 
 type PollResult<T> = { data?: T; error?: unknown };
 
+export type PollingAyari = {
+  /** false → sorgu HİÇ çalışmaz (boş soruyla /query'e gitmek gibi). Varsayılan: true */
+  enabled?: boolean;
+  /** Odağa dönüşte tazele. Tek-atış (LLM) uçlarında bilinçli kapatılır. Varsayılan: true */
+  refetchOnWindowFocus?: boolean;
+};
+
 /** Konvansiyonun kendisi — saf ve test edilebilir (biri interval'i silerse test kırılır). */
 export function pollingOptions<T>(
   key: readonly unknown[],
   fetcher: () => Promise<PollResult<T>>,
-  intervalMs: number = POLL_INTERVAL_MS,
+  /** false = otomatik tazeleme yok (tek-atış uç) */
+  intervalMs: number | false = POLL_INTERVAL_MS,
+  { enabled = true, refetchOnWindowFocus = true }: PollingAyari = {},
 ) {
   return {
     queryKey: key,
@@ -37,17 +52,19 @@ export function pollingOptions<T>(
       return data;
     },
     refetchInterval: intervalMs,
-    refetchOnWindowFocus: true,
+    refetchOnWindowFocus,
     refetchIntervalInBackground: false, // sekme arka plandayken polling durur (bilinçli)
+    enabled,
   } as const;
 }
 
 export function usePolling<T>(
   key: readonly unknown[],
   fetcher: () => Promise<PollResult<T>>,
-  intervalMs: number = POLL_INTERVAL_MS,
+  intervalMs: number | false = POLL_INTERVAL_MS,
+  ayar: PollingAyari = {},
 ) {
-  const query = useQuery(pollingOptions(key, fetcher, intervalMs));
+  const query = useQuery(pollingOptions(key, fetcher, intervalMs, ayar));
 
   return {
     data: query.data,

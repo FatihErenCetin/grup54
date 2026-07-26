@@ -59,6 +59,73 @@ export function EmptyState({
   );
 }
 
+/* ── Yükleniyor / hata: TEK kalıp, tüm sayfalar (#20 hook'ları üç durumu da
+   döndürür; sayfalar üçünü de çizmek ZORUNDA — hata yutmak yasak, D-34). ── */
+
+export function YuklemeIskeleti({
+  /** aria-label: "Board yükleniyor" gibi — ekran okuyucu ne beklediğini bilsin */
+  label,
+  satir = 3,
+}: {
+  label: string;
+  satir?: number;
+}) {
+  return (
+    <div className="space-y-3" aria-busy="true" aria-label={label}>
+      <div className="h-10 animate-pulse rounded-lg bg-muted" />
+      {Array.from({ length: satir }, (_, i) => (
+        <div key={i} className="h-14 animate-pulse rounded-lg bg-muted" />
+      ))}
+    </div>
+  );
+}
+
+/** Hata gövdesini okunur tek satıra indirger — ErrorEnvelope {error,message,status},
+    Error, düz string ve openapi-fetch'in boş-gövde ("") hâli dahil. */
+export function hataMesaji(hata: unknown): string {
+  if (hata === null || hata === undefined) return "";
+  if (typeof hata === "string") return hata === "" ? "(boş hata gövdesi)" : hata;
+  if (hata instanceof Error) return hata.message;
+  if (typeof hata === "object") {
+    const o = hata as { message?: unknown; detail?: unknown; error?: unknown };
+    if (typeof o.message === "string" && o.message) return o.message;
+    if (typeof o.detail === "string" && o.detail) return o.detail;
+    if (typeof o.error === "string" && o.error) return o.error;
+    try {
+      return JSON.stringify(hata);
+    } catch {
+      return String(hata);
+    }
+  }
+  return String(hata);
+}
+
+const BAGLANTI_ACIKLAMASI =
+  "Backend cevap vermedi — bağlantıyı ve VITE_API_BASE_URL'i kontrol et. Polling sürüyor; düzelince kendiliğinden gelir.";
+
+export function HataDurumu({
+  /** "Board'a ulaşılamıyor" gibi — sayfa adını taşısın, "Bir hata oluştu" DEĞİL */
+  baslik,
+  aciklama = BAGLANTI_ACIKLAMASI,
+  /** Ham hata: teknik ayrıntı satırı olarak GÖRÜNÜR basılır (yutulmaz) */
+  hata,
+}: {
+  baslik: string;
+  aciklama?: string;
+  hata?: unknown;
+}) {
+  return (
+    <div role="alert">
+      <EmptyState title={baslik} description={aciklama} />
+      {hata !== undefined && hata !== null && (
+        <p className="mx-auto mt-3 max-w-md text-center font-mono text-[11px] text-muted-foreground">
+          Teknik ayrıntı: {hataMesaji(hata)}
+        </p>
+      )}
+    </div>
+  );
+}
+
 export function SonGuncelleme({
   dataUpdatedAt,
   isFetching = false,
@@ -103,10 +170,18 @@ export function ConfidenceMeter({ value }: { value: number }) {
 
 const AGENT_SUFFIX = /-(claude|gemini|codex|kiro|bot|ai)$/i;
 
-export function ActorChip({ handle }: { handle: string }) {
-  // Tasarım dili: insan = daire, AI ajanı = kare (D-34) — handle sonekinden sezilir;
-  // kesin tip Ek B1 (ActorRef) S3'te projeksiyonlara girince buradan okunacak
-  const isAgent = AGENT_SUFFIX.test(handle);
+export function ActorChip({
+  handle,
+  /** ActorRef.type — TAŞIYAN projeksiyonlarda (örn. PresenceEntry) verilir;
+      verilmezse handle sonekinden sezilir (Detection.actors hâlâ düz string[]). */
+  type,
+}: {
+  handle: string;
+  type?: "human" | "agent";
+}) {
+  // Tasarım dili: insan = daire, AI ajanı = kare (D-34). Kesin tip (Ek B1 ActorRef)
+  // artık /presence'ta GELİYOR → varsa sezgiyi değil onu kullan (tahmin ≠ veri).
+  const isAgent = type !== undefined ? type === "agent" : AGENT_SUFFIX.test(handle);
   const initials = handle.slice(0, 2).toUpperCase();
   return (
     <span className="inline-flex items-center gap-1" title={isAgent ? `${handle} (AI ajanı)` : handle}>

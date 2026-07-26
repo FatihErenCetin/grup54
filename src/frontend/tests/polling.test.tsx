@@ -2,7 +2,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, renderHook, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { SonGuncelleme } from "../src/components/ui";
 import { POLL_INTERVAL_MS, pollingOptions, usePolling } from "../src/lib/usePolling";
 
@@ -26,6 +26,41 @@ describe("pollingOptions — konvansiyonun kendisi", () => {
   it("boş cevabı (error da data da yok) sessizce yutmaz, fırlatır", async () => {
     const opts = pollingOptions(["k"], async () => ({}));
     await expect(opts.queryFn()).rejects.toThrow("Boş cevap");
+  });
+
+  it("tek-atış ayarı: interval kapatılabilir + odakta tazeleme kapatılabilir", () => {
+    // /query (LLM) ucu için: 10sn'de bir yeniden sormak kota/429 yakar
+    const opts = pollingOptions(["ask", ""], async () => ({ data: 1 }), false, {
+      enabled: false,
+      refetchOnWindowFocus: false,
+    });
+    expect(opts.refetchInterval).toBe(false);
+    expect(opts.refetchOnWindowFocus).toBe(false);
+    expect(opts.enabled).toBe(false);
+  });
+
+  it("varsayılan enabled=true (projeksiyon uçları poll'lanmaya devam eder)", () => {
+    expect(pollingOptions(["k"], async () => ({ data: 1 })).enabled).toBe(true);
+  });
+});
+
+describe("useAsk — boş soruyla /query'e GİDİLMEZ", () => {
+  it("soru boşken fetcher hiç çağrılmaz; doluyken çağrılır", async () => {
+    const cagri = vi.fn(async () => ({ data: { answer: "x" } }));
+    const { result, rerender } = renderHook(
+      ({ q }: { q: string }) =>
+        usePolling(["ask", q.trim()], cagri, false, { enabled: q.trim().length > 0 }),
+      { wrapper, initialProps: { q: "   " } },
+    );
+    await waitFor(() => expect(cagri).not.toHaveBeenCalled());
+    // Kapalı sorgunun dönüş sözleşmesi (sayfalar buna göre "henüz sorulmadı"
+    // durumu çizer): hata YOK, yükleniyor DEĞİL, veri yok
+    expect(result.current.error).toBeNull();
+    expect(result.current.isLoading).toBe(false);
+    expect(result.current.data).toBeUndefined();
+    rerender({ q: "auth'a kim dokundu?" });
+    await waitFor(() => expect(cagri).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(result.current.data).toEqual({ answer: "x" }));
   });
 });
 
