@@ -7,7 +7,7 @@ import AppLayout from "../src/components/AppLayout";
 import { RadarPage } from "../src/pages";
 import { config } from "../src/lib/config";
 
-function renderShell(path = "/") {
+function renderShell(path = "/radar") {
   // #21'den beri RadarPage veri hook'u kullanıyor → gerçek uygulamadaki gibi provider şart
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
@@ -15,7 +15,7 @@ function renderShell(path = "/") {
       <MemoryRouter initialEntries={[path]}>
         <Routes>
           <Route element={<AppLayout />}>
-            <Route index element={<RadarPage />} />
+            <Route path="radar" element={<RadarPage />} />
           </Route>
         </Routes>
       </MemoryRouter>
@@ -32,7 +32,7 @@ describe("app shell", () => {
     expect(screen.getByText("Ensemble")).toBeInTheDocument();
   });
 
-  it("açılış sayfası Radar'ı yükler (ölü link yok)", () => {
+  it("/radar Radar sayfasını yükler (ölü link yok — #260: '/' artık Landing)", () => {
     renderShell();
     // jsdom'da backend yok → ilk kare loading iskeleti; sayfanın kendisi #21 testlerinde
     expect(screen.getByLabelText("Radar yükleniyor")).toBeInTheDocument();

@@ -11,6 +11,8 @@ const queryClient = new QueryClient();
 
 /* Lazy route'lar (#19 kabul kriteri): her sayfa kendi chunk'ında —
    gerçek sayfalar büyüdükçe (#21+) ilk yükleme küçük kalır. */
+const LandingPage = lazy(() => import("./pages/LandingPage"));
+const LoginPage = lazy(() => import("./pages/LoginPage"));
 const RadarPage = lazy(() => import("./pages/RadarPage"));
 const BoardPage = lazy(() => import("./pages/BoardPage"));
 const ScopePage = lazy(() => import("./pages/ScopePage"));
@@ -28,8 +30,12 @@ createRoot(document.getElementById("root")!).render(
           }
         >
           <Routes>
+            {/* Landing + Login: AppLayout DIŞINDA (#260 — tasarım paketi:
+                "app dışında yaşar, sidebar'a girmez"). Statik/kimliksiz sayfalar. */}
+            <Route path="/" element={<LandingPage />} />
+            <Route path="/login" element={<LoginPage />} />
             <Route element={<AppLayout />}>
-              <Route index element={<RadarPage />} />
+              <Route path="radar" element={<RadarPage />} />
               <Route path="board" element={<BoardPage />} />
               <Route path="scope" element={<ScopePage />} />
               <Route path="graph" element={<GraphPage />} />

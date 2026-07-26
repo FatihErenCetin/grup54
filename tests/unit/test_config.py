@@ -136,3 +136,42 @@ def test_demo_cache_max_entries_dokuman_ile_ayni():
         f"docs/sprint3-kontratlar.md Ek F/F1 DEMO_CACHE_MAX_ENTRIES={doc_value} "
         f"ile config.py varsayilani={code_value} birbirinden kaymis"
     )
+
+
+# --- Kullanici girisi (#79 daraltilmis dilim) ---
+
+
+def test_auth_varsayilan_alanlar_bos():
+    settings = Settings(_env_file=None)
+    assert settings.GITHUB_OAUTH_CLIENT_ID is None
+    assert settings.GITHUB_OAUTH_CLIENT_SECRET is None
+    assert settings.AUTH_SESSION_SECRET is None
+    assert settings.AUTH_COOKIE_DOMAIN is None
+    assert settings.AUTH_POST_LOGIN_URL == "/radar"
+
+
+def test_auth_enabled_ucu_de_bos_ise_false():
+    assert Settings(_env_file=None).auth_enabled is False
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"GITHUB_OAUTH_CLIENT_ID": "x"},
+        {"GITHUB_OAUTH_CLIENT_SECRET": "y"},
+        {"AUTH_SESSION_SECRET": "z"},
+        {"GITHUB_OAUTH_CLIENT_ID": "x", "GITHUB_OAUTH_CLIENT_SECRET": "y"},
+    ],
+)
+def test_auth_enabled_tek_biri_veya_ikisi_eksikse_false(kwargs):
+    assert Settings(_env_file=None, **kwargs).auth_enabled is False
+
+
+def test_auth_enabled_ucu_de_doluysa_true():
+    settings = Settings(
+        _env_file=None,
+        GITHUB_OAUTH_CLIENT_ID="x",
+        GITHUB_OAUTH_CLIENT_SECRET="y",
+        AUTH_SESSION_SECRET="z",
+    )
+    assert settings.auth_enabled is True

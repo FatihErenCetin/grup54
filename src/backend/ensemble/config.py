@@ -169,6 +169,44 @@ class Settings(BaseSettings):
             return None
         return f"{self.GITHUB_REPO_OWNER}/{self.GITHUB_REPO_NAME}"
 
+    # --- Kullanıcı girişi (GitHub App kullanıcı-yetkilendirme akışı, #79
+    # daraltılmış dilim) — VARSAYILAN KAPALI: hiçbiri set edilmemişse
+    # /auth/config {"enabled": false} döner, /auth/login 503 verir; TÜM
+    # DİĞER UÇLAR (radar/board/scope/query/...) bundan ETKİLENMEZ — giriş
+    # yalnızca "kim olduğunu göster" katmanıdır, uygulamayı KAPATMAZ.
+    # access_token BU AKIŞTA HİÇBİR YERDE SAKLANMAZ (ne DB ne cache) — yalnız
+    # callback içinde `/user` çağrısı için kullanılır, sonra atılır
+    # (integrations/github/oauth.py). Kullanıcı/identity tablosu, installation
+    # picker, çok-kiracılık = #79'un AYRI/kalan dilimi — bu bayraklar yalnız
+    # tek-repo (#63 pin) tek-kullanıcı-oturumu akışını açar.
+    GITHUB_OAUTH_CLIENT_ID: str | None = None
+    GITHUB_OAUTH_CLIENT_SECRET: str | None = None
+    # Oturum çerezini imzalayan HMAC anahtarı — `itsdangerous` YERİNE stdlib
+    # `hmac` (webhook.py::verify_signature ile AYNI desen, GITHUB_WEBHOOK_SECRET
+    # ikizi; bkz. api/auth_session.py).
+    AUTH_SESSION_SECRET: str | None = None
+    # callback başarıyla bittiğinde tarayıcının döneceği yer (frontend rotası).
+    # "/radar" — #260 ile "/" artık kimliksiz/statik Landing sayfası oldu;
+    # gerçek bir GitHub girişi bittiğinde kullanıcı pazarlama sayfasına değil
+    # uygulamaya dönmeli (doğrulama bulgusu: happy-path testi bunu zaten
+    # "/radar" ile override ediyordu, varsayılan geride kalmıştı).
+    AUTH_POST_LOGIN_URL: str = "/radar"
+    # Çerez Domain'i — paylaşılan üst alan adından türetilir (örn.
+    # "ensemble-demo.com") ki api.<domain> ve app.<domain> aynı çerezi
+    # paylaşabilsin; yerelde None kalır (Domain set edilmez, localhost çalışır).
+    AUTH_COOKIE_DOMAIN: str | None = None
+
+    @property
+    def auth_enabled(self) -> bool:
+        """`/auth/login` + `/auth/callback` fail-closed açılışı için TEK
+        kaynak — üçü de set edilmeden giriş asla açılmaz (imzasız/doğrulanamaz
+        bir çerez asla üretilmez). `/auth/config` de bunu birebir yayınlar."""
+        return bool(
+            self.GITHUB_OAUTH_CLIENT_ID
+            and self.GITHUB_OAUTH_CLIENT_SECRET
+            and self.AUTH_SESSION_SECRET
+        )
+
 
 @lru_cache
 def get_settings() -> Settings:

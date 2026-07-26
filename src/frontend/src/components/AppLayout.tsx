@@ -1,17 +1,55 @@
-import { NavLink, Outlet } from "react-router-dom";
+import { Link, NavLink, Outlet } from "react-router-dom";
 import { config } from "../lib/config";
+import { useAuth, useCikisYap } from "../lib/useAuth";
+import { ActorChip } from "./ui";
 
 /* Ters-L kabuk (Linear deseni): sol dar sidebar + üst ince bar.
    Sıra = demo anlatım sırası; Radar her zaman açılış sayfası. */
 
 const NAV = [
-  { to: "/", label: "Radar" },
+  { to: "/radar", label: "Radar" },
   { to: "/board", label: "Board" },
   { to: "/scope", label: "Scope" },
   { to: "/graph", label: "Graf" },
   { to: "/activity", label: "Activity" },
   { to: "/ask", label: "Ask" },
 ];
+
+/* Başlıktaki KÜÇÜK auth göstergesi (#79) — demo giriş İSTEMEZ, bu yüzden
+   bilinçli sessiz: yükleniyor / gerçek hata / bu kurulumda giriş yapılandırılmamış
+   (enabled=false) durumlarının HİÇBİRİNDE bir şey göstermez (görev brifi —
+   "enabled=false ise HİÇBİR ŞEY gösterme, gürültü yapma"; yükleniyor/hata da
+   aynı ilkeye tabi, bu ikincil bir gösterge — tam sayfa HataDurumu değil). */
+function AuthGostergesi() {
+  const { enabled, kullanici, isLoading, error } = useAuth();
+  const { cikisYap, yukleniyor } = useCikisYap();
+
+  if (isLoading || error != null || !enabled) return null;
+
+  if (kullanici) {
+    return (
+      <span className="flex items-center gap-2">
+        <ActorChip handle={kullanici.handle} type="human" />
+        <button
+          type="button"
+          onClick={() => void cikisYap()}
+          disabled={yukleniyor}
+          className="text-xs text-muted-foreground hover:text-foreground disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {yukleniyor ? "Çıkış…" : "Çıkış"}
+        </button>
+      </span>
+    );
+  }
+
+  // Girişli DEĞİL ama girişe yapılandırılmış: KÜÇÜK, ikincil davet — demo
+  // giriş istemediği için burada büyük bir CTA yok, yalnız bir link.
+  return (
+    <Link to="/login" className="text-xs text-muted-foreground hover:text-foreground">
+      Giriş yap
+    </Link>
+  );
+}
 
 export default function AppLayout() {
   return (
@@ -27,7 +65,7 @@ export default function AppLayout() {
             <NavLink
               key={n.to}
               to={n.to}
-              end={n.to === "/"}
+              end
               className={({ isActive }) =>
                 `block rounded px-2 py-1.5 text-sm ${
                   isActive
@@ -61,6 +99,7 @@ export default function AppLayout() {
               className="size-2 rounded-full bg-status-backlog"
               title="Backend bağlantısı bekleniyor (#20)"
             />
+            <AuthGostergesi />
           </div>
         </header>
         <main className="min-w-0 flex-1 overflow-y-auto p-6">
