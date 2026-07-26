@@ -6,17 +6,29 @@ deterministik; stdlib + pathlib disinda bagimlilik yok (mevcut
 `test_error_envelope.py` vb. deseni izler — ayri bir fixture/mock katmani
 gerektirmiyor).
 
+GUNCELLEME (D-46, self-host VDS donusumu): runbook Fly.io -> self-host
+(BogaHost VDS + docker-compose.prod.yml + host Caddy) mimarisine gore
+yeniden yazildi (`fly.toml`/`flyctl`/`FLY_API_TOKEN` main'de zaten kaldirildi,
+#246). Buna paralel: eski "Fly secret" / "FLY_API_TOKEN" zorunlu-dizgi
+kontrolleri kaldirildi/degistirildi (asagida
+`test_platform_etiketleri_ve_zorunlu_notlar_var`); yerine self-host
+gercekligini (`test_fly_operasyonel_komut_olarak_gecmiyor`) ve
+`.env.example`'in `main`'de `#252/#254/#255` ile buyudugunu (GROQ_*,
+RADAR_JUDGE_CONCURRENCY -> 38 degil 41 anahtar) kilitleyen testler eklendi.
+
 Bilincli test EDILMEYEN:
 - Tablo satirlarinin markdown yapisini parse edip "ayni anahtar iki
   sutunda" kuralini dogrulamak — kirilgan (bicim degisince yanlis
   kirmizi), degeri dusuk. Insan review'una birakilir (docs/review-rehberi.md).
 - "runbook'ta `make smoke` Makefile'daki `smoke:` hedefiyle ayni" capraz-
-  dosya kilidi — bu PR yazildiginda #189 (`scripts/smoke.py` + `make smoke`)
-  henuz `main`'de degil (Makefile'da `smoke:` hedefi yok). Boyle bir testi
+  dosya kilidi — #189 (`scripts/smoke.py` + `make smoke`) hâlâ `main`'de
+  degil (PR #238 acik, Makefile'da `smoke:` hedefi yok). Boyle bir testi
   simdi kosullu yazmak (var/yok'a gore dallanan bir assert) bu repoda #56 ve
   #189 review'larinda zaten bulgu olarak isaretlenen kosullu/fail-open test
   antikalibiydi tekrar eder. #189 `main`'e inince bu test ayri bir PR'da
   (ya da #189'un kendi PR'inda) eklenmelidir.
+- Ayni gerekce ile `.github/workflows/deploy.yml` (#236, self-host CD) icin
+  bir capraz-dosya testi de eklenmedi — o dal da hâlâ acik (PR #236).
 """
 
 from __future__ import annotations
@@ -140,6 +152,29 @@ def _yok_uyesi(yok_cumlesi: str) -> str:
         f"YOK cumlesinde beklenen '`isim` bu kümede YOK' deseni bulunamadi: {yok_cumlesi!r}"
     )
     return eslesme.group(1)
+
+
+def test_runbookun_anahtar_sayisi_iddiasi_gercek_sayiyla_esit():
+    """Bu PR'in asil bulgusu ('38 anahtar' iddiasi bayatlamisti, gercek sayi
+    41 -- #252/#254/#255 GROQ_*/RADAR_JUDGE_CONCURRENCY ekledi) bir daha
+    SESSIZCE kaymasin: runbook'un '<N> anahtarın tamamı' cumlesindeki N,
+    `.env.example`'daki GERCEK anahtar sayisiyla (duz satirlar + 1 yorum-only
+    CORS_ORIGINS) HER ZAMAN esit olmali. Yeni bir anahtar eklenip runbook'un
+    metnindeki N guncellenmezse bu test kirmizi olur (icerik tam olsa bile)."""
+    gercek_sayi = len(_env_example_keys()) + 1  # +1: CORS_ORIGINS (yorum-only)
+    runbook = _runbook_text()
+    eslesme = re.search(r"\*\*(\d+) anahtarın tamamı\*\*", runbook)
+    assert eslesme, (
+        "runbook'ta '**<N> anahtarın tamamı**' bicimli sayi-iddiasi bulunamadi — "
+        "ifade degistiyse bu testin regex'ini guncelle"
+    )
+    iddia_edilen = int(eslesme.group(1))
+    assert iddia_edilen == gercek_sayi, (
+        f"runbook '{iddia_edilen} anahtarın tamamı' diyor ama .env.example'da "
+        f"gercekte {gercek_sayi} anahtar var (40 duz satir + 1 yorum-only "
+        "CORS_ORIGINS) — sayi bayatlamis, runbook'u guncelle (bu PR'in asil "
+        "bulgusu ayni sekilde 38 -> 41 kaymisti)"
+    )
 
 
 def test_env_example_anahtarlarinin_tamami_runbookta():
@@ -319,18 +354,84 @@ def test_deploy_kapisi_kumesi_ci_yml_ile_ozdes_pr_kapisi_farkli():
 
 def test_platform_etiketleri_ve_zorunlu_notlar_var():
     runbook = _runbook_text()
-    for etiket in ("Fly secret", "Vercel env", "yalnız-local", "CI secret"):
+    # "Fly secret" ARTIK gercek mekanizma etiketi degil (D-46, self-host
+    # donusumu) -- yerini "sunucu env dosyasi" aldi. Eski etiketi burada
+    # ZORUNLU saymak yanlis bir sinyal olurdu (bkz. asagidaki
+    # test_fly_operasyonel_komut_olarak_gecmiyor - Fly'in GERCEK mekanizma
+    # olarak ANILMADIGINI ayrica kilitler).
+    for etiket in ("sunucu env dosyası", "Vercel env", "yalnız-local", "CI secret"):
         assert etiket in runbook, f"platform sinif etiketi eksik: {etiket!r}"
 
     for kritik in (
-        "FLY_API_TOKEN",
         "GITHUB_APP_PRIVATE_KEY",
         "PEM",
         "VITE_API_BASE_URL",
         "alembic upgrade head",
         "Instant Rollback",
+        # Self-host CD'nin yeni kapi/kavramlari (#236) — Fly'in
+        # FLY_API_TOKEN'inin yerini alan seyler, eskisi degil.
+        "DEPLOY_ENABLED",
+        "ENSEMBLE_ENV_FILE",
     ):
         assert kritik in runbook, f"kritik dizgi eksik: {kritik!r}"
+
+
+_KOD_BLOGU_RE = re.compile(r"```(?:bash)?\n(.*?)```", re.DOTALL)
+
+
+def test_fly_operasyonel_komut_olarak_gecmiyor():
+    """D-46 kilidi: Fly.io TAMAMEN terk edildi (#246) -- runbook Fly'i yalniz
+    TARIHSEL/KARSILASTIRMALI DUZYAZIDA anabilir ("Fly'daki `fly secrets set`in
+    eşdeğeri..." gibi karsilastirma cumleleri MESRU), ama hicbir Fly CLI
+    komutunu OPERATOR'UN BUGUN CALISTIRACAGI bir ```bash KOD BLOGU icinde
+    SUNAMAZ -- kontrol bu yuzden yalniz kod bloklarinin ICERIGINE bakar, tum
+    dokumana degil (duzyazidaki mesru karsilastirma cumleleri boylece
+    yanlislikla kirmizi vermez).
+    """
+    runbook = _runbook_text()
+    kod_bloklari = "\n".join(_KOD_BLOGU_RE.findall(runbook))
+    assert kod_bloklari, "runbook'ta hic ```bash kod blogu bulunamadi — regex/dosya kontrol et"
+
+    yasakli_komutlar = (
+        "fly secrets set",
+        "fly secrets list",
+        "fly apps create",
+        "fly volumes create",
+        "fly ssh console",
+        "fly deploy",
+        "fly tokens create",
+        "fly launch",
+        "fly status -a",
+        "fly releases",
+        "flyctl deploy",
+        "flyctl version",
+        "flyctl",
+    )
+    for komut in yasakli_komutlar:
+        assert komut not in kod_bloklari, (
+            f"runbook'un bir ```bash kod blogunda hâlâ '{komut}' Fly CLI cagrisi "
+            "var — D-46 self-host donusumunden sonra bu artik operatorun "
+            "calistiracagi gecerli bir komut DEGIL (fly.toml/flyctl main'de yok, #246)"
+        )
+
+
+def test_self_host_gerceginin_temel_dizgileri_var():
+    """Runbook'un self-host mimarisini GERCEKTEN anlattigini (Fly'i anlatan
+    eski metnin kopyalanip yer-degistirilmis isimlerle birakilmadigini)
+    dogrulayan pozitif kontrol -- her dizgi ilgili gercek dosyadan (compose/
+    caddy/workflow) alinmis, uydurulmamis (bkz. bu dosyanin PR govdesindeki
+    dogrulama notlari)."""
+    runbook = _runbook_text()
+    for dizgi in (
+        "docker-compose.prod.yml",
+        "/etc/ensemble/ensemble.env",
+        "ensemble.caddy",
+        "recommend2me.com",
+        "service_completed_successfully",
+        "ensemble-prod",
+        "DEPLOY_ENABLED",
+    ):
+        assert dizgi in runbook, f"self-host gerceginin dizgisi eksik: {dizgi!r}"
 
 
 def test_runbookta_sir_degeri_yok():

@@ -132,12 +132,12 @@ Tam **Yalın Kanvas** (9 blok) — vizyon + rakip araştırmasından damıtıld�
 
 ## 🌐 Hosted demo
 
-🟡 **Henüz yayına alınmadı** — go-live tamamlanınca bu bölüm gerçek URL'lerle güncellenir (sahte/placeholder "canlı" iddiası yok, D-34).
+🟢 **Yayında** (D-46, self-host VDS + Vercel — Fly.io **kullanılmıyor**) — 26 Temmuz'da doğrudan doğrulandı (`curl`).
 
 | | URL |
 |---|---|
-| **Frontend (Vercel)** — bootcamp teslim formuna girilecek link | *(yayına alınınca eklenecek)* |
-| **Backend (Fly.io)** | *(yayına alınınca eklenecek)* |
+| **Frontend (Vercel)** — bootcamp teslim formuna girilecek link | https://recommend2me.com |
+| **Backend** — kendi sunucumuz (BogaHost VDS), health-check: `/health` | https://api.recommend2me.com |
 
 Deploy adımları + env→platform eşlemesi + rollback: [`docs/deploy-runbook.md`](docs/deploy-runbook.md).
 
