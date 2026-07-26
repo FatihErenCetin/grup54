@@ -28,6 +28,8 @@ from ensemble.integrations.gemini.scope_judge import build_scope_judge
 from ensemble.integrations.github.adapter import GitHubAdapter
 from ensemble.integrations.github.errors import GitHubConfigError
 from ensemble.integrations.github.fake import FakeGitHubAdapter
+from ensemble.engine.fallback import FallbackJudge
+from ensemble.integrations.groq.judge import GroqJudgeAdapter
 from ensemble.integrations.ollama.adapter import OllamaAdapter
 from ensemble.integrations.ollama.client import RETRY_WAIT_CAP_S as OLLAMA_RETRY_WAIT_CAP_S
 from ensemble.integrations.query_source import HarnessEventQuerySource
@@ -114,6 +116,23 @@ def _build_judge_port(settings: Settings) -> JudgePort:
             "GEMINI_API_KEY tanımlı değil — FakeJudgeAdapter (kural-tabanlı) kullanılıyor."
         )
         judge = FakeJudgeAdapter()
+
+    # #255: yedek sağlayıcı — YALNIZCA anahtar varsa. Sarma sırası önemli:
+    # yedek, cache'in İÇİNDE kalır (CachedConflictJudge(FallbackJudge(...))).
+    # Böylece cache "hangi sağlayıcı ürettiyse üretsin, ortaya çıkan yargıyı"
+    # saklar; tersi (iki ayrı cache) aynı çifti iki kez saklar ve birincil
+    # döndüğünde yedeğin bayat yargısı ayrı bir kayıtta yaşamaya devam ederdi.
+    # İki sağlayıcı da düşerse JudgeUnavailableError yayılır ve #252 gereği
+    # cache'e HİÇBİR ŞEY yazılmaz.
+    if settings.GROQ_API_KEY and not isinstance(judge, FakeJudgeAdapter):
+        judge = FallbackJudge(primary=judge, secondary=GroqJudgeAdapter(settings))
+    elif settings.GROQ_API_KEY:
+        # Birincil zaten sahte ise yedek anlamsız olurdu (sahte adapter hiç
+        # düşmez) — sessizce yok saymak yerine söylüyoruz.
+        logger.warning(
+            "GROQ_API_KEY var ama birincil judge FakeJudgeAdapter — yedek devrede değil."
+        )
+
     if settings.DEMO_MODE:
         # #63: hosted public demo — Radar'ın 10 sn'lik poll'u aynı çifti
         # yeniden Gemini'ye sormasın (fatura kapağı). local/dev'de DEMO_MODE

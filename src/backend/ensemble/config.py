@@ -44,6 +44,18 @@ class Settings(BaseSettings):
     # key gerektirmez); key eksikliği yalnızca ResilientGeminiClient somutlaştırılırken kontrol edilir.
     GEMINI_API_KEY: str | None = None
     GEMINI_MODEL: str = "gemini-2.5-flash"
+
+    # --- Groq: judge icin YEDEK saglayici (#255) ---
+    # GROQ_API_KEY set edilirse judge FallbackJudge(birincil, Groq) ile
+    # sarilir. Bos ise hicbir sey degismez - yedek OPSIYONEL, kurulum
+    # zorunlulugu getirmez. Gerekce: olculen ucretsiz Gemini kotasi
+    # 20 istek/gun (flash) ve 10 istek/dakika (flash-lite); tek soguk
+    # /radar 131 judge cagrisi yapiyor.
+    GROQ_API_KEY: str = ""
+    GROQ_MODEL: str = "llama-3.3-70b-versatile"
+    GROQ_BASE_URL: str = "https://api.groq.com"
+    GROQ_TIMEOUT_S: float = 30.0
+    GROQ_MAX_RETRIES: int = 3
     GEMINI_EMBEDDING_MODEL: str = "gemini-embedding-001"
     GEMINI_EMBEDDING_DIMENSIONS: int = 768
     GEMINI_TIMEOUT_S: float = 10.0
