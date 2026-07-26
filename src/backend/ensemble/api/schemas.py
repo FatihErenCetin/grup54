@@ -52,6 +52,12 @@ class RadarResponse(BaseModel):
 
 class BoardResponse(BaseModel):
     cards: list[BoardCard]
+    # İş 4 (#33 B1 eki, docs/sprint3-kontratlar.md B1): board-genelinde bayatlık
+    # provenance'ı. `BoardCard` (S3 B1 🔒) DEĞİŞMEDİ — ek alan yalnız bu zarfta.
+    # last_transition_at=None + source="seed" = hiçbir karta HİÇ ingest-fold
+    # geçişi uygulanmamış (board tamamen .harness tohumundan geliyor).
+    last_transition_at: datetime | None = None
+    source: Literal["seed", "ingest"] = "seed"
 
 
 class QueryResponse(QueryResult):

@@ -93,11 +93,12 @@ Mevcut router'lar: `/health` · `/radar` · `/scope/check` · `/board` · `/quer
 ### B1 · `GET /board` (#51) — 🔒
 
 ```
-GET /board  →  BoardResponse { cards: BoardCard[] }
+GET /board  →  BoardResponse { cards: BoardCard[], last_transition_at: datetime | None, source: "seed" | "ingest" }
 ```
 - `BoardCard` = S2 Ek B2 (mevcut alanlar + `last_event: LastEvent | None`). Model AYNEN; route donuyor.
 - Kaynak: `#41` projeksiyonu üzerinde **ince okuma** — `BoardService(session_factory).get_cards()` (mevcut imza, `engine/board.py`). Durum geçişini yalnız ingest yazar (TDK).
 - **Sahibi:** backend (Enes) · **Tüketicisi:** Board sayfası (#33).
+- 🆕 **Kontrat değişti (İş 4, D-55 rebuild-fold planı):** `BoardResponse`'a `last_transition_at`/`source` alanları eklendi — `BoardCard` (yukarıdaki satır) DEĞİŞMEDİ, ek alan yalnız yanıt zarfında. Amaç: fold hiç uygulanmamışsa (`source="seed"`) board'un tamamen `.harness` tohumundan geldiğini, webhook kesintisinde bile SESSİZCE değil GÖRÜNÜR şekilde işaretlemek. Kaynak: `BoardService.get_board()` (yeni metod, `get_cards()` AYNEN korunuyor) → `engine/board.py::compute_board_provenance()`.
 
 ### B2 · `GET /events` + `GET /presence` (#52) — artımlı polling cursor 🔒
 

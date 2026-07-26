@@ -1,6 +1,6 @@
 ---
 title: '🤖 Deploy CD: main→Fly backend otomatik deploy (deploy.yml + flyctl-action)'
-status: in_review
+status: in_progress
 assignee: FatihErenCetin
 paths: []
 branch: T-192-deploy-cd-fly

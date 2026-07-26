@@ -1,7 +1,7 @@
 ---
 title: '🔎 Deploy-sonrası canlı smoke: /health + readiness + SPA route deep-link +
   CORS (make smoke)'
-status: in_review
+status: in_progress
 assignee: FatihErenCetin
 paths: []
 branch: T-189-live-smoke

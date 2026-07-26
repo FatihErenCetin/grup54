@@ -1,6 +1,6 @@
 ---
 title: '/events + /presence router (artımlı polling cursor: since=/ETag)'
-status: in_review
+status: in_progress
 assignee: EnesErdemT
 paths: []
 branch: T-52-events-cursor
