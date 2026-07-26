@@ -38,6 +38,30 @@ class JudgePort(Protocol):
     ) -> Detection: ...
 
 
+class JudgeUnavailableError(RuntimeError):
+    """Judge verilen çifti DEĞERLENDİREMEDİ (kota, ağ, bozuk yanıt).
+
+    `JudgePort` sözleşmesinin parçası: adapter bu durumda `Detection`
+    DÖNDÜRMEZ, bunu fırlatır (#252).
+
+    Neden istisna, neden düşük-güvenli bir Detection değil: ikisi farklı
+    olgudur ve tek nesneye sıkıştırılınca ayırt edilemez hale gelirler —
+        "bu çift çakışma DEĞİL"        → gerçek bir yargı
+        "bu çifti değerlendiremedik"   → yargının YOKLUĞU
+    Sahte bir Detection döndürüldüğünde sistemin geri kalanı ona veri gibi
+    davranır: cache saklar (900 sn), sıralama sıralar, UI render eder. Canlıda
+    ölçülen sonuç 19 gerçek tespitin 131 sahte tespite dönüşmesiydi.
+
+    İstisna olması, cache zehirlenmesini de kendiliğinden bitirir: istisna
+    `CachedConflictJudge._cached_call`'daki `compute()`'tan yukarı yayılır ve
+    `get_or_compute` hiçbir şey saklamaz. İstisnalar cache'lenmez; sahte
+    başarılar cache'lenir.
+
+    Çağıranın sorumluluğu: yakala, SAY ve görünür kıl — sessizce yutma
+    (bkz. `RadarService.collect()` → `RadarResult.judge_unavailable`).
+    """
+
+
 class QuerySourcePort(Protocol):
     def load_query_corpus(self) -> QueryCorpus: ...
 

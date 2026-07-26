@@ -26,7 +26,9 @@ from ensemble.engine.cache import (
 from ensemble.engine.embeddings import CachedEmbeddings, content_hash
 from ensemble.engine.radar import RadarService
 from ensemble.integrations.github.fake import FakeGitHubAdapter
+from ensemble.ports import JudgeUnavailableError
 from ensemble.models import (
+    Detection,
     NormalizedEvent,
     QueryDocument,
     QueryJudgement,
@@ -1208,3 +1210,70 @@ def test_scope_judge_farkli_anahtarlar_paralel_calisir():
 
     assert errors == []
     assert inner.calls == 2
+
+
+# --- #252: cache zehirlenmesi ---------------------------------------------
+
+
+class _KotaBitenJudge:
+    """Kotasi bitmis judge — her cagrida JudgeUnavailableError firlatir."""
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def judge_conflict(self, a, b, overlap, sim):
+        self.calls += 1
+        raise JudgeUnavailableError("kota bitti (429)")
+
+
+def test_degerlendirilemeyen_cift_cache_lenmez():
+    """MUTASYON KILIDI: istisna saklanmaz — kota donunce taze yargi sorulur.
+
+    Eski davranista adapter hata yerine sahte bir Detection donduruyordu; cache
+    bunu basarili sonuc sanip TTL boyunca (canlida 900 sn) sakliyordu. Yani kota
+    geri gelse bile 15 dakika cop servis ediliyordu.
+
+    Duzeltmeyi geri al (judge'da `raise` yerine sahte Detection dondur) → ikinci
+    cagri cache'ten gelir, inner.calls 1'de kalir ve bu test kirilir.
+    """
+    inner = _KotaBitenJudge()
+    cached = CachedConflictJudge(inner, ttl_s=900, max_entries=10)
+    a, b = _event("a", "alice"), _event("b", "bob")
+
+    for _ in range(2):
+        with pytest.raises(JudgeUnavailableError):
+            cached.judge_conflict(a, b, ["shared.py"], 0.5)
+
+    # Iki cagri da inner'a ULASTI — arizali sonuc saklanmadi.
+    assert inner.calls == 2
+
+
+def test_ariza_sonrasi_basarili_yargi_normal_cache_lenir():
+    """Ariza gecici olabilir: judge duzelince sonuc yeniden cache'lenmeli."""
+
+    class _OnceFailing:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def judge_conflict(self, a, b, overlap, sim):
+            self.calls += 1
+            if self.calls == 1:
+                raise JudgeUnavailableError("gecici 429")
+            return Detection(
+                id=f"{a.id}-{b.id}", actors=sorted({a.actor, b.actor}), branches=[],
+                files=sorted(overlap), severity="high", confidence=0.9,
+                rationale="duzeldi",
+            )
+
+    inner = _OnceFailing()
+    cached = CachedConflictJudge(inner, ttl_s=900, max_entries=10)
+    a, b = _event("a", "alice"), _event("b", "bob")
+
+    with pytest.raises(JudgeUnavailableError):
+        cached.judge_conflict(a, b, ["shared.py"], 0.5)
+
+    r1 = cached.judge_conflict(a, b, ["shared.py"], 0.5)
+    r2 = cached.judge_conflict(a, b, ["shared.py"], 0.5)
+
+    assert r1 == r2
+    assert inner.calls == 2  # 1 ariza + 1 basarili; ucuncusu cache'ten geldi
