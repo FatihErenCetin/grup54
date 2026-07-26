@@ -43,6 +43,15 @@ COPY src/backend/ src/backend/
 COPY src/shared/ src/shared/
 COPY src/mcp/ src/mcp/
 
+# .harness/ KANONİK ortak bağlam (#242 — git'e alındı, artık gerçek içerik
+# taşıyor). Kaynak katmanıyla BİRLİKTE gelir (katman 1 bağımlılık-only cache'i
+# bozulmaz — .harness değişse de uv sync yeniden koşmaz). Runtime'da
+# `read_scope`/`read_tasks` bunu okur (ensemble.app.lifespan fail-closed
+# kontrolü aşağıda, RUNTIME aşamasında). `.dockerignore` bunu BİLEREK
+# dışlamıyor (imaj lean tutma listesi .harness'e dokunmuyor — doğrulaması
+# tests/unit/test_harness_git.py'de).
+COPY .harness/ .harness/
+
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --locked --no-dev
 
