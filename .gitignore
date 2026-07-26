@@ -38,3 +38,8 @@ dist/
 
 # Frontend build artıkları (#19)
 *.tsbuildinfo
+
+# === Claude Code izole worktree kopyaları (#245) ===
+# Ajanların geçici çalışma kopyaları; .claude/skills/ ve .claude/agents/ TAKİP EDİLMEYE
+# devam eder (yalnızca worktrees/ ignore edilir, üst .claude/ dizini değil).
+.claude/worktrees/
