@@ -15,8 +15,11 @@ from ensemble.app import (
     _gemini_single_flight_wait_s,
     _ollama_single_flight_wait_s,
     create_app,
+    _groq_single_flight_wait_s,
+    _build_judge_port,
 )
 from ensemble.config import Settings
+from ensemble.engine.fallback import FallbackJudge
 from ensemble.engine.cache import CachedConflictJudge, CachedQueryJudge, CachedScopeJudge
 from ensemble.engine.embeddings import CachedEmbeddings, HashEmbeddings
 from ensemble.integrations.gemini.client import RETRY_WAIT_CAP_S
@@ -376,3 +379,90 @@ def test_demo_acikken_judge_kilit_bekleme_suresi_gemini_ayarlarindan_turer(tmp_p
         embeddings = app.state.radar_service.embeddings_port
         assert isinstance(embeddings, CachedEmbeddings)
         assert embeddings.cache.single_flight_wait_s == expected
+
+
+# ---------------------------------------------------------------------------
+# #255 inceleme bulgulari — yedek saglayici sarmasinin iki yan etkisi
+# ---------------------------------------------------------------------------
+
+
+def test_ollama_birincilken_groq_yedegi_KURULMAZ(tmp_path):
+    """Tam-yerel gizlilik modu buluta dusmemeli — README'nin acik vaadi.
+
+    README §"Tam-yerel gizlilik modu (Ollama)": *"LLM_PROVIDER=ollama
+    secildiginde hem embeddings hem judge yerel Ollama API'sini kullanir;
+    Gemini anahtari tanimli olsa bile buluta geri dusmez."*
+
+    MUTASYON KILIDI: app.py'deki kosulu DAHIL ETME listesinden
+    (`isinstance(judge, GeminiJudgeAdapter)`) hariç tutma listesine
+    (`not isinstance(judge, FakeJudgeAdapter)`) cevir -> bu test kirilir.
+    Ilk yazimda tam olarak o hariç tutma listesi vardi ve Ollama dalini da
+    yakaliyordu: yerel-kal modu secen kullanicinin `actor=` (GitHub kullanici
+    adlari) ve `files=` (repo yollari) iceren prompt'u api.groq.com'a giderdi.
+    """
+    settings = _settings(
+        LLM_PROVIDER="ollama",
+        GROQ_API_KEY="yedek-olsa-bile-kullanma",
+        GEMINI_API_KEY="bulunsa-bile-kullanma",
+        DATABASE_URL=f"sqlite:///{tmp_path / 'ollama-yedeksiz.db'}",
+    )
+
+    judge = _build_judge_port(settings)
+
+    assert isinstance(judge, OllamaAdapter)
+    assert not isinstance(judge, FallbackJudge)
+
+
+def test_fake_birincilken_groq_yedegi_kurulmaz(tmp_path):
+    """FakeJudgeAdapter hic dusmez — yedek anlamsiz olurdu."""
+    settings = _settings(
+        GEMINI_API_KEY="",
+        GROQ_API_KEY="q",
+        DATABASE_URL=f"sqlite:///{tmp_path / 'fake-yedeksiz.db'}",
+    )
+    assert isinstance(_build_judge_port(settings), FakeJudgeAdapter)
+
+
+def test_yedek_varken_tekil_ucus_butcesi_TOPLAMSAL(tmp_path):
+    """Cache'in kilit beklemesi iki saglayicinin en-kotu suresini de kapsamali.
+
+    `FallbackJudge.judge_conflict` once birincilin TUM retry'larini tuketir,
+    sonra yedegin retry'larini tuketir — yani tek cagrinin en-kotu suresi
+    toplamsaldir. Cache'e yalnizca birincilin butcesi verilirse, kilit tam da
+    yedegin devreye girdigi anda (= kotanin bittigi an) zaman asimina ugrar ve
+    bekleyen thread'ler KILITSIZ devam eder: her biri kendi saglayici cagrisini
+    yapar, tekil-ucus katmani delinir.
+
+    MUTASYON KILIDI: app.py'de `single_flight_budget += _groq_...` satirini sil
+    -> butce 46.0'da kalir, bu test kirilir.
+    """
+    settings = _settings(
+        GEMINI_API_KEY="g",
+        GROQ_API_KEY="q",
+        DEMO_MODE=True,
+        GITHUB_REPO_OWNER="FatihErenCetin",
+        GITHUB_REPO_NAME="grup54",
+        DATABASE_URL=f"sqlite:///{tmp_path / 'yedek-butce.db'}",
+    )
+    beklenen = _gemini_single_flight_wait_s(settings) + _groq_single_flight_wait_s(settings)
+    assert beklenen > _gemini_single_flight_wait_s(settings)  # toplam gercekten BUYUK
+
+    judge = _build_judge_port(settings)
+
+    assert isinstance(judge, CachedConflictJudge)
+    assert isinstance(judge.inner, FallbackJudge)
+    assert judge.cache.single_flight_wait_s == beklenen
+
+
+def test_yedek_yokken_butce_degismez(tmp_path):
+    """Groq anahtari yoksa butce eskisi gibi yalniz birincilden turer."""
+    settings = _settings(
+        GEMINI_API_KEY="g",
+        GROQ_API_KEY="",
+        DEMO_MODE=True,
+        GITHUB_REPO_OWNER="FatihErenCetin",
+        GITHUB_REPO_NAME="grup54",
+        DATABASE_URL=f"sqlite:///{tmp_path / 'yedeksiz-butce.db'}",
+    )
+    judge = _build_judge_port(settings)
+    assert judge.cache.single_flight_wait_s == _gemini_single_flight_wait_s(settings)

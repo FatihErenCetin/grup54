@@ -29,6 +29,7 @@ from ensemble.integrations.github.adapter import GitHubAdapter
 from ensemble.integrations.github.errors import GitHubConfigError
 from ensemble.integrations.github.fake import FakeGitHubAdapter
 from ensemble.engine.fallback import FallbackJudge
+from ensemble.integrations.groq.client import RETRY_WAIT_CAP_S as GROQ_RETRY_WAIT_CAP_S
 from ensemble.integrations.groq.judge import GroqJudgeAdapter
 from ensemble.integrations.ollama.adapter import OllamaAdapter
 from ensemble.integrations.ollama.client import RETRY_WAIT_CAP_S as OLLAMA_RETRY_WAIT_CAP_S
@@ -84,6 +85,23 @@ def _ollama_single_flight_wait_s(settings: Settings) -> float:
     return attempts * settings.OLLAMA_TIMEOUT_S + waits_between_attempts * OLLAMA_RETRY_WAIT_CAP_S
 
 
+def _groq_single_flight_wait_s(settings: Settings) -> float:
+    """`_gemini_single_flight_wait_s` ile AYNI formül, Groq'un KENDİ ayarlarından.
+
+    `FallbackJudge` sarmasında tek bir `judge_conflict()` çağrısının en-kötü
+    süresi **toplamsaldır**: birincil tüm retry'larını tüketir (bu süre boyunca
+    bekler), ardından yedek kendi retry'larını tüketir. Cache'e yalnız birincilin
+    bütçesini vermek, tekil-uçuş kilidini tam da yedeğin devreye girdiği anda —
+    yani kotanın bittiği anda — süre aşımına uğratır; bekleyen thread'ler
+    kilitsiz devam edip HER BİRİ kendi çağrısını yapar (`cache.py` "zarif
+    düşüş"). #63'ün Ollama ikizinde aynı hata yakalanmıştı
+    (`test_judge_ollama_dalinda_kendi_single_flight_degerini_kullanir`).
+    """
+    attempts = settings.GROQ_MAX_RETRIES
+    waits_between_attempts = max(attempts - 1, 0)
+    return attempts * settings.GROQ_TIMEOUT_S + waits_between_attempts * GROQ_RETRY_WAIT_CAP_S
+
+
 def _build_github_port(settings: Settings) -> GitHubPort:
     # pem dosyası yoksa GitHubAdapter bunu hemen fark etmez (yalnız token
     # yenilenirken okunur) - istek-anı 500'e düşmeden acilis-anı degradasyona
@@ -107,30 +125,51 @@ def _build_github_port(settings: Settings) -> GitHubPort:
 
 
 def _build_judge_port(settings: Settings) -> JudgePort:
+    # `single_flight_budget`, tek bir `judge_conflict()` çağrısının GERÇEK
+    # en-kötü-durum süresi. Adapter seçilirken başlar, sarmalayıcılar eklendikçe
+    # BÜYÜR (bkz. FallbackJudge dalı) ve DEMO_MODE'da cache'e enjekte edilir.
+    # Tek noktada biriktirilmesinin sebebi: değer daha önce sarma yapısından
+    # BAĞIMSIZ hesaplanıyordu ve yeni bir katman eklenince sessizce eksik kaldı.
     if settings.LLM_PROVIDER == "ollama":
         judge: JudgePort = OllamaAdapter(settings)
+        single_flight_budget = _ollama_single_flight_wait_s(settings)
     elif settings.GEMINI_API_KEY:
         judge = GeminiJudgeAdapter(settings)
+        single_flight_budget = _gemini_single_flight_wait_s(settings)
     else:
         logger.warning(
             "GEMINI_API_KEY tanımlı değil — FakeJudgeAdapter (kural-tabanlı) kullanılıyor."
         )
         judge = FakeJudgeAdapter()
+        single_flight_budget = _gemini_single_flight_wait_s(settings)
 
-    # #255: yedek sağlayıcı — YALNIZCA anahtar varsa. Sarma sırası önemli:
-    # yedek, cache'in İÇİNDE kalır (CachedConflictJudge(FallbackJudge(...))).
-    # Böylece cache "hangi sağlayıcı ürettiyse üretsin, ortaya çıkan yargıyı"
-    # saklar; tersi (iki ayrı cache) aynı çifti iki kez saklar ve birincil
-    # döndüğünde yedeğin bayat yargısı ayrı bir kayıtta yaşamaya devam ederdi.
-    # İki sağlayıcı da düşerse JudgeUnavailableError yayılır ve #252 gereği
-    # cache'e HİÇBİR ŞEY yazılmaz.
-    if settings.GROQ_API_KEY and not isinstance(judge, FakeJudgeAdapter):
+    # #255: yedek sağlayıcı — YALNIZCA bulut-birincil (Gemini) dalında.
+    #
+    # Koşul bilerek bir DAHİL ETME listesi (`isinstance(..., GeminiJudgeAdapter)`),
+    # hariç tutma listesi DEĞİL. İlk hâli `not isinstance(judge, FakeJudgeAdapter)`
+    # idi ve Ollama dalını da yakalıyordu: README §"Tam-yerel gizlilik modu"
+    # *"Gemini anahtarı tanımlı olsa bile buluta geri düşmez"* diye taahhüt
+    # ederken, `LLM_PROVIDER=ollama` + `GROQ_API_KEY` kurulumu judge'ı sessizce
+    # `FallbackJudge(Ollama, Groq)` yapıyordu — ve Groq prompt'u `actor=`
+    # (GitHub kullanıcı adları) + `files=` (repo yolları) taşıyor. Hariç tutma
+    # listeleri her yeni dalda sessizce yanlışa döner; dahil etme listeleri yeni
+    # dal geldiğinde KAPALI kalır.
+    #
+    # Sarma sırası: yedek, cache'in İÇİNDE kalır (CachedConflictJudge(FallbackJudge)).
+    # Cache "hangi sağlayıcı ürettiyse üretsin ortaya çıkan yargıyı" saklar; iki
+    # ayrı cache aynı çifti iki kez saklar ve birincil dönünce yedeğin bayat
+    # yargısı ayrı kayıtta yaşamaya devam ederdi. İki sağlayıcı da düşerse
+    # JudgeUnavailableError yayılır → #252 gereği cache'e HİÇBİR ŞEY yazılmaz.
+    if settings.GROQ_API_KEY and isinstance(judge, GeminiJudgeAdapter):
         judge = FallbackJudge(primary=judge, secondary=GroqJudgeAdapter(settings))
+        # Tek çağrının en-kötü süresi TOPLAMSAL: birincil retry'larını tüketir,
+        # sonra yedek kendi retry'larını tüketir.
+        single_flight_budget += _groq_single_flight_wait_s(settings)
     elif settings.GROQ_API_KEY:
-        # Birincil zaten sahte ise yedek anlamsız olurdu (sahte adapter hiç
-        # düşmez) — sessizce yok saymak yerine söylüyoruz.
         logger.warning(
-            "GROQ_API_KEY var ama birincil judge FakeJudgeAdapter — yedek devrede değil."
+            "GROQ_API_KEY var ama birincil judge %s — yedek devrede DEĞİL "
+            "(yalnız Gemini birincilde sarılır; yerel-kal modu korunur).",
+            type(judge).__name__,
         )
 
     if settings.DEMO_MODE:
@@ -138,20 +177,17 @@ def _build_judge_port(settings: Settings) -> JudgePort:
         # yeniden Gemini'ye sormasın (fatura kapağı). local/dev'de DEMO_MODE
         # kapalıyken bu sarmalayıcı hiç devreye girmez.
         # T-63 son tur: `_build_embeddings_port` ile AYNI disiplin - tekil-uçuş
-        # bekleme süresi LLM_PROVIDER'a göre türetilir (Ollama'nın gerçek
-        # en-kötü-durumu ~122 sn iken sabit Gemini türetmesi ~46 sn'de erken
-        # zaman aşımına uğratıyordu - ayrıntı için `_ollama_single_flight_wait_s`
-        # docstring'i).
-        single_flight_wait_s = (
-            _ollama_single_flight_wait_s(settings)
-            if settings.LLM_PROVIDER == "ollama"
-            else _gemini_single_flight_wait_s(settings)
-        )
+        # bekleme süresi sağlayıcının GERÇEK en-kötü-durumundan türetilir
+        # (Ollama'nın ~122 sn'si yerine sabit Gemini türetmesi ~46 sn kullanılınca
+        # erken zaman aşımına uğruyordu - `_ollama_single_flight_wait_s`).
+        # #255 sonrası bu değer artık yukarıda BİRİKTİRİLİYOR: FallbackJudge
+        # sarması en-kötü süreyi toplamsal olarak büyütür, o yüzden burada
+        # yeniden hesaplanmaz — hesaplansaydı yedeğin payı yine düşerdi.
         judge = CachedConflictJudge(
             judge,
             ttl_s=settings.DEMO_CACHE_TTL_S,
             max_entries=settings.DEMO_CACHE_MAX_ENTRIES,
-            single_flight_wait_s=single_flight_wait_s,
+            single_flight_wait_s=single_flight_budget,
         )
     return judge
 

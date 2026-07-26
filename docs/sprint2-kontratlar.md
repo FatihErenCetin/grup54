@@ -80,9 +80,13 @@ class VectorIndexPort(Protocol):        # impl: #15 (FAISS/pgvector)
     def upsert(self, id: str, vec: list[float], meta: dict) -> None: ...
     def query(self, vec: list[float], k: int) -> list[tuple[str, float]]: ...
 
-class JudgePort(Protocol):              # impl: #17/#24 (Gemini) · fake: kural-tabanlı
+class JudgePort(Protocol):              # impl: #17/#24 (Gemini · Groq · Ollama) · fake: kural-tabanlı
     def judge_conflict(self, a: NormalizedEvent, b: NormalizedEvent,
                        overlap: list[str], sim: float | None) -> Detection: ...
+        # SÖZLEŞME (#252): değerlendiremediğinde `JudgeUnavailableError` FIRLATIR.
+        # Düşük-güvenli bir Detection DÖNDÜRMEZ — "çakışma değil" ile
+        # "değerlendiremedik" ayırt edilebilir kalmalı. Yeni adapter yazan:
+        # hata yolunda `Detection` üretme, `raise JudgeUnavailableError(...)`.
 
 class HarnessPort(Protocol):            # impl: #13 (GATE 1)
     def read_scope(self, sprint: str) -> dict: ...
