@@ -77,8 +77,12 @@ harness-init:
 frontend-build-guard:
 	cd src/frontend && VITE_MOCK= npm run build && node scripts/prod-build-guard.mjs dist
 
-# Fly.io'ya deploy (#181, fly.toml). Secret'lar önceden `fly secrets set` ile
-# ayrı set edilmiş olmalı (bkz. fly.toml başlığı + PR gövdesi). Release/migrate
-# adımı henüz YOK (#187) — bugün yalnız imaj build+deploy eder.
+# Self-host VDS'e deploy (#246, D-46 — Fly.io yerine "yan yana yaşama").
+# fly.toml + flyctl KALDIRILDI (#181 devre dışı); bu hedef artık compose ile
+# aynı işi self-host makinede görür: imaj build + migrate (fail-closed,
+# `depends_on.migrate.condition: service_completed_successfully`) + api.
+# Sunucuda repo/deploy/ dizininden, `.env.production` hazırlanmış olarak
+# koşulur (bkz. deploy/.env.production.example + deploy/docker-compose.prod.yml
+# başlığı). Hedef ADI bilerek `deploy` kaldı (diğer referanslar kırılmasın).
 deploy:
-	flyctl deploy --config fly.toml
+	cd deploy && docker compose -f docker-compose.prod.yml --env-file .env.production up -d --build
