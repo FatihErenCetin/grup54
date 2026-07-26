@@ -12,6 +12,7 @@ from ensemble.integrations.gemini.client import ResilientGeminiClient
 from ensemble.integrations.gemini.errors import GeminiError
 from ensemble.integrations.gemini.gate import cheap_prejudge
 from ensemble.models import Detection, NormalizedEvent
+from ensemble.ports import JudgeUnavailableError
 
 
 class _JudgeVerdict(BaseModel):
@@ -20,16 +21,12 @@ class _JudgeVerdict(BaseModel):
     rationale: str
 
 
-def _fallback_detection(a: NormalizedEvent, b: NormalizedEvent, reason: str) -> Detection:
-    return Detection(
-        id=f"{a.id}-{b.id}",
-        actors=sorted({a.actor, b.actor}),
-        branches=sorted({x for x in (a.branch, b.branch) if x}),
-        files=sorted(set(a.files) & set(b.files)),
-        severity="low",
-        confidence=0.1,
-        rationale=f"Gemini judge çağrısı başarısız oldu, düşük-güven varsayılan sonuç döndürüldü: {reason}",
-    )
+# NOT (#252): burada eskiden `_fallback_detection` vardı — hata durumunda
+# severity="low"/confidence=0.1 bir Detection döndürüyordu. Bu bir fail-open'dı:
+# "değerlendiremedik"i "çakışma değil"den ayırt edilemez hale getiriyor, cache'i
+# 900 sn zehirliyor ve ham API hata metnini `rationale` üzerinden kullanıcı
+# arayüzüne taşıyordu. Artık `JudgeUnavailableError` fırlatılıyor; ham hata
+# yalnızca istisna mesajında (yani LOG'da) yaşar, kullanıcıya gitmez.
 
 
 def _build_prompt(a: NormalizedEvent, b: NormalizedEvent, overlap: list[str], sim: float | None) -> str:
@@ -79,6 +76,8 @@ class GeminiJudgeAdapter:
                 rationale=verdict.rationale,
             )
         except GeminiError as exc:
-            return _fallback_detection(a, b, str(exc))
+            raise JudgeUnavailableError(f"{a.id}-{b.id}: Gemini çağrısı başarısız: {exc}") from exc
         except ValidationError as exc:
-            return _fallback_detection(a, b, f"yanıt ayrıştırılamadı: {exc}")
+            raise JudgeUnavailableError(
+                f"{a.id}-{b.id}: Gemini yanıtı şemaya uymuyor: {exc}"
+            ) from exc

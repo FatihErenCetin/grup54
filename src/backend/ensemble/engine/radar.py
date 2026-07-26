@@ -1,18 +1,42 @@
-from dataclasses import dataclass
+import logging
+from dataclasses import dataclass, field
 from collections.abc import Mapping
 from datetime import datetime, timedelta, timezone
 from itertools import combinations
 
 from ensemble.models import Detection, NormalizedEvent
-from ensemble.ports import EmbeddingsPort, GitHubPort, JudgePort
+from ensemble.ports import EmbeddingsPort, GitHubPort, JudgePort, JudgeUnavailableError
 from ensemble.engine.chunking import chunk_diff
 from ensemble.engine.embeddings import HashEmbeddings
 from ensemble.engine.vectorstore import cosine_similarity
 
 
+logger = logging.getLogger("ensemble.radar")
+
 SEMANTIC_SIMILARITY_TASK = "SEMANTIC_SIMILARITY"
 DEFAULT_RADAR_WINDOW_DAYS = 14
 DEFAULT_BACKFILL_LIMIT = 50
+
+
+@dataclass(frozen=True)
+class RadarResult:
+    """Bir `/radar` turunun sonucu — tespitler VE değerlendirilemeyenlerin sayısı.
+
+    `judge_unavailable` neden yanıtın parçası (#252): judge kotası bittiğinde
+    aday çiftler sessizce listeden düşerse board boş görünür ve kimse NEDEN
+    boş olduğunu bilemez. Eksikliği gizlemek, onu sahte tespite çevirmekten
+    daha az zararlı ama hâlâ yanıltıcı — bu yüzden sayı DIŞARI verilir.
+
+    Sayaç neden burada, `RadarService` üzerinde bir alan olarak değil: FastAPI
+    senkron endpoint'leri bir threadpool'da çalıştırır ve servis singleton'dır;
+    paylaşılan sayaç eşzamanlı iki `/radar` isteği arasında yarışırdı. Sonucu
+    çağrıya bağlı (frozen) bir nesnede taşımak bu yarışı yapısal olarak imkânsız
+    kılar.
+    """
+
+    detections: list[Detection] = field(default_factory=list)
+    evaluated: int = 0
+    judge_unavailable: int = 0
 
 
 @dataclass(frozen=True)
@@ -210,6 +234,14 @@ class RadarService:
         self._backfill_done = False
 
     def get_detections(self) -> list[Detection]:
+        """Geriye dönük uyumlu görünüm — yalnızca tespitler.
+
+        Değerlendirilemeyen çiftlerin sayısına ihtiyaç duyan çağıranlar (API
+        router) `collect()` kullanmalı; burası onun `.detections` alanıdır.
+        """
+        return self.collect().detections
+
+    def collect(self) -> RadarResult:
         events = self._current_events()
         file_candidates = file_overlap_candidates(events, min_jaccard=self.min_jaccard)
         diffs = self._diffs_for_candidates(file_candidates)
@@ -220,27 +252,42 @@ class RadarService:
             min_similarity=self.min_similarity,
         )
 
-        detections = [
-            self.judge_port.judge_conflict(
-                candidate.a,
-                candidate.b,
-                candidate.overlap,
-                candidate.similarity,
-            )
-            for candidate in semantic_candidates
-        ]
+        detections: list[Detection] = []
+        unavailable = 0
+        for candidate in semantic_candidates:
+            try:
+                detections.append(
+                    self.judge_port.judge_conflict(
+                        candidate.a,
+                        candidate.b,
+                        candidate.overlap,
+                        candidate.similarity,
+                    )
+                )
+            except JudgeUnavailableError as exc:
+                # #252: değerlendirilemeyen çift TESPİT DEĞİLDİR. Listeye
+                # girmez ama sayılır — ham hata yalnızca burada, log'da kalır;
+                # kullanıcıya `RadarResult.judge_unavailable` sayısı gider.
+                unavailable += 1
+                logger.warning("judge değerlendiremedi: %s", exc)
+
+        evaluated = len(detections)
         if not self.include_low_severity:
             detections = [
                 detection for detection in detections if detection.severity in {"med", "high"}
             ]
 
-        return sorted(
-            detections,
-            key=lambda detection: (
-                _severity_rank(detection.severity),
-                -detection.confidence,
-                detection.id,
+        return RadarResult(
+            detections=sorted(
+                detections,
+                key=lambda detection: (
+                    _severity_rank(detection.severity),
+                    -detection.confidence,
+                    detection.id,
+                ),
             ),
+            evaluated=evaluated,
+            judge_unavailable=unavailable,
         )
 
     def _current_events(self) -> list[NormalizedEvent]:

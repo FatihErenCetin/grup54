@@ -29,9 +29,25 @@ class HealthResponse(BaseModel):
     gemini: Literal["configured", "missing"]
 
 
+class RadarDegraded(BaseModel):
+    """Bu turda judge'ın DEĞERLENDİREMEDİĞİ çiftler (#252).
+
+    Varlığı "sonuç eksik" demektir: `detections` listesi o turda gerçekten
+    yargılanabilmiş çiftleri taşır, `judge_unavailable` kadarı ise hiç
+    yargılanamamıştır — çakışma olmadığı için değil, judge'a ulaşılamadığı için.
+    İstemci bunu tespit gibi göstermemeli, "sonuç eksik" uyarısı olarak
+    göstermelidir.
+    """
+
+    judge_unavailable: int
+    evaluated: int
+
+
 class RadarResponse(BaseModel):
     detections: list[Detection]
     updated_at: datetime
+    # Mutlu yolda `null` — istemci `if (data.degraded)` ile tek kontrolle ayırır.
+    degraded: RadarDegraded | None = None
 
 
 class BoardResponse(BaseModel):

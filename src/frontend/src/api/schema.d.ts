@@ -409,6 +409,22 @@ export interface components {
             /** Nearest */
             nearest: components["schemas"]["NearestRef"][];
         };
+        /**
+         * RadarDegraded
+         * @description Bu turda judge'ın DEĞERLENDİREMEDİĞİ çiftler (#252).
+         *
+         *     Varlığı "sonuç eksik" demektir: `detections` listesi o turda gerçekten
+         *     yargılanabilmiş çiftleri taşır, `judge_unavailable` kadarı ise hiç
+         *     yargılanamamıştır — çakışma olmadığı için değil, judge'a ulaşılamadığı için.
+         *     İstemci bunu tespit gibi göstermemeli, "sonuç eksik" uyarısı olarak
+         *     göstermelidir.
+         */
+        RadarDegraded: {
+            /** Judge Unavailable */
+            judge_unavailable: number;
+            /** Evaluated */
+            evaluated: number;
+        };
         /** RadarResponse */
         RadarResponse: {
             /** Detections */
@@ -418,6 +434,7 @@ export interface components {
              * Format: date-time
              */
             updated_at: string;
+            degraded?: components["schemas"]["RadarDegraded"] | null;
         };
         /** ScopeCurrent */
         ScopeCurrent: {

@@ -100,13 +100,17 @@ class HarnessPort(Protocol):            # impl: #13 (GATE 1)
 | Method · Path | Girdi | Çıktı (JSON) | Issue |
 |---|---|---|---|
 | `GET /health` | — | `{status, mode, github_auth, gemini}` | #14, zenginleştirme #53 |
-| `GET /radar` | — | `{detections: Detection[], updated_at}` | #17, #25 |
+| `GET /radar` | — | `{detections: Detection[], updated_at, degraded?}` | #17, #25, #252 |
 | `GET /scope/check?ref=<pr>` | query | `ScopeVerdict` | #31 (S3) |
 | `GET /board` | — | `{cards: BoardCard[]}` | S3 |
 | `GET /query?q=<nl>` | query | `{answer: str, citations: str[]}` | S3 |
 | `GET /graph?window_days=14` | query (varsayılan 14) | `TouchGraph` | #104 *(Ek A — S2 çekme adayı)* |
 
 Frontend (#20) bu şemayı `openapi.json`'dan üretir → `apiClient.GET("/radar")` tip-güvenli. Backend bitmeden **mock server** (aynı şema) ile çalışılır.
+
+> **`degraded` (#252) — toplamsal, opsiyonel alan.** `{judge_unavailable, evaluated}` ya da `null`. Judge (kota/ağ) bazı adayları değerlendiremediğinde dolar; **`required` değildir**, mevcut istemciler kırılmaz.
+>
+> Anlamı: `detections` o turda *gerçekten yargılanabilmiş* çiftleri taşır; `judge_unavailable` kadarı hiç yargılanamamıştır — çakışma olmadığı için değil, judge'a ulaşılamadığı için. **İstemci bunu tespit gibi göstermemeli**, "sonuç eksik" uyarısı olarak göstermelidir. Alan, eksikliği *gizlememek* için var: önceki davranışta değerlendirilemeyen çiftler `severity: low` sahte tespitlere dönüşüyordu.
 
 ---
 
