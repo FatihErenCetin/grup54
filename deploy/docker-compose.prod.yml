@@ -154,7 +154,13 @@ services:
     working_dir: /app/src/backend
     command: ["alembic", "upgrade", "head"]
     env_file:
-      - .env.production
+      # CD (#236) compose'u RUNNER'IN KENDI checkout'unda kosar; orada
+      # `.env.production` YOKTUR (gitignored, operator saglar). Degisken,
+      # elle kurulumun davranisini AYNEN korur (varsayilan `.env.production`)
+      # ama CD `ENSEMBLE_ENV_FILE=/etc/ensemble/ensemble.env` set ederek ayni
+      # compose'u kendi calisma dizininden kosabilir. Sir, hicbir git agacinda
+      # yasamaz.
+      - ${ENSEMBLE_ENV_FILE:-.env.production}
     environment:
       ENSEMBLE_MODE: hosted
       # DATABASE_URL'i BURADA turetiyoruz (env dosyasinda degil): host adi
@@ -181,7 +187,13 @@ services:
     <<: *api-imaj
     restart: unless-stopped
     env_file:
-      - .env.production
+      # CD (#236) compose'u RUNNER'IN KENDI checkout'unda kosar; orada
+      # `.env.production` YOKTUR (gitignored, operator saglar). Degisken,
+      # elle kurulumun davranisini AYNEN korur (varsayilan `.env.production`)
+      # ama CD `ENSEMBLE_ENV_FILE=/etc/ensemble/ensemble.env` set ederek ayni
+      # compose'u kendi calisma dizininden kosabilir. Sir, hicbir git agacinda
+      # yasamaz.
+      - ${ENSEMBLE_ENV_FILE:-.env.production}
     environment:
       ENSEMBLE_MODE: hosted
       PORT: "8000"
