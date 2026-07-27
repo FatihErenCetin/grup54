@@ -1,4 +1,4 @@
-.PHONY: install dev test lint openapi eval-dataset eval-run eval-sweep eval eval-gate eval-provider scope-eval harness-init frontend-build-guard deploy
+.PHONY: install dev test lint openapi contracts eval-dataset eval-run eval-sweep eval eval-gate eval-provider eval-model-secimi scope-eval harness-init frontend-build-guard deploy
 
 install:
 	uv sync --all-packages
@@ -8,6 +8,14 @@ dev:
 
 openapi:
 	uv run python -c "import json; from pathlib import Path; from ensemble.app import create_app; Path('src/shared/openapi.json').write_text(json.dumps(create_app().openapi(), indent=2, ensure_ascii=False), encoding='utf-8')"
+
+# #56 tek reçete: openapi.json + TS client'i BIRLIKTE regen eder (router/schema
+# degisikliginden sonra bunu calistir). node_modules gerekir (bir kez `npm ci`
+# ya da `cd src/frontend && npm ci`). CI'nin zorunlu yoluna sokulmaz (npm
+# maliyeti — bkz. docs/kontrat-drift-guardrail.md); yalnizca yerel reçete +
+# CI hata mesajinin isaret ettigi komut.
+contracts: openapi
+	cd src/frontend && npm run gen:api
 
 test:
 	uv run pytest
@@ -49,6 +57,15 @@ eval-provider:
 scope-eval:
 	uv run python -m eval.scope_eval
 
+# #244 YZ model seçimi ölçümü — judge (GEMINI_MODEL) + embedding boyutu
+# (GEMINI_EMBEDDING_DIMENSIONS) karşılaştırması. Varsayılan: yalnız tahmini
+# çağrı sayısını yazdırır (ağsız) — GEMINI_API_KEY yoksa/`--run` verilmezse
+# gerçek çağrı YAPILMAZ (maliyet kontrolü). Gerçek ölçüm:
+#   uv run python -m eval.model_secimi_eval --run
+# Rapor: eval/model-secimi-raporu.md.
+eval-model-secimi:
+	uv run python -m eval.model_secimi_eval
+
 # Onboarding sihirbazı (#57): ilk .harness/ iskeletini yazar (.harness/ zaten
 # varsa DOKUNMAZ - fail-safe). Örnek: make harness-init MILESTONE="Sprint 3"
 harness-init:
@@ -60,8 +77,12 @@ harness-init:
 frontend-build-guard:
 	cd src/frontend && VITE_MOCK= npm run build && node scripts/prod-build-guard.mjs dist
 
-# Fly.io'ya deploy (#181, fly.toml). Secret'lar önceden `fly secrets set` ile
-# ayrı set edilmiş olmalı (bkz. fly.toml başlığı + PR gövdesi). Release/migrate
-# adımı henüz YOK (#187) — bugün yalnız imaj build+deploy eder.
+# Self-host VDS'e deploy (#246, D-46 — Fly.io yerine "yan yana yaşama").
+# fly.toml + flyctl KALDIRILDI (#181 devre dışı); bu hedef artık compose ile
+# aynı işi self-host makinede görür: imaj build + migrate (fail-closed,
+# `depends_on.migrate.condition: service_completed_successfully`) + api.
+# Sunucuda repo/deploy/ dizininden, `.env.production` hazırlanmış olarak
+# koşulur (bkz. deploy/.env.production.example + deploy/docker-compose.prod.yml
+# başlığı). Hedef ADI bilerek `deploy` kaldı (diğer referanslar kırılmasın).
 deploy:
-	flyctl deploy --config fly.toml
+	cd deploy && docker compose -f docker-compose.prod.yml --env-file .env.production up -d --build

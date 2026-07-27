@@ -140,6 +140,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/presence": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Presence
+         * @description Aktif çalışan beyanlarını döndürür; bayat kayıtlar read-time'da elenir (#60).
+         */
+        get: operations["get_presence_presence_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/webhooks/github": {
         parameters: {
             query?: never;
@@ -161,6 +181,21 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /**
+         * ActorRef
+         * @description Açık aktör tipi (#32/#52) — kontrat: docs/sprint2-kontratlar.md Ek B1.
+         */
+        ActorRef: {
+            /** Handle */
+            handle: string;
+            /**
+             * Type
+             * @enum {string}
+             */
+            type: "human" | "agent";
+            /** Responsible */
+            responsible?: string | null;
+        };
         /** BoardCard */
         BoardCard: {
             /** Task Id */
@@ -313,6 +348,37 @@ export interface components {
             /** Ref */
             ref: string;
         };
+        /**
+         * PresenceEntry
+         * @description .harness/active/* projeksiyonu (#32/#52) — kontrat: Ek B1.
+         */
+        PresenceEntry: {
+            actor: components["schemas"]["ActorRef"];
+            /** Module */
+            module: string;
+            /** Task */
+            task: string | null;
+            /** Branch */
+            branch: string | null;
+            /**
+             * Since
+             * Format: date-time
+             */
+            since: string;
+        };
+        /**
+         * PresenceResponse
+         * @description GET /presence yanıt modeli.
+         */
+        PresenceResponse: {
+            /** Entries */
+            entries: components["schemas"]["PresenceEntry"][];
+            /**
+             * Latest Ts
+             * Format: date-time
+             */
+            latest_ts: string;
+        };
         /** QueryResponse */
         QueryResponse: {
             /** Answer */
@@ -343,6 +409,22 @@ export interface components {
             /** Nearest */
             nearest: components["schemas"]["NearestRef"][];
         };
+        /**
+         * RadarDegraded
+         * @description Bu turda judge'ın DEĞERLENDİREMEDİĞİ çiftler (#252).
+         *
+         *     Varlığı "sonuç eksik" demektir: `detections` listesi o turda gerçekten
+         *     yargılanabilmiş çiftleri taşır, `judge_unavailable` kadarı ise hiç
+         *     yargılanamamıştır — çakışma olmadığı için değil, judge'a ulaşılamadığı için.
+         *     İstemci bunu tespit gibi göstermemeli, "sonuç eksik" uyarısı olarak
+         *     göstermelidir.
+         */
+        RadarDegraded: {
+            /** Judge Unavailable */
+            judge_unavailable: number;
+            /** Evaluated */
+            evaluated: number;
+        };
         /** RadarResponse */
         RadarResponse: {
             /** Detections */
@@ -352,6 +434,7 @@ export interface components {
              * Format: date-time
              */
             updated_at: string;
+            degraded?: components["schemas"]["RadarDegraded"] | null;
         };
         /** ScopeCurrent */
         ScopeCurrent: {
@@ -492,6 +575,17 @@ export interface operations {
                     "application/json": components["schemas"]["HealthResponse"];
                 };
             };
+            /** @description Demo istek limiti aşıldı (yalnız DEMO_MODE) */
+            429: {
+                headers: {
+                    /** @description Saniye — pencere kayınca tekrar denenebilir */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
             /** @description Kalici saglayici hatasi (GitHub/Gemini/Ollama) */
             502: {
                 headers: {
@@ -530,6 +624,17 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RadarResponse"];
+                };
+            };
+            /** @description Demo istek limiti aşıldı (yalnız DEMO_MODE) */
+            429: {
+                headers: {
+                    /** @description Saniye — pencere kayınca tekrar denenebilir */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
             /** @description Kalici saglayici hatasi (GitHub/Gemini/Ollama) */
@@ -592,6 +697,17 @@ export interface operations {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
+            /** @description Demo istek limiti aşıldı (yalnız DEMO_MODE) */
+            429: {
+                headers: {
+                    /** @description Saniye — pencere kayınca tekrar denenebilir */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
             /** @description Kalici saglayici hatasi (GitHub/Gemini/Ollama) */
             502: {
                 headers: {
@@ -630,6 +746,17 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ScopeCurrent"];
+                };
+            };
+            /** @description Demo istek limiti aşıldı (yalnız DEMO_MODE) */
+            429: {
+                headers: {
+                    /** @description Saniye — pencere kayınca tekrar denenebilir */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
             /** @description Kalici saglayici hatasi (GitHub/Gemini/Ollama) */
@@ -672,6 +799,17 @@ export interface operations {
                     "application/json": components["schemas"]["ScopeVerdictsResponse"];
                 };
             };
+            /** @description Demo istek limiti aşıldı (yalnız DEMO_MODE) */
+            429: {
+                headers: {
+                    /** @description Saniye — pencere kayınca tekrar denenebilir */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
             /** @description Kalici saglayici hatasi (GitHub/Gemini/Ollama) */
             502: {
                 headers: {
@@ -710,6 +848,17 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["BoardResponse"];
+                };
+            };
+            /** @description Demo istek limiti aşıldı (yalnız DEMO_MODE) */
+            429: {
+                headers: {
+                    /** @description Saniye — pencere kayınca tekrar denenebilir */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
             /** @description Kalici saglayici hatasi (GitHub/Gemini/Ollama) */
@@ -772,6 +921,17 @@ export interface operations {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
+            /** @description Demo istek limiti aşıldı (yalnız DEMO_MODE) */
+            429: {
+                headers: {
+                    /** @description Saniye — pencere kayınca tekrar denenebilir */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
             /** @description Kalici saglayici hatasi (GitHub/Gemini/Ollama) */
             502: {
                 headers: {
@@ -821,6 +981,68 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Demo istek limiti aşıldı (yalnız DEMO_MODE) */
+            429: {
+                headers: {
+                    /** @description Saniye — pencere kayınca tekrar denenebilir */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Kalici saglayici hatasi (GitHub/Gemini/Ollama) */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Gecici olarak erisilemez */
+            503: {
+                headers: {
+                    /** @description Saniye — yalniz kendiliginden duzelebilir durumlarda */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    get_presence_presence_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PresenceResponse"];
+                };
+            };
+            /** @description Demo istek limiti aşıldı (yalnız DEMO_MODE) */
+            429: {
+                headers: {
+                    /** @description Saniye — pencere kayınca tekrar denenebilir */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
             /** @description Kalici saglayici hatasi (GitHub/Gemini/Ollama) */
@@ -893,6 +1115,17 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Demo istek limiti aşıldı (yalnız DEMO_MODE) */
+            429: {
+                headers: {
+                    /** @description Saniye — pencere kayınca tekrar denenebilir */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
             /** @description Kalici saglayici hatasi (GitHub/Gemini/Ollama) */

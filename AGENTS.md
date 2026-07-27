@@ -23,7 +23,7 @@ Ensemble *(çalışma adı)* — AI çağı yazılım ekipleri için **paylaşı
 
 > **Atanmış bir issue'yu bitiriyorsan → tek akış: [`docs/gelistirme-dongusu.md`](docs/gelistirme-dongusu.md)** (issue→done + DONE kapısı). Aşağısı kural özeti:
 
-- **Branch:** `T-<id>-kisa-aciklama` (`<id>` = GitHub Issue no). **PR açıklaması:** `Closes #<id>` (issue'yu otomatik kapatır).
+- **Branch:** `T-<id>-kisa-aciklama` (`<id>` = GitHub Issue no). **PR açıklaması:** `Closes #<id>` (issue'yu otomatik kapatır). CI >1 Closes'i reddeder (`multi-issue-ok` label'i override eder).
 - **Commit'ler küçük ve anlamlı.** main'e doğrudan push / tek-commit toplu yükleme **YOK** → her üyenin katkısı git geçmişinde **ayrı görünür** (değerlendirme kriteri). **Yazar = işi yapan kişi** (kendi GitHub-bağlı email'i); **AI yazar/co-author olarak EKLENMEZ.**
 - **Her PR**, merge'den önce **en az 1 takım arkadaşı review onayı** alır. Atama otomatiktir (#146): assignee = PR'ı açan (Actions) · reviewer isteği = alan sahibi (`.github/CODEOWNERS`, alt-ağaç bazlı) — **elle atama gerekmez**; istek merge'i bloklamaz, onay sosyal kuraldır.
 - **Commit formatı = Conventional-lite** (`feat:/fix:/docs:/chore:` + Türkçe açıklama) · **merge = merge commit** (commit'ler korunur) · merge sonrası branch **sil** · PR'ı **açan kişi merge'ler**. Tam akış → [`CONTRIBUTING.md`](CONTRIBUTING.md).
@@ -49,9 +49,9 @@ Bu repoda çalışan **her AI aracı**, aşağıdaki anlarda ilgili rehberi **ke
 - **STRETCH:** MCP write-back · agentic aksiyon · Slack/Discord · IDE eklentisi.
 - Yeni özellikten önce ilgili dokümanı ve (oluşunca) `.harness/scope/`'u dikkate al — **kapsam dışına çıkma.** ⚠️ "OS/platform" şişmesinden kaçın; bir şey olağanüstü (radar), gerisi ince.
 
-## `.harness/` döngüsü  🟡 *(henüz yok — `.harness/` oluşunca zorunlu)*
+## `.harness/` döngüsü  🟢 *(git'te — #242)*
 
-`.harness/` geldiğinde **her ajan ve insan** düzenlemeden önce (dogfood):
+**Her ajan ve insan** düzenlemeden önce (dogfood):
 1. **Oku** — `.harness/active/*`: kim neye dokunuyor? (çakışma riski var mı?)
 2. **Beyan et** — kendi `.harness/active/<handle>.md`'ni güncelle (task · modül · niyet · branch). Ajan kendi `<handle>-<arac>.md` dosyasına yazar (yazar başına 1 dosya → çakışma yok).
 3. **Kontrol et** — `.harness/scope/sprint-N.md`: yapılan iş kapsam içinde mi?
@@ -64,6 +64,7 @@ Bu repoda çalışan **her AI aracı**, aşağıdaki anlarda ilgili rehberi **ke
 - **`docs/gelistirme-dongusu.md`** — 🟢 **atanmış issue → done TEK rehberi (+ DONE kapısı). İşe başlamadan OKU.**
 - **`docs/review-rehberi.md`** — 🟢 **PR review'ının TEK rehberi (insan + AI). Her review'dan önce OKU** (Claude Code: `/takim-review <PR no>`).
 - **`docs/sprint2-kontratlar.md`** — 🟢 bileşen girdi/çıktı (port/endpoint imzaları; paralel çalışma — **imzayı değiştirme**).
+- **`docs/kontrat-drift-guardrail.md`** — 🟢 openapi.json ↔ TS client senkron kalma garantisi (CI drift-check'leri + `make contracts`); router/şemaya dokunan her değişiklikte oku.
 - **`docs/kapsam-sinirlari.md`** — 🟢 local-first kapsam + **YAPMA listesi** (kapsam-dışı = tasarım gereği yok; ⚠️ user-login/OAuth tuzağı).
 - `CONTRIBUTING.md` — git akışı detayı (issue→branch→commit→PR→merge; §0 işe-başla).
 - `ProjectManagement/` — sprint kanıtı + **daily nasıl kaydedilir** → `ProjectManagement/README.md` · `SprintN/{DailyScrum·Meetings·Board·Burndown·Screenshots}`.
@@ -71,7 +72,7 @@ Bu repoda çalışan **her AI aracı**, aşağıdaki anlarda ilgili rehberi **ke
 - `README.md` — public ürün açıklaması + takım tablosu.
 - `AGENTS.md` — bu dosya (kanonik sözleşme). `CLAUDE.md` / `GEMINI.md` / `.kiro/steering/` → araçları buraya yönlendirir.
 - `src/` — kod 🟢: `backend/ensemble` (FastAPI engine iskeleti) · `shared/ensemble_shared` (harness-IO + şemalar, D-29) · `mcp` (S3)
-- `.harness/` — kanonik ortak bağlam (scope · tasks · active · locks · decisions)  🟡 *henüz yok*
+- `.harness/` — kanonik ortak bağlam (scope · tasks · active · locks · decisions)  🟢 *git'te (#242), şema haritası `.harness/README.md`'de*
 
 ## Build / test / çalıştırma  🟢
 

@@ -8,6 +8,7 @@ from ensemble.integrations.gemini.errors import GeminiPermanentError, GeminiTran
 from ensemble.integrations.gemini.fake import FakeJudgeAdapter
 from ensemble.integrations.gemini.judge import GeminiJudgeAdapter, _build_prompt
 from ensemble.models import NormalizedEvent
+from ensemble.ports import JudgeUnavailableError
 
 
 def _event(id_: str, actor: str, files: list[str]) -> NormalizedEvent:
@@ -131,29 +132,52 @@ def test_judge_same_actor_skips_gemini_call_entirely():
     assert stub.calls == 0
 
 
-def test_judge_permanent_error_falls_back():
+# --- #252: hata "düşük-güvenli tespit" DEĞİL, tespitin YOKLUĞUDUR ------------
+#
+# Bu üç test eskiden ters yönü doğruluyordu (`*_falls_back`, severity=="low").
+# O şartname canlıda ölçülen şu sonucu üretti: Gemini günlük kotası bitince
+# 19 gerçek tespit 131 sahte tespite dönüştü ve ham 429 gövdesi `rationale`
+# üzerinden arayüze taşındı. Sözleşme tersine çevrildi: adapter artık fırlatır.
+
+
+def test_judge_permanent_error_raises_unavailable():
     stub = _StubClient(error=GeminiPermanentError("auth hatasi"))
     adapter = GeminiJudgeAdapter(_settings(), client=stub)
     a, b = _event("1", "esma", ["x.py"]), _event("2", "fatih", ["x.py"])
-    d = adapter.judge_conflict(a, b, overlap=["x.py"], sim=0.5)
-    assert d.severity == "low"
-    assert d.confidence < 0.5
+    with pytest.raises(JudgeUnavailableError):
+        adapter.judge_conflict(a, b, overlap=["x.py"], sim=0.5)
 
 
-def test_judge_transient_error_exhausted_falls_back():
+def test_judge_transient_error_exhausted_raises_unavailable():
     stub = _StubClient(error=GeminiTransientError("timeout"))
     adapter = GeminiJudgeAdapter(_settings(), client=stub)
     a, b = _event("1", "esma", ["x.py"]), _event("2", "fatih", ["x.py"])
-    d = adapter.judge_conflict(a, b, overlap=["x.py"], sim=0.5)
-    assert d.severity == "low"
+    with pytest.raises(JudgeUnavailableError):
+        adapter.judge_conflict(a, b, overlap=["x.py"], sim=0.5)
 
 
-def test_judge_malformed_response_falls_back():
+def test_judge_malformed_response_raises_unavailable():
     stub = _StubClient(response="not json")
     adapter = GeminiJudgeAdapter(_settings(), client=stub)
     a, b = _event("1", "esma", ["x.py"]), _event("2", "fatih", ["x.py"])
-    d = adapter.judge_conflict(a, b, overlap=["x.py"], sim=0.5)
-    assert d.severity == "low"
+    with pytest.raises(JudgeUnavailableError):
+        adapter.judge_conflict(a, b, overlap=["x.py"], sim=0.5)
+
+
+def test_judge_ham_api_hatasi_kullaniciya_sizmaz():
+    """429 gövdesi gibi ham sağlayıcı metni istisnada kalır, Detection'a geçmez.
+
+    Canlıda `rationale` alanı `FeedItem.tsx`'te render ediliyor; eski fallback
+    ham Google hata JSON'unu doğrudan oraya taşıyordu.
+    """
+    stub = _StubClient(error=GeminiPermanentError("429 RESOURCE_EXHAUSTED {'quota': 20}"))
+    adapter = GeminiJudgeAdapter(_settings(), client=stub)
+    a, b = _event("1", "esma", ["x.py"]), _event("2", "fatih", ["x.py"])
+    with pytest.raises(JudgeUnavailableError) as ei:
+        adapter.judge_conflict(a, b, overlap=["x.py"], sim=0.5)
+    # Ham metin istisnada (log'a gider) — ama ortada kullanıcıya dönen bir
+    # Detection YOK; sızacak bir alan da yok.
+    assert "RESOURCE_EXHAUSTED" in str(ei.value)
 
 
 # ---------------------------------------------------------------------------

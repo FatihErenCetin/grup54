@@ -198,10 +198,13 @@ class HarnessEventQuerySource:
         return None
 
     def _git_commit(self) -> str | None:
+        root = Path(self.repo_root)
+        if not (root / ".git").exists():
+            return None
         try:
             result = subprocess.run(
                 ["git", "rev-parse", "HEAD"],
-                cwd=self.repo_root,
+                cwd=root,
                 capture_output=True,
                 text=True,
                 check=False,

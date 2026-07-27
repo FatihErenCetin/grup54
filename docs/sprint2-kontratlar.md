@@ -80,9 +80,13 @@ class VectorIndexPort(Protocol):        # impl: #15 (FAISS/pgvector)
     def upsert(self, id: str, vec: list[float], meta: dict) -> None: ...
     def query(self, vec: list[float], k: int) -> list[tuple[str, float]]: ...
 
-class JudgePort(Protocol):              # impl: #17/#24 (Gemini) · fake: kural-tabanlı
+class JudgePort(Protocol):              # impl: #17/#24 (Gemini · Groq · Ollama) · fake: kural-tabanlı
     def judge_conflict(self, a: NormalizedEvent, b: NormalizedEvent,
                        overlap: list[str], sim: float | None) -> Detection: ...
+        # SÖZLEŞME (#252): değerlendiremediğinde `JudgeUnavailableError` FIRLATIR.
+        # Düşük-güvenli bir Detection DÖNDÜRMEZ — "çakışma değil" ile
+        # "değerlendiremedik" ayırt edilebilir kalmalı. Yeni adapter yazan:
+        # hata yolunda `Detection` üretme, `raise JudgeUnavailableError(...)`.
 
 class HarnessPort(Protocol):            # impl: #13 (GATE 1)
     def read_scope(self, sprint: str) -> dict: ...
@@ -100,13 +104,17 @@ class HarnessPort(Protocol):            # impl: #13 (GATE 1)
 | Method · Path | Girdi | Çıktı (JSON) | Issue |
 |---|---|---|---|
 | `GET /health` | — | `{status, mode, github_auth, gemini}` | #14, zenginleştirme #53 |
-| `GET /radar` | — | `{detections: Detection[], updated_at}` | #17, #25 |
+| `GET /radar` | — | `{detections: Detection[], updated_at, degraded?}` | #17, #25, #252 |
 | `GET /scope/check?ref=<pr>` | query | `ScopeVerdict` | #31 (S3) |
 | `GET /board` | — | `{cards: BoardCard[]}` | S3 |
 | `GET /query?q=<nl>` | query | `{answer: str, citations: str[]}` | S3 |
 | `GET /graph?window_days=14` | query (varsayılan 14) | `TouchGraph` | #104 *(Ek A — S2 çekme adayı)* |
 
 Frontend (#20) bu şemayı `openapi.json`'dan üretir → `apiClient.GET("/radar")` tip-güvenli. Backend bitmeden **mock server** (aynı şema) ile çalışılır.
+
+> **`degraded` (#252) — toplamsal, opsiyonel alan.** `{judge_unavailable, evaluated}` ya da `null`. Judge (kota/ağ) bazı adayları değerlendiremediğinde dolar; **`required` değildir**, mevcut istemciler kırılmaz.
+>
+> Anlamı: `detections` o turda *gerçekten yargılanabilmiş* çiftleri taşır; `judge_unavailable` kadarı hiç yargılanamamıştır — çakışma olmadığı için değil, judge'a ulaşılamadığı için. **İstemci bunu tespit gibi göstermemeli**, "sonuç eksik" uyarısı olarak göstermelidir. Alan, eksikliği *gizlememek* için var: önceki davranışta değerlendirilemeyen çiftler `severity: low` sahte tespitlere dönüşüyordu.
 
 ---
 
@@ -315,6 +323,9 @@ class ErrorEnvelope(BaseModel):
 | Gemini kalıcı/diğer | 502 | `gemini_error` | taban sınıf da eşli (fallback'e düşüp detay sızdırmaz) |
 | Framework HTTP (404/405…) | ilgili | `http_<status>` | zarf kapsamında — "tek tip" vaadi eksiksiz |
 | Beklenmedik | 500 | `internal` | mesaj **mod-bağımlı**: local=özet, hosted=generic; traceback yalnız log'da (`exc_info` ile — uvicorn'un kendi ASGI kaydıyla çift ERROR görünmesi bilinen davranış) |
+| 🆕 Demo rate limit (#63) | 429 | `demo_rate_limited` | yalnız `DEMO_MODE=true`; + `Retry-After: <saniye>` — bkz. `sprint3-kontratlar.md` Ek F/F2 |
+
+> **Yalnız EKLEME** — yukarıdaki donmuş satırlara dokunulmadı; 429/`demo_rate_limited` #63'ün hosted-demo rate cap'inin zarf üyesi olarak buraya işlendi (kod kaynağı: `api/rate_limit.py`, `errors.py::ERROR_RESPONSES`'a koşulsuz eklendi).
 
 - `422` FastAPI'nin otomatik doğrulama cevabıdır (zarf dışı, dokunulmadı); `500` spec'e bilerek beyan edilmez.
 - **CORS-on-error:** hata cevapları da `Access-Control-Allow-Origin` taşır (500 fallback'i Starlette'te CORS middleware'inin dışında koşar — başlık elle eklenir; #45/#150 dersi: yoksa tarayıcı gerçek hatayı "CORS error" diye gizler).

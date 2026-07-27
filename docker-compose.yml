@@ -34,8 +34,10 @@ services:
     environment:
       ENSEMBLE_MODE: hosted
       # psycopg gelene kadar (#179) bu DSN'e gerçek bağlantı KURULMAZ — yine de
-      # hosted modun beklediği şekli göstermek için burada tutuluyor.
-      DATABASE_URL: postgresql://ensemble:ensemble@db:5432/ensemble
+      # hosted modun beklediği şekli göstermek için burada tutuluyor. Sürücü
+      # son eki `+psycopg` (psycopg v3): kontrat Ek A/C3'te dondurulmuş kanonik
+      # şekil; son ek olmadan SQLAlchemy psycopg2'yi dener → ModuleNotFoundError.
+      DATABASE_URL: postgresql+psycopg://ensemble:ensemble@db:5432/ensemble
       CORS_ORIGINS: http://localhost:5173,http://127.0.0.1:5173
       PORT: "8000"
     ports:

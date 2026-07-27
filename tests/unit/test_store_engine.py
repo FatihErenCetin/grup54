@@ -2,10 +2,32 @@ from unittest.mock import MagicMock
 
 
 from ensemble.config import Settings
-from ensemble.store.engine import get_engine, get_session_factory
+from ensemble.store.engine import get_engine, get_session_factory, normalize_database_url
 from ensemble.store.models import Base, PresenceRow, TaskProjectionRow
 from ensemble.store.rebuild import rebuild_projection
 from ensemble_shared.harness import HarnessPort
+
+
+def test_normalize_database_url():
+    assert (
+        normalize_database_url("postgres://user:pass@localhost:5432/db")
+        == "postgresql+psycopg://user:pass@localhost:5432/db"
+    )
+    assert (
+        normalize_database_url("postgresql://user:pass@localhost:5432/db")
+        == "postgresql+psycopg://user:pass@localhost:5432/db"
+    )
+    assert (
+        normalize_database_url("postgresql+psycopg://user:pass@localhost:5432/db")
+        == "postgresql+psycopg://user:pass@localhost:5432/db"
+    )
+    assert normalize_database_url("sqlite:///:memory:") == "sqlite:///:memory:"
+
+
+def test_postgres_engine_creation_url_normalization():
+    settings = Settings(DATABASE_URL="postgres://user:pass@localhost:5432/db")
+    engine = get_engine(settings)
+    assert engine.url.drivername == "postgresql+psycopg"
 
 
 def test_sqlite_engine_creation():

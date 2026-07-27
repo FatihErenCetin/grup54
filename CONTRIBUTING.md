@@ -35,7 +35,7 @@ Her iş bir **GitHub Issue**'dan başlar — **`<id>` = issue numarası**.
 
 - **`main` korunur:** doğrudan push **YOK**; her şey branch + PR.
 - **İsim:** `T-<id>-kisa-aciklama` (kebab-case, ASCII), `<id>` = issue no. Örn: issue **#6** → `T-6-cakisma-radari`.
-- **Bir branch = bir issue.** Küçük ve odaklı tut.
+- **Bir branch = bir issue.** Küçük ve odaklı tut. *(CI zorlar: PR >1 Closes → kırmızı; meşru istisna → `multi-issue-ok` label'i ekle.)*
 - Çalışmadan önce `main`'i çek (`git checkout main && git pull`), sonra branch aç.
 
 ## 3. Commit
@@ -62,6 +62,7 @@ Her iş bir **GitHub Issue**'dan başlar — **`<id>` = issue numarası**.
 - **Review:** merge'den önce **≥1 takım arkadaşı onayı** — **[`docs/review-rehberi.md`](docs/review-rehberi.md)'ne göre** (AI aracınla: rehberi okut, PR'ı incelet; karar sende). **SLA:** ≤24 saat (blocker'lar daha hızlı).
 - **Merge yöntemi: Merge commit** (commit'ler korunur → katkı görünür). **Kim merge'ler:** PR'ı **açan kişi** (≥1 onaydan sonra). **Merge sonrası branch otomatik silinir.**
 - **Çakışma:** PR'dan önce `main`'i branch'e çekip çakışmayı çöz.
+- **Kontrat drift (openapi.json ↔ TS client):** router/şemaya dokunduysan `make contracts` çalıştır, ikisini de commit'le — CI'nin iki drift-check'i + neden/nasıl için [`docs/kontrat-drift-guardrail.md`](docs/kontrat-drift-guardrail.md).
 
 ## Manuel vs Otomatik
 

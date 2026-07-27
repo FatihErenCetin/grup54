@@ -78,6 +78,19 @@ ERROR_RESPONSES = {
             }
         },
     },
+    # Hosted demo IP/rate cap (#63) — KOSULSUZ beyan: koşullu olsaydı
+    # openapi.json DEMO_MODE'a göre degisir, drift-check kararsızlaşırdı.
+    # Yalnız DEMO_MODE=true iken gerçekte üretilir (bkz. api/rate_limit.py).
+    429: {
+        "model": ErrorEnvelope,
+        "description": "Demo istek limiti aşıldı (yalnız DEMO_MODE)",
+        "headers": {
+            "Retry-After": {
+                "description": "Saniye — pencere kayınca tekrar denenebilir",
+                "schema": {"type": "integer"},
+            }
+        },
+    },
 }
 
 # (status, kod, TR mesaj, retry_after) — mesajlar ic detay tasimaz.

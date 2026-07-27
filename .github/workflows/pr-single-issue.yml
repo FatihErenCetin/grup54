@@ -1,0 +1,81 @@
+# PR tek-issue kurali (#215) — CONTRIBUTING §2 "Bir branch = bir issue"'yu
+# makine-zorlar. GitHub'in kendi "closing issues" tespitini (GraphQL
+# closingIssuesReferences) sorgular — govde-metnini regex'le taramaz.
+# Boylece GitHub'in GERCEKTEN auto-close edecegi set kullanilir: kod-fence /
+# inline-code / HTML-comment icindeki "Closes #N" ornekleri sayilmaz (F1),
+# "Closes: #1" (iki nokta) ve "owner/repo#1" (qualified same-repo) formlari
+# atlanmaz (F2/F4). Amac: PR #208 gibi cok-issue bundle'lari review'a
+# kalmadan ilk savunmada yakalamak. Kapsam SINIRI: closingIssuesReferences
+# semantik bundling'i (tek Closes ile 9 is) goremez — o hala review'un isi.
+# Mevcut desen: pr-triage.yml (actions/github-script@v7).
+
+name: PR tek-issue kontrolu
+
+on:
+  pull_request:
+    types: [opened, edited, reopened, synchronize, labeled, unlabeled]
+
+permissions:
+  pull-requests: read
+
+jobs:
+  check-single-issue:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            // Kacis kapisi: mesru coklu-issue PR'lari icin label ile atla.
+            const labels = (context.payload.pull_request.labels || []).map(
+              (l) => l.name
+            );
+            if (labels.includes("multi-issue-ok")) {
+              core.info(
+                "`multi-issue-ok` etiketi bulundu — tek-issue kontrolu atlandi."
+              );
+              return;
+            }
+
+            // Regex yerine GitHub'in kendi parse'ini kullan: bu PR gercekte
+            // hangi issue'lari auto-close edecek? (kod-fence/inline-code/
+            // HTML-comment icindeki sahte referanslari saymaz; "Closes: #1"
+            // ve "owner/repo#1" gibi GitHub'in kapattigi ama regex'in
+            // atladigi formlari da dogru sayar.)
+            const query = `
+              query($owner: String!, $name: String!, $number: Int!) {
+                repository(owner: $owner, name: $name) {
+                  pullRequest(number: $number) {
+                    closingIssuesReferences(first: 20) {
+                      totalCount
+                      nodes {
+                        number
+                      }
+                    }
+                  }
+                }
+              }
+            `;
+
+            const result = await github.graphql(query, {
+              owner: context.repo.owner,
+              name: context.repo.repo,
+              number: context.payload.pull_request.number,
+            });
+
+            const closing = result.repository.pullRequest.closingIssuesReferences;
+
+            if (closing.totalCount > 1) {
+              const list = closing.nodes.map((n) => `#${n.number}`).join(", ");
+              core.setFailed(
+                `PR su issue'lari kapatiyor: ${list}. ` +
+                  "Kural: bir branch = bir issue (CONTRIBUTING §2). " +
+                  "Her issue'yu ayri PR'a bol; mesru istisna ise " +
+                  "`multi-issue-ok` label'i ekle."
+              );
+              return;
+            }
+
+            core.info(
+              `OK — ${closing.totalCount} issue kapatiliyor (kural: bir ` +
+                "branch = bir issue)."
+            );

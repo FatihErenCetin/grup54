@@ -6,6 +6,7 @@ from alembic import context
 from sqlalchemy import engine_from_config, pool
 
 from ensemble.config import get_settings
+from ensemble.store.engine import normalize_database_url
 from ensemble.store.models import Base
 
 config = context.config
@@ -15,7 +16,8 @@ if config.config_file_name is not None:
 
 # Settings'den gerçek DATABASE_URL'i al — alembic.ini'deki varsayılanı ezebilir.
 settings = get_settings()
-config.set_main_option("sqlalchemy.url", settings.DATABASE_URL)
+db_url = normalize_database_url(settings.DATABASE_URL)
+config.set_main_option("sqlalchemy.url", db_url)
 
 target_metadata = Base.metadata
 
