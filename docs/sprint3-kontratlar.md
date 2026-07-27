@@ -8,11 +8,11 @@ S2'deki iki tür kontrata (HTTP openapi + Python Protocol) S3'te **üçüncüsü
 
 1. **HTTP (FastAPI ↔ frontend):** endpoint'ler Pydantic modellerden **`src/shared/openapi.json`** üretir → frontend TS client *otomatik* (`npm run gen:api` → `src/api/schema.d.ts`). Frontend backend bitmeden client'ı üretip **mock veriyle** çalışır.
 2. **Python Protocol (katmanlar arası):** her bağımlılık bir `Protocol` arkasında (`ensemble/ports.py`, `ensemble_shared/harness.py`) → **fake adapter** ile stub'lanır (PgVector gerçek Postgres olmadan, MCP gerçek harness olmadan test edilir).
-3. **🆕 Deploy env eşlemesi (kod ↔ platform):** her env değişkeni **NEREDE** tutulur (Fly secret / Vercel env / CI secret / yalnız-local) ve hangi ikili **çift-yönlü kilitli** (CORS_ORIGINS ↔ VITE_API_BASE_URL). Bu donmadan iki kişi (infra + frontend) birbirinin URL'ini tahmin ederek çalışır → canlıda CORS/base-URL çakışması. Eşleme donunca ikisi de mock origin'le paralel gider.
+3. **🆕 Deploy env eşlemesi (kod ↔ platform):** her env değişkeni **NEREDE** tutulur (sunucu env dosyası / Vercel env / CI secret / yalnız-local — D-46 self-host dönüşümü, bkz. Ek A değişiklik notu) ve hangi ikili **çift-yönlü kilitli** (CORS_ORIGINS ↔ VITE_API_BASE_URL). Bu donmadan iki kişi (infra + frontend) birbirinin URL'ini tahmin ederek çalışır → canlıda CORS/base-URL çakışması. Eşleme donunca ikisi de mock origin'le paralel gider.
 
 ```
-Fly secret ─env─> FastAPI (ENSEMBLE_MODE=hosted) ─Protocol─> engine ─Protocol─> PgVectorIndex ─> managed PG
-   (Ek A)              (Ek B: router imzaları)      (Ek C store DI)     (Ek C)          (#182)
+Sunucu env dosyası ─env─> FastAPI (ENSEMBLE_MODE=hosted) ─Protocol─> engine ─Protocol─> PgVectorIndex ─> self-host PG
+   (Ek A)                     (Ek B: router imzaları)      (Ek C store DI)     (Ek C)          (#182/#246)
                               │  ▲
               openapi.json ───┘  └─── MCP read tools (Ek D)
                     │
@@ -26,47 +26,50 @@ Fly secret ─env─> FastAPI (ENSEMBLE_MODE=hosted) ─Protocol─> engine ─P
 ## Ek A (20 Tem) — Deploy env sözleşmesi (#181 · #186 · #190): her sır NEREDE yaşar
 
 > **Sahibi:** infra (deploy dilimi) · **Tüketicisi:** herkes (backend çalışma-zamanı, frontend build, CI). 🔒 **FROZEN** — bu tablo `docs/deploy-runbook.md`'nin (#190) tek kaynağıdır; `.env.example` anahtarı eklenince buraya da satır eklenir.
+>
+> **Değişiklik notu (25 Tem, D-46 — self-host dönüşümü):** bu ek ilk donduğunda (20 Tem) hedef platform Fly.io idi (#181, `fly.toml`). #192 review'ünde (Semih) go-live topolojisi **self-host VDS + Docker Compose + self-hosted GitHub Actions runner**'a çevrildi — issue #192'nin kabul kriterleri PO tarafından buna göre güncellendi (D-46, `internal/grup54_karar_logu.md`). Aşağıdaki A1/A2/A3 **sessizce değil, bu notla** güncellendi: donmuş SATIRLAR (hangi env anahtarının hangi ortama ait olduğu) **AYNEN** kalıyor — değişen yalnızca "nerede tutulur" sütunundaki **platform adı** (Fly secret → sunucudaki env dosyası) ve `FLY_API_TOKEN` satırının **kaldırılması** (self-host CD'nin hiçbir CI secret'ına ihtiyacı yok — bkz. `.github/workflows/deploy.yml`). Vercel tarafı (frontend) **DEĞİŞMEDİ**.
+>
+> **Ek not (25 Tem, ikinci geçiş — main merge sonrası tarama):** ilk geçişte yalnız A1/A2/A3 satırları tarandı; main'den gelen #239'un (T-63) eklediği `DEMO_MODE`/`DEMO_RATE_*` satırları — ve bu dosyanın Ek C (`Sağlayıcı kararı`) ile sonundaki "Pratik" bölümünde kalan `Fly` referansları — gözden kaçmıştı. Hepsi aynı ilkeyle (donmuş satır AYNEN, yalnız platform adı self-host'a) güncellendi. **Bilinçli olarak dokunulmayanlar:** Ek F'teki `Fly-Client-IP` başlık önceliği, `/health` için "Fly health-check" notu ve `512 MB Fly VM`/`fly.toml auto_stop_machines` referansları — bunlar Ek A'nın env-yeri kararını tekrar etmiyor, hâlâ repoda duran gerçek `fly.toml` + `rate_limit.py` kodunun davranışını birebir anlatıyor (bu ikisi bu görev kapsamında self-host'a taşınmadı; ayrı bir temizlik konusu).
 
 ### A1 · Env → platform eşleme tablosu (#190 kabul kriteri)
 
 | Env anahtarı | Nerede tutulur | Not |
 |---|---|---|
-| `ENSEMBLE_MODE` | **Fly secret** = `hosted` · local `.env` = `local` | hosted'da store+pgvector devreye girer (Ek C) |
-| `CORS_ORIGINS` | **Fly secret** | = Vercel prod origin (**A2 çift-yön**); asla `*` (config açılışta reddeder) |
-| `DATABASE_URL` | **Fly secret** | managed PG DSN `postgresql+psycopg://…` (#182) — local'de SQLite dosya yolu |
-| `GEMINI_API_KEY` | **Fly secret** + **CI secret** (eval hattı) | yoksa engine Fake/Hash'e düşer (canlıda İSTENMEZ) |
-| `GEMINI_MODEL` · `GEMINI_EMBEDDING_MODEL` · `GEMINI_EMBEDDING_DIMENSIONS` · `GEMINI_TIMEOUT_S` · `GEMINI_MAX_RETRIES` | **Fly secret (opsiyonel)** | kod'da varsayılan var; yalnız override gerekince set |
-| `GITHUB_APP_ID` · `GITHUB_APP_INSTALLATION_ID` | **Fly secret** | makine-auth kimliği |
-| `GITHUB_APP_PRIVATE_KEY` | **Fly secret (PEM İÇERİĞİ)** | 🆕 #186 — **dosya yolu DEĞİL, ham PEM metni** (A3) |
-| `GITHUB_APP_PRIVATE_KEY_PATH` | **yalnız-local** | geliştiricinin diskindeki `.pem`; Fly'da **boş** (mount yok) |
-| `GITHUB_REPO_OWNER` · `GITHUB_REPO_NAME` | **Fly secret** | izlenen repo |
-| `GITHUB_DEFAULT_BRANCH` | **Fly secret (opsiyonel)** | varsayılan `main` |
-| `GITHUB_WEBHOOK_SECRET` | **Fly secret** | webhook imza doğrulaması (D-35) |
-| `GITHUB_WEBHOOK_PROXY_URL` | **yalnız-local** (smee kanalı) | hosted'da webhook doğrudan Fly URL'ine gelir → boş |
-| `RADAR_WINDOW_DAYS` · `RADAR_MIN_JACCARD` · `RADAR_MIN_SIMILARITY` | **Fly secret (opsiyonel)** | kalibrasyon çıktısı (#18); kod default'u kanonik |
-| `DEMO_MODE` | **Fly secret** = `true` (`fly.toml [env]`, sır değil ama tek-satırlık açma/kapama bayrağı burada yaşar) | 🆕 #63 — açılışta fail-closed: `true` iken `GITHUB_REPO_OWNER`/`NAME` zorunlu (bkz. Ek F) |
-| `DEMO_RATE_WINDOW_S` · `DEMO_AI_RATE_LIMIT` · `DEMO_AI_GLOBAL_LIMIT` · `DEMO_RATE_LIMIT` · `DEMO_CACHE_TTL_S` · `DEMO_CACHE_MAX_ENTRIES` | **Fly secret (opsiyonel)** | 🆕 #63 — kod default'u kanonik; yalnız override gerekince set (bkz. Ek F) |
-| `VITE_API_BASE_URL` | **Vercel env (build-time)** | = Fly backend public URL (**A2 çift-yön**); origin-only, query/hash yasak |
+| `ENSEMBLE_MODE` | **Sunucu env dosyası** (`/etc/ensemble/ensemble.env`) = `hosted` · local `.env` = `local` | hosted'da store+pgvector devreye girer (Ek C) |
+| `CORS_ORIGINS` | **Sunucu env dosyası** | = Vercel prod origin (**A2 çift-yön**); asla `*` (config açılışta reddeder) |
+| `DATABASE_URL` | **Sunucu env dosyası** | self-host Postgres+pgvector DSN `postgresql+psycopg://…` (#182/#246, aynı VDS'te docker compose servisi) — local'de SQLite dosya yolu |
+| `GEMINI_API_KEY` | **Sunucu env dosyası** + **CI secret** (eval hattı) | yoksa engine Fake/Hash'e düşer (canlıda İSTENMEZ) |
+| `GEMINI_MODEL` · `GEMINI_EMBEDDING_MODEL` · `GEMINI_EMBEDDING_DIMENSIONS` · `GEMINI_TIMEOUT_S` · `GEMINI_MAX_RETRIES` | **Sunucu env dosyası (opsiyonel)** | kod'da varsayılan var; yalnız override gerekince set |
+| `GITHUB_APP_ID` · `GITHUB_APP_INSTALLATION_ID` | **Sunucu env dosyası** | makine-auth kimliği |
+| `GITHUB_APP_PRIVATE_KEY` | **Sunucu env dosyası (PEM İÇERİĞİ)** | 🆕 #186 — **dosya yolu DEĞİL, ham PEM metni** (A3) |
+| `GITHUB_APP_PRIVATE_KEY_PATH` | **yalnız-local** | geliştiricinin diskindeki `.pem`; sunucuda **boş** (mount yok) |
+| `GITHUB_REPO_OWNER` · `GITHUB_REPO_NAME` | **Sunucu env dosyası** | izlenen repo |
+| `GITHUB_DEFAULT_BRANCH` | **Sunucu env dosyası (opsiyonel)** | varsayılan `main` |
+| `GITHUB_WEBHOOK_SECRET` | **Sunucu env dosyası** | webhook imza doğrulaması (D-35) |
+| `GITHUB_WEBHOOK_PROXY_URL` | **yalnız-local** (smee kanalı) | hosted'da webhook doğrudan sunucunun genel URL'ine (Caddy/DNS) gelir → boş |
+| `RADAR_WINDOW_DAYS` · `RADAR_MIN_JACCARD` · `RADAR_MIN_SIMILARITY` | **Sunucu env dosyası (opsiyonel)** | kalibrasyon çıktısı (#18); kod default'u kanonik |
+| `DEMO_MODE` | **Sunucu env dosyası** = `true` (`/etc/ensemble/ensemble.env`, sır değil ama tek-satırlık açma/kapama bayrağı burada yaşar) | 🆕 #63 — açılışta fail-closed: `true` iken `GITHUB_REPO_OWNER`/`NAME` zorunlu (bkz. Ek F) |
+| `DEMO_RATE_WINDOW_S` · `DEMO_AI_RATE_LIMIT` · `DEMO_AI_GLOBAL_LIMIT` · `DEMO_RATE_LIMIT` · `DEMO_CACHE_TTL_S` · `DEMO_CACHE_MAX_ENTRIES` | **Sunucu env dosyası (opsiyonel)** | 🆕 #63 — kod default'u kanonik; yalnız override gerekince set (bkz. Ek F) |
+| `VITE_API_BASE_URL` | **Vercel env (build-time)** | = self-host backend public URL (Caddy/DNS domain, **A2 çift-yön**); origin-only, query/hash yasak |
 | `VITE_MOCK` | **yalnız-local** · Vercel'de **BOŞ** | prod'da fixture chunk'ı sızmasın (yalnız `"1"` mock açar) |
-| `FLY_API_TOKEN` | **CI secret** | deploy pipeline (GitHub Actions → `fly deploy`) |
 
-> **yalnız-local** = platforma **hiç** girilmez; **Fly secret** = backend çalışma-zamanı; **Vercel env** = frontend build-time; **CI secret** = pipeline. Aynı anahtar iki sütunda olamaz (tek doğruluk); istisna = local ile hosted'ın FARKLI değeri (ENSEMBLE_MODE, DATABASE_URL, PRIVATE_KEY yolu-vs-içeriği).
+> **yalnız-local** = platforma **hiç** girilmez; **Sunucu env dosyası** (`/etc/ensemble/ensemble.env`, docker compose `env_file:` ile okunur) = backend çalışma-zamanı; **Vercel env** = frontend build-time; **CI secret** = pipeline. Aynı anahtar iki sütunda olamaz (tek doğruluk); istisna = local ile hosted'ın FARKLI değeri (ENSEMBLE_MODE, DATABASE_URL, PRIVATE_KEY yolu-vs-içeriği). **`FLY_API_TOKEN` satırı D-46 ile kaldırıldı** — self-host CD'nin (`.github/workflows/deploy.yml`) hiçbir CI secret'ına ihtiyacı yok; deploy kapısı bir CI **secret** değil bir repo **VARIABLE**'ıdır (`vars.DEPLOY_ENABLED`, kill-switch: `gh variable set DEPLOY_ENABLED --body false`).
 
 ### A2 · Çift-yönlü kilit: `CORS_ORIGINS` ↔ `VITE_API_BASE_URL` (🔒 birlikte değişir)
 
 İki ayrı platformda yaşayan **tek** kontrat — biri değişince diğeri **zorunlu** değişir:
 
 ```
-Fly:    CORS_ORIGINS      = https://<vercel-app>.vercel.app     # backend KİMİ kabul eder
-Vercel: VITE_API_BASE_URL = https://<fly-app>.fly.dev           # frontend KİME gider
+Sunucu (ensemble.env): CORS_ORIGINS      = https://<vercel-app>.vercel.app     # backend KİMİ kabul eder
+Vercel:                VITE_API_BASE_URL = https://<self-host-domain>         # frontend KİME gider
 ```
 
 - **Kural:** biri güncellenince diğeri aynı PR/deploy penceresinde güncellenir; tek taraflı değişiklik = tarayıcıda "CORS error" (gerçek hatayı gizler — S2 #45/#150 dersi). Hata cevapları bile `Access-Control-Allow-Origin` taşır (Ek D, S2).
-- **Paralel çalışma:** infra mock Vercel origin'iyle, frontend mock Fly URL'iyle başlar; entegrasyonda ikisi gerçek değerle **aynı anda** set edilir.
+- **Paralel çalışma:** infra mock Vercel origin'iyle, frontend mock self-host URL'iyle başlar; entegrasyonda ikisi gerçek değerle **aynı anda** set edilir.
 
 ### A3 · `GITHUB_APP_PRIVATE_KEY` imza eklemesi (#186 — 🔒 config + auth)
 
-Fly/Render secret'ları env-**string**; mount'lu dosya değil → hosted'a PEM dosya-yoluyla verilemez. Yeni alan + çözümleme sırası donuyor:
+Sunucu env dosyası da (eski Fly/Render gibi) env-**string** tutar; mount'lu dosya değil → hosted'a PEM dosya-yoluyla verilemez. Yeni alan + çözümleme sırası donuyor:
 
 ```python
 # ensemble/config.py — Settings'e EKLENEN alan (mevcut PATH alanı AYNEN kalır)
@@ -154,9 +157,11 @@ GET /graph?window_days=14  →  TouchGraph { window_days, nodes: GraphNode[], ed
 ### C1 · Port + hosted adapter imzası (mevcut kod — `store/vector_store.py`) 🔒
 
 ```python
-class VectorIndexPort(Protocol):                                # S2 §2, AYNEN
+class VectorIndexPort(Protocol):                                # S2 §2 + #191
     def upsert(self, id: str, vec: list[float], meta: dict) -> None: ...
     def query(self, vec: list[float], k: int) -> list[tuple[str, float]]: ...
+    def clear(self) -> None: ...                                # #191: idempotent rebuild için indeksi sıfırla
+    def replace_all(self, vectors, *, session=None) -> None: ...# #191/#218: idempotent replace + hosted'da caller DB-transaction'ına atomik yaz (session verilirse commit çağırana)
 
 class PgVectorIndex:                                            # hosted impl (#182'nin PG'sine yazar)
     def __init__(self, session_factory: Callable[[], Session], *,
@@ -184,7 +189,7 @@ if settings.ENSEMBLE_MODE == "hosted":
 
 - **Kanonik = migration** (`store/migrations/versions/c4f1d6a2b8e9_vector_index_table.py`). `PgVectorIndex.create_schema()` **kaldırılır / test-yardımcısına indirilir** (iki DDL kaynağı yasak).
 - `vector(768)` hardcode'u → `settings.GEMINI_EMBEDDING_DIMENSIONS` ile hizalanır (dims drift önlenir).
-- **Sağlayıcı kararı (#182 → yeni D-NN, karar_logu):** Neon/Supabase (pgvector hazır) vs Fly PG (manuel) — gerekçeli seç. Kontrat çıktısı: `DATABASE_URL=postgresql+psycopg://…` (Ek A) · `available_extensions`'da `vector` · prod rolüyle `CREATE EXTENSION vector` + `alembic upgrade head` temiz koşar. Bir semantik query gerçek PG'de döner (Fake/SQLite değil).
+- **Sağlayıcı kararı (#182 → D-NN, karar_logu):** ilk donduğunda (20 Tem) iki açık seçenek vardı — Neon/Supabase (pgvector hazır) vs Fly PG (manuel); **25 Tem D-46 ile self-host'a çözüldü** — aynı VDS'te docker compose Postgres+pgvector servisi (#246, bkz. Ek A `DATABASE_URL`). Kontrat çıktısı değişmedi: `DATABASE_URL=postgresql+psycopg://…` (Ek A) · `available_extensions`'da `vector` · prod rolüyle `CREATE EXTENSION vector` + `alembic upgrade head` temiz koşar. Bir semantik query gerçek PG'de döner (Fake/SQLite değil).
 
 ---
 
@@ -280,11 +285,11 @@ DEMO_CACHE_MAX_ENTRIES: int = 1024
 ## Pratik: S3 paralel çalışma reçetesi
 
 - **Sprint başı (bugün):** bu dosya (Ek A–E) donar → herkes kendi diliminde mock/fixture ile başlar.
-- **Infra (#181/#182/#186/#190):** Ek A tablosuyla Fly/Vercel/managed-PG kurar; frontend'i beklemez (mock origin).
+- **Infra (#181/#182/#186/#190):** Ek A tablosuyla self-host VDS/Vercel/Postgres+pgvector kurar (D-46); frontend'i beklemez (mock origin).
 - **Backend router (#51/#52/#59/#104):** Ek B imzalarını implement eder; fake harness/store fixture'ıyla test.
 - **AI (#58):** `GET /query` RAG'ını `VectorIndexPort` + fake retrieval ile yazar; gerçek PG'yi sonra bağlar (Ek C).
 - **Store (#183):** app-boot DI + DDL tek-kaynak; local davranışı bozmadan hosted'ı ekler.
 - **MCP (#32):** engine'e delege eden read tool'lar; HTTP ile aynı motoru paylaşır (Ek D).
-- **Frontend (#33/#105/#129):** üretilen client + mock ile 5 sayfayı yapar; entegrasyonda `VITE_API_BASE_URL`'i gerçek Fly URL'ine çevirir (Ek A2).
+- **Frontend (#33/#105/#129):** üretilen client + mock ile 5 sayfayı yapar; entegrasyonda `VITE_API_BASE_URL`'i gerçek self-host backend URL'ine çevirir (Ek A2, D-46).
 
 > **Kural (S2'den devam):** kontrat değişikliği = bu dosyaya PR + daily'de duyuru. Sessizce imza/env-yeri değiştirme — birinin stub'ını ya da deploy'unu kırarsın.

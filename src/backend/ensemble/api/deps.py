@@ -7,6 +7,9 @@ from ensemble.engine import BoardService, EventService, GraphService, RadarServi
 from ensemble.engine.query import QueryService
 
 
+from ensemble.ports import VectorIndexPort
+
+
 def get_settings(request: Request) -> Settings:
     return request.app.state.settings
 
@@ -21,6 +24,10 @@ def get_scope_service(request: Request) -> ScopeService:
 
 def get_query_service(request: Request) -> QueryService:
     return request.app.state.query_service
+
+
+def get_vector_index(request: Request) -> VectorIndexPort:
+    return request.app.state.vector_index
 
 
 def get_board_service(request: Request) -> BoardService:
@@ -49,6 +56,7 @@ SettingsDep = Annotated[Settings, Depends(get_settings)]
 RadarServiceDep = Annotated[RadarService, Depends(get_radar_service)]
 ScopeServiceDep = Annotated[ScopeService, Depends(get_scope_service)]
 QueryServiceDep = Annotated[QueryService, Depends(get_query_service)]
+VectorIndexDep = Annotated[VectorIndexPort, Depends(get_vector_index)]
 BoardServiceDep = Annotated[BoardService, Depends(get_board_service)]
 GraphServiceDep = Annotated[GraphService, Depends(get_graph_service)]
 EventServiceDep = Annotated[EventService, Depends(get_event_service)]

@@ -160,6 +160,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Events
+         * @description GitHub event akışını cursor'lı döndürür (#52).
+         *
+         *     - `since`: bir önceki yanıtın `latest_ts`'i; payload'ı yeni eventlerle sınırlar.
+         *     - `If-None-Match`: bir önceki ETag; içerik değişmediyse gövde yerine 304 döner.
+         */
+        get: operations["get_events_events_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/webhooks/github": {
         parameters: {
             query?: never;
@@ -270,6 +293,22 @@ export interface components {
             status: number;
         };
         /**
+         * EventsResponse
+         * @description GET /events yanıt modeli.
+         *
+         *     latest_ts, bir sonraki poll'de `since` sorgu parametresi olarak geri
+         *     gönderilecek cursor değeridir (#52).
+         */
+        EventsResponse: {
+            /** Events */
+            events: components["schemas"]["NormalizedEvent"][];
+            /**
+             * Latest Ts
+             * Format: date-time
+             */
+            latest_ts: string;
+        };
+        /**
          * GraphEdge
          * @description Aktör -> modül kenarı (#104). module = path'in ilk 2 segmenti (HESAPLANIR).
          */
@@ -345,6 +384,29 @@ export interface components {
              * @enum {string}
              */
             type: "scope" | "task" | "decision" | "event" | "pr";
+            /** Ref */
+            ref: string;
+        };
+        /** NormalizedEvent */
+        NormalizedEvent: {
+            /** Id */
+            id: string;
+            /**
+             * Type
+             * @enum {string}
+             */
+            type: "commit" | "pr" | "issue" | "branch";
+            /** Actor */
+            actor: string;
+            /** Branch */
+            branch: string | null;
+            /** Files */
+            files: string[];
+            /**
+             * Ts
+             * Format: date-time
+             */
+            ts: string;
             /** Ref */
             ref: string;
         };
@@ -1032,6 +1094,71 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PresenceResponse"];
+                };
+            };
+            /** @description Demo istek limiti aşıldı (yalnız DEMO_MODE) */
+            429: {
+                headers: {
+                    /** @description Saniye — pencere kayınca tekrar denenebilir */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Kalici saglayici hatasi (GitHub/Gemini/Ollama) */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Gecici olarak erisilemez */
+            503: {
+                headers: {
+                    /** @description Saniye — yalniz kendiliginden duzelebilir durumlarda */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    get_events_events_get: {
+        parameters: {
+            query?: {
+                /** @description Artımlı polling cursor. Verilirse yalnız bu andan (dahil) sonraki eventler döner. */
+                since?: string | null;
+            };
+            header?: {
+                "if-none-match"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
             /** @description Demo istek limiti aşıldı (yalnız DEMO_MODE) */

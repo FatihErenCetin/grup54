@@ -21,7 +21,11 @@ from ensemble.app import (
 from ensemble.config import Settings
 from ensemble.engine.fallback import FallbackJudge
 from ensemble.engine.cache import CachedConflictJudge, CachedQueryJudge, CachedScopeJudge
-from ensemble.engine.embeddings import CachedEmbeddings, HashEmbeddings
+from ensemble.engine.embeddings import (
+    DEFAULT_EMBEDDING_CACHE_MAX_ENTRIES,
+    CachedEmbeddings,
+    HashEmbeddings,
+)
 from ensemble.integrations.gemini.client import RETRY_WAIT_CAP_S
 from ensemble.integrations.gemini.embeddings import GeminiEmbeddingsAdapter
 from ensemble.integrations.gemini.fake import FakeJudgeAdapter
@@ -186,6 +190,24 @@ def test_app_state_lifespan_ile_query_service_kurulur():
         assert isinstance(service.judge_port, FakeQueryJudgeAdapter)
 
 
+def test_query_service_local_vector_indexi_fabrika_uzerinden_kuruyor(monkeypatch):
+    """#170: build_vector_index export'ta kalmaz, gercek QueryService akisi tuketir."""
+    built_index = LocalVectorIndex()
+    calls = []
+
+    def fake_build_vector_index(settings, *, session_factory=None):
+        calls.append((settings.ENSEMBLE_MODE, session_factory))
+        return built_index
+
+    monkeypatch.setattr("ensemble.app.build_vector_index", fake_build_vector_index)
+    app = create_app(_settings())
+
+    with TestClient(app):
+        assert app.state.query_service.vector_index is built_index
+
+    assert calls == [("local", None)]
+
+
 def test_app_state_lifespan_ile_scope_service_kurulur():
     app = create_app(_settings())
 
@@ -221,7 +243,7 @@ def test_demo_kapali_iken_judge_sarmalanmaz(tmp_path):
 
         embeddings = app.state.radar_service.embeddings_port
         assert isinstance(embeddings, CachedEmbeddings)
-        assert embeddings.max_entries is None  # demo kapali - sinirsiz (mevcut davranis)
+        assert embeddings.max_entries == DEFAULT_EMBEDDING_CACHE_MAX_ENTRIES
 
 
 def test_demo_acikken_judge_ve_embeddings_sarmalanir(tmp_path):

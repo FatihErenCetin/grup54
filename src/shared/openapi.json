@@ -696,6 +696,121 @@
         }
       }
     },
+    "/events": {
+      "get": {
+        "tags": [
+          "events"
+        ],
+        "summary": "Get Events",
+        "description": "GitHub event akışını cursor'lı döndürür (#52).\n\n- `since`: bir önceki yanıtın `latest_ts`'i; payload'ı yeni eventlerle sınırlar.\n- `If-None-Match`: bir önceki ETag; içerik değişmediyse gövde yerine 304 döner.",
+        "operationId": "get_events_events_get",
+        "parameters": [
+          {
+            "name": "since",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Artımlı polling cursor. Verilirse yalnız bu andan (dahil) sonraki eventler döner.",
+              "title": "Since"
+            },
+            "description": "Artımlı polling cursor. Verilirse yalnız bu andan (dahil) sonraki eventler döner."
+          },
+          {
+            "name": "if-none-match",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-None-Match"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EventsResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Kalici saglayici hatasi (GitHub/Gemini/Ollama)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Gecici olarak erisilemez",
+            "headers": {
+              "Retry-After": {
+                "description": "Saniye — yalniz kendiliginden duzelebilir durumlarda",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Demo istek limiti aşıldı (yalnız DEMO_MODE)",
+            "headers": {
+              "Retry-After": {
+                "description": "Saniye — pencere kayınca tekrar denenebilir",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/webhooks/github": {
       "post": {
         "tags": [
@@ -1085,6 +1200,29 @@
         ],
         "title": "ErrorEnvelope"
       },
+      "EventsResponse": {
+        "properties": {
+          "events": {
+            "items": {
+              "$ref": "#/components/schemas/NormalizedEvent"
+            },
+            "type": "array",
+            "title": "Events"
+          },
+          "latest_ts": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Latest Ts"
+          }
+        },
+        "type": "object",
+        "required": [
+          "events",
+          "latest_ts"
+        ],
+        "title": "EventsResponse",
+        "description": "GET /events yanıt modeli.\n\nlatest_ts, bir sonraki poll'de `since` sorgu parametresi olarak geri\ngönderilecek cursor değeridir (#52)."
+      },
       "GraphEdge": {
         "properties": {
           "actor": {
@@ -1246,6 +1384,66 @@
           "ref"
         ],
         "title": "NearestRef"
+      },
+      "NormalizedEvent": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "commit",
+              "pr",
+              "issue",
+              "branch"
+            ],
+            "title": "Type"
+          },
+          "actor": {
+            "type": "string",
+            "title": "Actor"
+          },
+          "branch": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Branch"
+          },
+          "files": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Files"
+          },
+          "ts": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Ts"
+          },
+          "ref": {
+            "type": "string",
+            "title": "Ref"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "type",
+          "actor",
+          "branch",
+          "files",
+          "ts",
+          "ref"
+        ],
+        "title": "NormalizedEvent"
       },
       "PresenceEntry": {
         "properties": {

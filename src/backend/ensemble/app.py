@@ -11,9 +11,13 @@ from ensemble.api.errors import ERROR_RESPONSES, ErrorEnvelope, register_excepti
 from ensemble.api.rate_limit import DemoRateLimitMiddleware
 from ensemble.api.routers import board, events, graph, health, query, radar, scope, webhook
 from ensemble.config import Settings, get_settings
-from ensemble.engine.cache import CachedConflictJudge, CachedQueryJudge, CachedScopeJudge
-from ensemble.engine.embeddings import CachedEmbeddings, HashEmbeddings
 from ensemble.engine.board import BoardService
+from ensemble.engine.cache import CachedConflictJudge, CachedQueryJudge, CachedScopeJudge
+from ensemble.engine.embeddings import (
+    DEFAULT_EMBEDDING_CACHE_MAX_ENTRIES,
+    CachedEmbeddings,
+    HashEmbeddings,
+)
 from ensemble.engine.events import EventService
 from ensemble.engine.graph import GraphService
 from ensemble.engine.query import QueryService
@@ -242,10 +246,13 @@ def _build_judge_port(
 
 
 def _build_embeddings_port(settings: Settings) -> EmbeddingsPort:
-    # #63: hosted demo modda cache boyutu sınırlanır (serbest metin `q` sınırsız
-    # büyümesin — 512 MB Fly VM); local/dev'de max_entries=None (mevcut sınırsız
-    # davranış, sıfır regresyon).
-    max_entries = settings.DEMO_CACHE_MAX_ENTRIES if settings.DEMO_MODE else None
+    # #170: local/dev cache'i 2048 girişle sınırlıdır; #63 hosted demo modu
+    # serbest metin `q` yüküne karşı daha sıkı ayar değerini uygular.
+    max_entries = (
+        settings.DEMO_CACHE_MAX_ENTRIES
+        if settings.DEMO_MODE
+        else DEFAULT_EMBEDDING_CACHE_MAX_ENTRIES
+    )
     # Tekil-uçuş bekleme süresi DEMO_MODE'dan BAĞIMSIZ hesaplanır - ama
     # `CachedEmbeddings` sarmalayıcısının KENDİSİ (dolayısıyla `_fill_misses`
     # tekil-uçuşu) LLM_PROVIDER ollama/gemini olduğu sürece HER ZAMAN
@@ -276,11 +283,13 @@ def _build_radar_service(
     settings: Settings,
     *,
     session_factory: Callable[[], Session] | None = None,
+    vector_index: VectorIndexPort | None = None,
 ) -> RadarService:
     return RadarService(
         github_port=_build_github_port(settings),
         judge_port=_build_judge_port(settings, session_factory=session_factory),
         embeddings_port=_build_embeddings_port(settings),
+        vector_index=vector_index,
         window_days=settings.RADAR_WINDOW_DAYS,
         min_jaccard=settings.RADAR_MIN_JACCARD,
         min_similarity=settings.RADAR_MIN_SIMILARITY,
@@ -421,19 +430,30 @@ async def lifespan(app: FastAPI):
     # onceden kurulu varsayilir (make migrate) - burasi sema kurmaz.
     # #62 webhook receiver: Projector'un yazacagi gercek DB session factory,
     # graph_service ile aynisi paylasilir.
-    # #259 (GÖREV 2/2): session_factory artık radar_service'TEN ÖNCE kurulur —
-    # judge zincirindeki PersistentJudge (hosted DI) buna ihtiyaç duyar; eskiden
-    # yalnız query/board/graph servisleri için SONRADAN kuruluyordu.
+    #
+    # SIRA ÖNEMLİ (iki ayrı gereksinim, aynı zincirde):
+    #   1) session_factory ÖNCE — #259: judge zincirindeki PersistentJudge
+    #      (hosted DI) buna ihtiyaç duyar; eskiden yalnız query/board/graph
+    #      servisleri için SONRADAN kuruluyordu.
+    #   2) vector_index sonra — #183: kendisi de session_factory'yi alır
+    #      (hosted'da pgvector, local'de FAISS).
+    #   3) radar_service en son — ikisini birden tüketir.
     app.state.session_factory = get_session_factory(get_engine(settings))
+    app.state.vector_index = build_vector_index(
+        settings,
+        session_factory=app.state.session_factory if settings.ENSEMBLE_MODE == "hosted" else None,
+    )
     app.state.radar_service = _build_radar_service(
-        settings, session_factory=app.state.session_factory
+        settings,
+        session_factory=app.state.session_factory,
+        vector_index=app.state.vector_index,
     )
     app.state.graph_service = GraphService(app.state.session_factory)
     app.state.query_service = _build_query_service(
         settings,
         app.state.radar_service,
         session_factory=app.state.session_factory,
-        vector_index=getattr(app.state, "vector_index", None),
+        vector_index=app.state.vector_index,
     )
     app.state.scope_service = _build_scope_service(settings, app.state.radar_service)
     _verify_harness_boot(app.state.scope_service)

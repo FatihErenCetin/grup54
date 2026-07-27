@@ -7,6 +7,7 @@ import pytest
 from ensemble.config import Settings
 from ensemble.ports import VectorIndexPort
 from ensemble.store.vector_store import (
+    FaissVectorIndex,
     LocalVectorIndex,
     PgVectorIndex,
     _to_pgvector_literal,
@@ -26,6 +27,13 @@ def vector_index_contract(index: VectorIndexPort) -> None:
 
 def test_local_vector_index_contract():
     vector_index_contract(LocalVectorIndex())
+
+
+def test_faiss_vector_index_contract():
+    pytest.importorskip("faiss")
+    pytest.importorskip("numpy")
+
+    vector_index_contract(FaissVectorIndex(dimensions=2))
 
 
 def test_build_vector_index_uses_local_index_in_local_mode():
@@ -55,21 +63,29 @@ def test_pgvector_index_emits_pgvector_upsert_and_query_sql():
     sessions = FakeSessionFactory()
     index = PgVectorIndex(sessions, dimensions=2)
 
-    index.create_schema()
     index.upsert("doc", [1.0, 0.0], {"path": "a.py"})
     results = index.query([1.0, 0.0], k=2)
 
     statements = [call.sql for call in sessions.calls]
     params = [call.params for call in sessions.calls]
-    assert "CREATE TABLE IF NOT EXISTS vector_index" in statements[0]
-    assert "embedding vector(2)" in statements[0]
-    assert "CAST(:embedding AS vector)" in statements[1]
-    assert "ON CONFLICT (id) DO UPDATE" in statements[1]
-    assert params[1]["embedding"] == "[1.0,0.0]"
-    assert params[1]["meta"] == '{"path": "a.py"}'
-    assert "ORDER BY embedding <=> CAST(:embedding AS vector), id" in statements[2]
-    assert params[2] == {"embedding": "[1.0,0.0]", "k": 2}
+    # DDL artık migration'da; PgVectorIndex yalnız DML üretir
+    assert "CAST(:embedding AS vector)" in statements[0]
+    assert "ON CONFLICT (id) DO UPDATE" in statements[0]
+    assert params[0]["embedding"] == "[1.0,0.0]"
+    assert params[0]["meta"] == '{"path": "a.py"}'
+    assert "ORDER BY embedding <=> CAST(:embedding AS vector), id" in statements[1]
+    assert params[1] == {"embedding": "[1.0,0.0]", "k": 2}
     assert results == [("near", 0.99), ("also-near", 0.9)]
+
+
+def test_pgvector_index_emits_truncate_table_on_clear():
+    sessions = FakeSessionFactory()
+    index = PgVectorIndex(sessions, dimensions=2)
+
+    index.clear()
+
+    statements = [call.sql for call in sessions.calls]
+    assert "TRUNCATE TABLE vector_index" in statements[0]
 
 
 def test_pgvector_index_validates_dimensions_before_sql():

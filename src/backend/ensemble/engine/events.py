@@ -6,11 +6,33 @@ Bayat (stale) varlık beyanlarını okuma anında (read-time) filtreler (#60).
 
 from datetime import datetime, timezone
 
-from ensemble.models import ActorRef, PresenceEntry
+from ensemble.models import ActorRef, NormalizedEvent, PresenceEntry
 from ensemble.ports import GitHubPort
 from ensemble_shared.harness import HarnessPort
 
 DEFAULT_PRESENCE_TTL_SECONDS = 7200  # 2 saat
+
+
+def _to_naive_utc(value: datetime) -> datetime:
+    """Aware datetime'ı naive-UTC'ye indirger; naive olanı dokunmadan döndürür.
+
+    Presence tarafıyla aynı konvansiyon (naive-UTC) — ts karşılaştırmaları
+    aware/naive karışımında TypeError vermesin.
+    """
+    if value.tzinfo is not None:
+        return value.astimezone(timezone.utc).replace(tzinfo=None)
+    return value
+
+
+def snapshot_boundary_ids(events: list[NormalizedEvent], latest_ts: datetime) -> list[str]:
+    """`latest_ts` sınırındaki event id'lerini sıralı döndürür (#52).
+
+    Feed'in "sürümü" = (latest_ts + o sınırdaki id kümesi). Payload penceresi
+    cursor ilerledikçe değişir (tam feed vs artımlı feed), sınırdaki id kümesi
+    değişmez; aynı sınıra sonradan event eklenirse küme büyür. ETag bunun
+    üzerinden üretilir → iki poll aynı sunucu durumunu aynı sürüm olarak görür.
+    """
+    return sorted(e.id for e in events if _to_naive_utc(e.ts) == latest_ts)
 
 
 class EventService:
@@ -76,3 +98,37 @@ class EventService:
         # (current_time dönerse her çağrıda farklı ETag üretilir, Semih CR #221)
 
         return entries, latest_ts
+
+    def get_events(
+        self,
+        since: datetime | None = None,
+    ) -> tuple[list[NormalizedEvent], datetime]:
+        """GitHub event akışını artımlı polling cursor (since) ile okur (#52).
+
+        since verilmezse tüm feed döner (ilk poll). Sonraki poll'lerde istemci
+        dönen latest_ts'i since olarak geri gönderir → payload küçülür.
+
+        since ALT SINIR olarak DAHİL edilir (>=); sınırdaki event tekrar
+        gelebilir. Tekrarları istemci stabil `id` alanıyla eler, "hiç yeni yok"
+        durumunu ise router'daki ETag/304 kısa devre eder (kayıp riski yok).
+
+        Returns:
+            (ts,id'ye göre artan sıralı eventler, en son event ts'i = sonraki cursor)
+        """
+        # Fatih #241 blocker fix: GitHub adapter aware datetime bekler, naive gönderirsek
+        # _fetch_pr_events içinde `datetime.fromisoformat(pr["updated_at"]) >= since`
+        # karşılaştırması TypeError verir. since'i aware UTC'ye çevirip gönderiyoruz.
+        if since is None:
+            # Tüm feed (ilk poll): epoch'tan itibaren, aware UTC
+            lower_bound = datetime.min.replace(tzinfo=timezone.utc)
+        elif since.tzinfo is None:
+            # Naive gelirse aware UTC'ye çevir
+            lower_bound = since.replace(tzinfo=timezone.utc)
+        else:
+            # Zaten aware, olduğu gibi kullan
+            lower_bound = since
+        
+        events = self.github_port.fetch_events(lower_bound)
+        ordered = sorted(events, key=lambda e: (_to_naive_utc(e.ts), e.id))
+        latest_ts = _to_naive_utc(ordered[-1].ts) if ordered else _to_naive_utc(lower_bound)
+        return ordered, latest_ts
