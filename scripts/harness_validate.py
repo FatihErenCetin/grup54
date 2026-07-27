@@ -30,7 +30,11 @@ _SHARED_SRC = _REPO_ROOT / "src" / "shared"
 if str(_SHARED_SRC) not in sys.path:
     sys.path.insert(0, str(_SHARED_SRC))
 
-from ensemble_shared.harness import FileHarnessPort, HarnessError  # noqa: E402
+from ensemble_shared.harness import (  # noqa: E402
+    NON_DATA_FILENAMES,
+    FileHarnessPort,
+    HarnessError,
+)
 
 # .harness/<klasör>/ adı -> front-matter "type" alanı (schemas/<type>.schema.json)
 DIR_TO_TYPE = {
@@ -58,7 +62,10 @@ def validate_harness(root: Path) -> list[str]:
         subdir = harness_dir / dirname
         if not subdir.exists():
             continue
+        skip = NON_DATA_FILENAMES.get(dirname, frozenset())
         for path in sorted(subdir.glob("*.md")):
+            if path.name in skip:
+                continue
             try:
                 # _read_markdown = üretimdeki TEK parse+validate yolu (bkz. modül docstring).
                 port._read_markdown(path, doc_type)
