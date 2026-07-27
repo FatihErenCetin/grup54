@@ -287,7 +287,10 @@ if __name__ == "__main__":
             session,
             harness,
             github=github,
-            backfill_limit=settings.GITHUB_BACKFILL_LIMIT,
+            # RADAR'in degil, GECMISIN limiti (#280): projeksiyon cift
+            # uretmez, maliyeti dogrusal -- radar guvenligi icin kucuk
+            # tutulan sayiyi paylasmasi akisin gecmisini kirpiyordu.
+            backfill_limit=settings.GITHUB_HISTORY_LIMIT,
             vector_index=vector_index,
             embeddings=embeddings,
         )
