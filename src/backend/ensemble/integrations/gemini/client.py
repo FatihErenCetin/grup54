@@ -22,6 +22,10 @@ _PERMANENT_CODES = {400, 401, 403, 404}
 # GERÇEK en-kötü-durum süresini türetmek için kullanır (bkz. o fonksiyonun
 # docstring'i) - burada değişirse oradaki türetme de otomatik güncel kalır.
 RETRY_WAIT_CAP_S = 8.0
+# Gemini `batchEmbedContents` tek çağrıda en fazla 100 istek kabul eder
+# (400 INVALID_ARGUMENT — üretimde ölçüldü, 2026-07-27). Sunucu tarafı bir
+# tavan: ayar DEĞİL, o yüzden Settings'e değil buraya sabit yazılıyor.
+_EMBED_BATCH_CAP = 100
 
 
 def _classify(exc: Exception) -> GeminiTransientError | GeminiPermanentError:
@@ -58,9 +62,26 @@ class ResilientGeminiClient:
         return self._call_with_retry(prompt, response_schema=response_schema)
 
     def embed_content(self, texts: list[str], *, task_type: str) -> list[list[float]]:
+        """Gemini'nin 100-istek/batch tavanını aşmadan tüm metinleri gömer.
+
+        Ölçüldü (üretim, 2026-07-27): #280 geçmiş backfill'i 250 olaya
+        çıkarınca tek batch API'yi aştı ve `make rebuild` TAMAMEN düştü:
+
+            400 INVALID_ARGUMENT — BatchEmbedContentsRequest.requests:
+            at most 100 requests can be in one batch
+
+        Tavan çağrı BAŞINA, toplam girdiye değil; parçalayıp birleştiriyoruz.
+        Sıra KORUNUR — çağıran `texts[i]` ile `sonuç[i]`'yi eşleştiriyor, parça
+        sınırında bir kayma vektörleri sessizce YANLIŞ olaya bağlardı (hata
+        vermeden, yalnızca benzerlik skorlarını bozarak).
+        """
         if not texts:
             return []
-        return self._embed_with_retry(texts, task_type=task_type)
+        vektorler: list[list[float]] = []
+        for bas in range(0, len(texts), _EMBED_BATCH_CAP):
+            parca = texts[bas : bas + _EMBED_BATCH_CAP]
+            vektorler.extend(self._embed_with_retry(parca, task_type=task_type))
+        return vektorler
 
     def _call_with_retry(
         self, prompt: str, *, response_schema: type[BaseModel] | None
