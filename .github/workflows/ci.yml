@@ -8,6 +8,23 @@ on:
 jobs:
   lint-test:
     runs-on: ubuntu-latest
+
+    # #66 pgvector smoke test CI - Postgres service container ile hosted modun testleri zorlayici
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: ensemble_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
     steps:
       - uses: actions/checkout@v4
 
@@ -27,6 +44,9 @@ jobs:
         run: make lint
 
       - name: Test
+        env:
+          # #66 CI'da pgvector testlerini zorlayici yapar (service container URL)
+          ENSEMBLE_TEST_PGVECTOR_URL: postgresql+psycopg://test:test@localhost:5432/ensemble_test
         run: make test
 
       # Eval precision-gate (#30): dedektor/judge regresyonunda kirmizi.

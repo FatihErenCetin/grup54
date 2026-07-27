@@ -113,7 +113,9 @@ function KartOgesi({ kart, kolon }: { kart: BoardCard; kolon: (typeof KOLONLAR)[
       </p>
       <div className="mt-2 flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
         {kart.assignee ? (
-          <ActorChip handle={kart.assignee} />
+          // linkli: kart TIKLANABİLİR DEĞİL (yukarıda) — çip kendi başına
+          // aktör hub'ına gider (#129), kartın "sürüklenmez" ilkesini bozmaz.
+          <ActorChip handle={kart.assignee} linkli />
         ) : (
           // Boş atama gizlenmez: "kimse almamış" gerçek bir board sinyali
           <span className="text-[11px] text-muted-foreground">Atanmamış</span>

@@ -56,7 +56,14 @@ describe("FeedItem", () => {
   const det = mockDetections[0]; // config.py vakası — high, %93
 
   it("satır anatomisi: severity + rationale + confidence + modül görünür", () => {
-    render(<ul><FeedItem detection={det} onSelect={() => {}} /></ul>);
+    // MemoryRouter şart: aktör çipi artık linkli (#129) → <Link> router context ister.
+    render(
+      <MemoryRouter>
+        <ul>
+          <FeedItem detection={det} onSelect={() => {}} />
+        </ul>
+      </MemoryRouter>,
+    );
     expect(screen.getByText("yüksek")).toBeInTheDocument();
     expect(screen.getByText(/Settings'e aynı bölgede alan ekliyor/)).toBeInTheDocument();
     expect(screen.getByText("%93")).toBeInTheDocument();
@@ -65,7 +72,13 @@ describe("FeedItem", () => {
 
   it("ajan aktörü kare/etiketli, insan değil", () => {
     const ajanli = mockDetections.find((d) => d.actors.includes("fatih-claude"))!;
-    render(<ul><FeedItem detection={ajanli} onSelect={() => {}} /></ul>);
+    render(
+      <MemoryRouter>
+        <ul>
+          <FeedItem detection={ajanli} onSelect={() => {}} />
+        </ul>
+      </MemoryRouter>,
+    );
     expect(screen.getByTitle("fatih-claude (AI ajanı)")).toBeInTheDocument();
     expect(screen.getByTitle("asmarufoglu")).toBeInTheDocument();
   });
@@ -150,27 +163,27 @@ describe("PresenceStrip (canlı GET /presence — #60)", () => {
 describe("RadarPage", () => {
   it("loading: skeleton, aria-busy", () => {
     mockUseRadar.mockReturnValue({ ...dolu, data: undefined, isLoading: true });
-    render(<RadarPage />);
+    render(<MemoryRouter><RadarPage /></MemoryRouter>);
     expect(screen.getByLabelText("Radar yükleniyor")).toBeInTheDocument();
   });
 
   it("hata: ulaşılamıyor durumu", () => {
     mockUseRadar.mockReturnValue({ ...dolu, data: undefined, error: new Error("x") });
-    render(<RadarPage />);
+    render(<MemoryRouter><RadarPage /></MemoryRouter>);
     expect(screen.getByText("Radar'a ulaşılamıyor")).toBeInTheDocument();
   });
 
   it("falsy error ('') yutulmaz — sahte 'radar temiz' basılmaz", () => {
     // openapi-fetch boş-gövdeli non-ok cevapta error="" verebilir (doğrulama bulgusu)
     mockUseRadar.mockReturnValue({ ...dolu, data: undefined, error: "" });
-    render(<RadarPage />);
+    render(<MemoryRouter><RadarPage /></MemoryRouter>);
     expect(screen.getByText("Radar'a ulaşılamıyor")).toBeInTheDocument();
     expect(screen.queryByText("Radar temiz — çakışma yok")).not.toBeInTheDocument();
   });
 
   it("geçici poll hatası eldeki listeyi GİZLEMEZ", () => {
     mockUseRadar.mockReturnValue({ ...dolu, error: new Error("tek poll patladı") });
-    render(<RadarPage />);
+    render(<MemoryRouter><RadarPage /></MemoryRouter>);
     expect(screen.queryByText("Radar'a ulaşılamıyor")).not.toBeInTheDocument();
     expect(screen.getByRole("list")).toBeInTheDocument(); // liste durur, polling sürer
   });
@@ -180,14 +193,14 @@ describe("RadarPage", () => {
       ...dolu,
       data: { detections: [], updated_at: "2026-07-13T09:00:00Z" },
     });
-    render(<RadarPage />);
+    render(<MemoryRouter><RadarPage /></MemoryRouter>);
     expect(screen.getByText("Radar temiz — çakışma yok")).toBeInTheDocument();
   });
 
   it("dolu: tespitler listelenir + severity filtresi çalışır", async () => {
     const user = userEvent.setup();
     mockUseRadar.mockReturnValue(dolu);
-    render(<RadarPage />);
+    render(<MemoryRouter><RadarPage /></MemoryRouter>);
     // sorgular LİSTEYE scope'lu — filtre butonlarındaki metinle karışma riski
     // kalıcı olarak kapalı (doğrulama bulgusu: kırılganlık sınırındaydı)
     const list = () => within(screen.getByRole("list", { name: "Tespit listesi" }));
@@ -251,7 +264,7 @@ describe("DetailSheet (#156 — Pencil MOGXv'ye dönüş)", () => {
   async function acikSayfa() {
     const user = userEvent.setup();
     mockUseRadar.mockReturnValue(dolu);
-    render(<RadarPage />);
+    render(<MemoryRouter><RadarPage /></MemoryRouter>);
     // ilk satıra tıkla → sağdan panel
     await user.click(within(screen.getByRole("list", { name: "Tespit listesi" })).getAllByRole("button")[0]);
     return user;
@@ -315,7 +328,7 @@ describe("DetailSheet — doğrulama bulgularının kilitleri", () => {
   it("hayalet panel yok: filtre gidiş-dönüşünde panel tıklamasız GERİ AÇILMAZ", async () => {
     const user = userEvent.setup();
     mockUseRadar.mockReturnValue(dolu);
-    render(<RadarPage />);
+    render(<MemoryRouter><RadarPage /></MemoryRouter>);
     await user.click(screen.getByRole("button", { name: "● düşük" }));
     await user.click(feedBtn(0)); // ci.yml tespiti seçili
     expect(screen.getByLabelText("Tespit detayı")).toBeInTheDocument();
@@ -328,7 +341,7 @@ describe("DetailSheet — doğrulama bulgularının kilitleri", () => {
   it("focus seçimi takip eder (roving) + sınırlarda sessiz durur", async () => {
     const user = userEvent.setup();
     mockUseRadar.mockReturnValue(dolu);
-    render(<RadarPage />);
+    render(<MemoryRouter><RadarPage /></MemoryRouter>);
     await user.click(feedBtn(0));
     await user.keyboard("{ArrowUp}"); // ilk satırda ↑ → değişmez
     expect(
@@ -349,14 +362,14 @@ describe("DetailSheet — doğrulama bulgularının kilitleri", () => {
   it("polling tazelemesi (aynı id'ler, yeni nesneler) seçimi KORUR", async () => {
     const user = userEvent.setup();
     mockUseRadar.mockReturnValue(dolu);
-    const { rerender } = render(<RadarPage />);
+    const { rerender } = render(<MemoryRouter><RadarPage /></MemoryRouter>);
     await user.click(feedBtn(0));
     // yeni referanslar, aynı id'ler — gerçek poll davranışı
     mockUseRadar.mockReturnValue({
       ...dolu,
       data: { detections: dolu.data.detections.map((d) => ({ ...d })), updated_at: "x" },
     });
-    rerender(<RadarPage />);
+    rerender(<MemoryRouter><RadarPage /></MemoryRouter>);
     expect(screen.getByLabelText("Tespit detayı")).toBeInTheDocument();
   });
 });
