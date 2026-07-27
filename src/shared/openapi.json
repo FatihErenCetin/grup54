@@ -51,6 +51,24 @@
                 }
               }
             }
+          },
+          "429": {
+            "description": "Demo istek limiti aşıldı (yalnız DEMO_MODE)",
+            "headers": {
+              "Retry-After": {
+                "description": "Saniye — pencere kayınca tekrar denenebilir",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
           }
         }
       }
@@ -88,6 +106,24 @@
             "headers": {
               "Retry-After": {
                 "description": "Saniye — yalniz kendiliginden duzelebilir durumlarda",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Demo istek limiti aşıldı (yalnız DEMO_MODE)",
+            "headers": {
+              "Retry-After": {
+                "description": "Saniye — pencere kayınca tekrar denenebilir",
                 "schema": {
                   "type": "integer"
                 }
@@ -148,6 +184,24 @@
             "headers": {
               "Retry-After": {
                 "description": "Saniye — yalniz kendiliginden duzelebilir durumlarda",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Demo istek limiti aşıldı (yalnız DEMO_MODE)",
+            "headers": {
+              "Retry-After": {
+                "description": "Saniye — pencere kayınca tekrar denenebilir",
                 "schema": {
                   "type": "integer"
                 }
@@ -229,6 +283,24 @@
                 }
               }
             }
+          },
+          "429": {
+            "description": "Demo istek limiti aşıldı (yalnız DEMO_MODE)",
+            "headers": {
+              "Retry-After": {
+                "description": "Saniye — pencere kayınca tekrar denenebilir",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
           }
         }
       }
@@ -278,6 +350,24 @@
                 }
               }
             }
+          },
+          "429": {
+            "description": "Demo istek limiti aşıldı (yalnız DEMO_MODE)",
+            "headers": {
+              "Retry-After": {
+                "description": "Saniye — pencere kayınca tekrar denenebilir",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
           }
         }
       }
@@ -315,6 +405,24 @@
             "headers": {
               "Retry-After": {
                 "description": "Saniye — yalniz kendiliginden duzelebilir durumlarda",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Demo istek limiti aşıldı (yalnız DEMO_MODE)",
+            "headers": {
+              "Retry-After": {
+                "description": "Saniye — pencere kayınca tekrar denenebilir",
                 "schema": {
                   "type": "integer"
                 }
@@ -377,6 +485,24 @@
             "headers": {
               "Retry-After": {
                 "description": "Saniye — yalniz kendiliginden duzelebilir durumlarda",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Demo istek limiti aşıldı (yalnız DEMO_MODE)",
+            "headers": {
+              "Retry-After": {
+                "description": "Saniye — pencere kayınca tekrar denenebilir",
                 "schema": {
                   "type": "integer"
                 }
@@ -471,6 +597,24 @@
               }
             }
           },
+          "429": {
+            "description": "Demo istek limiti aşıldı (yalnız DEMO_MODE)",
+            "headers": {
+              "Retry-After": {
+                "description": "Saniye — pencere kayınca tekrar denenebilir",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -518,6 +662,24 @@
             "headers": {
               "Retry-After": {
                 "description": "Saniye — yalniz kendiliginden duzelebilir durumlarda",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Demo istek limiti aşıldı (yalnız DEMO_MODE)",
+            "headers": {
+              "Retry-After": {
+                "description": "Saniye — pencere kayınca tekrar denenebilir",
                 "schema": {
                   "type": "integer"
                 }
@@ -700,6 +862,24 @@
             "headers": {
               "Retry-After": {
                 "description": "Saniye — yalniz kendiliginden duzelebilir durumlarda",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Demo istek limiti aşıldı (yalnız DEMO_MODE)",
+            "headers": {
+              "Retry-After": {
+                "description": "Saniye — pencere kayınca tekrar denenebilir",
                 "schema": {
                   "type": "integer"
                 }
@@ -1403,6 +1583,25 @@
         ],
         "title": "QueryResponse"
       },
+      "RadarDegraded": {
+        "properties": {
+          "judge_unavailable": {
+            "type": "integer",
+            "title": "Judge Unavailable"
+          },
+          "evaluated": {
+            "type": "integer",
+            "title": "Evaluated"
+          }
+        },
+        "type": "object",
+        "required": [
+          "judge_unavailable",
+          "evaluated"
+        ],
+        "title": "RadarDegraded",
+        "description": "Bu turda judge'ın DEĞERLENDİREMEDİĞİ çiftler (#252).\n\nVarlığı \"sonuç eksik\" demektir: `detections` listesi o turda gerçekten\nyargılanabilmiş çiftleri taşır, `judge_unavailable` kadarı ise hiç\nyargılanamamıştır — çakışma olmadığı için değil, judge'a ulaşılamadığı için.\nİstemci bunu tespit gibi göstermemeli, \"sonuç eksik\" uyarısı olarak\ngöstermelidir."
+      },
       "RadarResponse": {
         "properties": {
           "detections": {
@@ -1416,6 +1615,16 @@
             "type": "string",
             "format": "date-time",
             "title": "Updated At"
+          },
+          "degraded": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RadarDegraded"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",

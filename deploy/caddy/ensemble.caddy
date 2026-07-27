@@ -1,0 +1,188 @@
+# deploy/caddy/ensemble.caddy — Ensemble API'nin HOST caddy site blogu (D-46)
+#
+# ============================================================================
+# BU DOSYA NEDEN VAR
+# ============================================================================
+# Sunucuda 80/443'u HOST uzerindeki systemd caddy servisi tutuyor
+# (/lib/systemd/system/caddy.service · config /etc/caddy/Caddyfile · 1 ay 25
+# gundur ayakta). Konteynerde ikinci bir Caddy YOK. Bunun yerine mevcut
+# caddy'ye ikinci bir site blogu ekliyoruz.
+#
+# Caddy config'i sunucuda ELLE duzenlenmez: blok repoda yasar, ana Caddyfile'a
+# BIR KEZ `import` satiri eklenir, deploy bu dosyayi oraya kopyalar. Amac:
+# deploy konfigurasyonunun TAMAMI git'te ve diff'lenebilir kalsin.
+#
+# ============================================================================
+# KURULUM — SUNUCUDA BIR KEZ
+# ============================================================================
+# 1) /etc/caddy/Caddyfile'a tek satir ekle. `import` DOSYA KOKUNDE (herhangi
+#    bir site blogunun ICINDE DEGIL) ve varsa global options blogundan SONRA
+#    olmali. Mevcut iki blok (api.ikarus.mcvconsultancy.com ve :80 redir)
+#    AYNEN KALIR — hicbirine dokunulmaz:
+#
+#        # /etc/caddy/Caddyfile
+#        import /etc/caddy/conf.d/*
+#
+#        api.ikarus.mcvconsultancy.com {
+#            reverse_proxy 127.0.0.1:8000 ...      # tesvik-api — DOKUNMA
+#        }
+#
+#        :80 {
+#            redir https://{host}{uri} permanent    # DOKUNMA
+#        }
+#
+# 2) Dizinleri hazirla:
+#        sudo mkdir -p /etc/caddy/conf.d /var/log/caddy
+#        sudo chown caddy:caddy /var/log/caddy
+#
+#    (Alan adi ARTIK BELLI: `api.recommend2me.com` — Cloudflare DNS, A kaydi
+#     2.59.181.226 (bu sunucunun public IP'si). Asagida dogrudan SABIT yazili;
+#     ayri bir `{$API_DOMAIN}` ortam-degiskeni enjeksiyonuna (systemd drop-in)
+#     GEREK YOK — konfigurasyonun tamami git'te, tek dosyada okunabilir.)
+#
+# ============================================================================
+# HER DEPLOY'DA (elle — sudo PAROLA ister, bu makinede sifresiz sudo YOK,
+# yani bu adim CD'den otomatiklestirilemez)
+# ============================================================================
+#        sudo install -m 0644 -o root -g root \
+#             deploy/caddy/ensemble.caddy /etc/caddy/conf.d/ensemble.caddy
+#        sudo caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
+#        sudo systemctl reload caddy      # reload: mevcut baglantilar kopmaz
+#
+# `validate` BASARILI OLMADAN reload etme — bozuk bir blok tesvik sitesini de
+# dusurur (tek caddy prosesi, tek config).
+#
+# ============================================================================
+# BU BLOKTA BILEREK OLMAYAN SEYLER
+# ============================================================================
+# * `:80` blogu YOK. Ana Caddyfile'da zaten catch-all bir `:80 { redir ... }`
+#   var; burada ikincisini tanimlamak cakisir. ACME HTTP-01 dogrulamasi bundan
+#   ETKILENMEZ (Caddy challenge handler'ini kullanici route'larinin ONUNE
+#   koyar) — yine de ilk sertifika alinirken `journalctl -u caddy -f` ile
+#   izlenmeli; sorun cikarsa 443 uzerinden TLS-ALPN yedegi devrededir.
+#   Giden 443 acik (olculdu), ACME icin yeterli.
+# * `Access-Control-Allow-*` YOK. CORS'u BACKEND uretiyor (config.py
+#   CORS_ORIGINS, "*" acilista reddediliyor). Burada da eklersek yanit IKI
+#   ACAO basligi tasir ve tarayici istegin TAMAMINI reddeder — hata mesaji da
+#   gercek sebebi gizler (S2 #45/#150 dersi).
+# * `X-XSS-Protection` YOK. Kullanimdan kalkti, modern tarayicilar yok sayiyor,
+#   eski Chrome'da kendisi XSS vektoruydu. "Guvenlik basligi" diye korlemesine
+#   kopyalanan klasik oge — almiyoruz.
+# * `Permissions-Policy` YOK. Dokuman-seviyesi bir politika; burasi JSON API,
+#   kamera/mikrofon izni isteyen bir sayfa servis etmiyor. Gurultu olurdu.
+# * KATI `Content-Security-Policy` (default-src 'none') YOK. app.py'de
+#   `FastAPI(...)` cagrisi docs_url/redoc_url'i KAPATMIYOR -> /docs (Swagger UI)
+#   ve /redoc acik ve bunlar CDN'den script/CSS cekiyor; default-src 'none'
+#   onlari kirardi. Yalniz `frame-ancestors 'none'` aliyoruz — o, script
+#   yuklemeyi etkilemez. (SPA Vercel'de; buranin bir sayfa servis etmesi
+#   beklenmiyor, /docs bilincli bir demo kolayligidir.)
+# * AKTIF health-check (`health_uri`) YOK. Tek upstream var; aktif kontrol onu
+#   havuzdan cikardigi anda gecici bir arizayi kalici 502'ye cevirir.
+#   Konteynerin kendi HEALTHCHECK'i (Dockerfile) bu isi zaten yapiyor.
+#
+# ============================================================================
+
+api.recommend2me.com {
+
+	# ---------------------------------------------------------------------
+	# Guvenlik basliklari (uslup mevcut tesvik blogundan; icerik BU servis
+	# icin secildi — sunucudaki tesvik blogunun tam baslik listesi bu calisma
+	# sirasinda satir satir okunmadi, bu yuzden birebir kopyalanmadi).
+	# ---------------------------------------------------------------------
+	header {
+		# defer: baslik islemleri yanit yazilmadan HEMEN once uygulanir —
+		# upstream'in (ya da Caddy'nin kendisinin) koydugu basliklari
+		# gercekten ezebilmek/silebilmek icin gerekli.
+		defer
+
+		# HSTS: `includeSubDomains` ve `preload` BILEREK YOK. `api.recommend2me.com`
+		# apex DEGIL, bir alt alan adi — ama includeSubDomains apex uzerinden
+		# eklenirse `recommend2me.com` zonundaki TUM alt alan adlarini (bu
+		# projeye ait olmayanlar dahil, ileride eklenecekler dahil) max-age
+		# boyunca HTTPS'e kilitler ve GERI ALINAMAZ. Zonun tamami bu projenin
+		# kontrolunde degil; bilincli bir kararla, ayri bir PR'da eklenir.
+		Strict-Transport-Security "max-age=31536000"
+
+		# JSON yanitlarin tarayicida baska bir tipe "koklenmesini" engeller.
+		X-Content-Type-Options "nosniff"
+
+		# API; hicbir yere referrer sizdirmasina gerek yok.
+		Referrer-Policy "no-referrer"
+
+		# Clickjacking: ikisi birlikte (CSP modern tarayicilar, XFO eskiler).
+		Content-Security-Policy "frame-ancestors 'none'"
+		X-Frame-Options "DENY"
+
+		# Surum/urun parmak izini azalt.
+		-Server
+	}
+
+	# ---------------------------------------------------------------------
+	# Govde siniri: GitHub webhook teslimatlari 25 MB'de tavanlanir; 26MB
+	# mesru en buyuk yuku gecirir ama sinirsiz govdeyle bellek tuketmeyi
+	# (tek makinede tesvik yigini da var) engeller.
+	# ---------------------------------------------------------------------
+	request_body {
+		max_size 26MB
+	}
+
+	encode zstd gzip
+
+	# ---------------------------------------------------------------------
+	# Ters vekil -> bizim api (127.0.0.1:8001, docker tarafindan YALNIZ
+	# loopback'e yayinlanmis).
+	# ---------------------------------------------------------------------
+	reverse_proxy 127.0.0.1:8001 {
+
+		# --- Istemci IP'si: uydurulamaz hale getir ---
+		#
+		# api/rate_limit.py (#63) istemci IP'sini su sirayla okur:
+		#   Fly-Client-IP  >  X-Forwarded-For'un ILK kaydi  >  request.client.host
+		# Kod bu basliklara KOSULSUZ guveniyor (dosyanin kendi docstring'i bunu
+		# bilinen bir sinir olarak yaziyor).
+		#
+		# 1) Fly-Client-IP: burasi Fly DEGIL. Basligi silmezsek herhangi bir
+		#    istemci onu kendisi gonderip DEMO_MODE per-IP kapaklarini
+		#    (DEMO_AI_RATE_LIMIT / DEMO_RATE_LIMIT) rotasyonla tamamen
+		#    atlatabilir. Sil.
+		header_up -Fly-Client-IP
+		#
+		# 2) X-Forwarded-For: Caddy'nin VARSAYILANI mevcut basliga EKLEMEKTIR.
+		#    Istemci "X-Forwarded-For: 1.2.3.4" gonderirse baslik
+		#    "1.2.3.4, <gercek-ip>" olur ve kodun aldigi ILK kayit sahte olur.
+		#    Uzerine YAZ: tek kaynak Caddy'nin gordugu gercek uzak adres.
+		header_up X-Forwarded-For {remote_host}
+		#
+		# 3) Sema/host bilgisi (uygulama mutlak URL uretirse dogru olsun).
+		header_up X-Forwarded-Proto {scheme}
+		header_up X-Forwarded-Host {host}
+
+		transport http {
+			dial_timeout 5s
+
+			# 180s — keyfi degil, OLCULMUS en-kotu-durumdan turedi:
+			# app.py (#63) tekil-ucus bekleme suresini saglayicidan turetiyor:
+			#   Gemini: GEMINI_MAX_RETRIES(3) * GEMINI_TIMEOUT_S(10) +
+			#           2 * RETRY_WAIT_CAP_S(8)                 = 46 sn
+			#   Ollama: OLLAMA_MAX_RETRIES(2) * OLLAMA_TIMEOUT_S(60) +
+			#           1 * OLLAMA_RETRY_WAIT_CAP_S(2)          = 122 sn
+			# Yani DEMO_MODE'da /query ve /scope/check cagrilari mesru olarak
+			# 2 dakikaya yakin surebilir. Daha kisa bir deger canli demoda
+			# rastgele 504'ler uretir ve "AI bozuk" gibi gorunur.
+			response_header_timeout 180s
+		}
+	}
+
+	# ---------------------------------------------------------------------
+	# Loglar: caddy'nin varsayilan (systemd journal) ciktisindan AYRI dosya —
+	# tesvik sitesinin loglariyla karismasin. Rotasyon acik: 10 MiB x 5.
+	# ---------------------------------------------------------------------
+	log {
+		output file /var/log/caddy/ensemble.log {
+			roll_size 10MiB
+			roll_keep 5
+			roll_keep_for 720h
+		}
+		format json
+	}
+}

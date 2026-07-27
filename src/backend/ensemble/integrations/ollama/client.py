@@ -11,6 +11,15 @@ from ensemble.integrations.ollama.errors import OllamaPermanentError, OllamaTran
 
 _TRANSIENT_CODES = {408, 429, 500, 502, 503, 504}
 
+# `wait_random_exponential(multiplier=..., max=...)`'in üst sınırı -
+# `gemini/client.py::RETRY_WAIT_CAP_S` ile AYNI amaç: tek noktadan okunan
+# isimli sabit (inline `max=2` yerine), #63 sertleştirme turu -
+# `app.py::_ollama_single_flight_wait_s` bu sabiti, tek bir Ollama
+# çağrısının GERÇEK en-kötü-durum süresini türetmek için kullanır (bkz. o
+# fonksiyonun docstring'i) - burada değişirse oradaki türetme de otomatik
+# güncel kalır.
+RETRY_WAIT_CAP_S = 2.0
+
 
 class OllamaClient:
     """Ollama REST API istemcisi; prompt/judge semantigi tasimaz."""
@@ -72,7 +81,7 @@ class OllamaClient:
         @retry(
             retry=retry_if_exception_type(OllamaTransientError),
             stop=stop_after_attempt(self._settings.OLLAMA_MAX_RETRIES),
-            wait=wait_random_exponential(multiplier=0.25, max=2),
+            wait=wait_random_exponential(multiplier=0.25, max=RETRY_WAIT_CAP_S),
             reraise=True,
         )
         def _attempt() -> dict[str, Any]:

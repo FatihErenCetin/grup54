@@ -24,6 +24,7 @@
 - **Issue'ya yorum olarak YAZILMAZ** — brifing kişinin kendi AI oturumunda üretilir/tüketilir (issue'lar gürültüsüz kalır). Issue'da kalıcı olan tek şey şablondaki "Bağlam" bölümüdür.
 - **Uydurma yok:** Kontratta/haritada olmayan şeyi "var" deme; boşluk görürsen "bu kontratta eksik — PO'ya sor" de (kontrat borcu erken yakalanır).
 - **Kapsam bekçiliği:** Brifing sırasında issue'nun kapsam dışına taşan fikirler çıkarsa → yeni issue önerisi olarak listele, plana katma (`docs/kapsam-sinirlari.md` ruhu).
+- **Karar bekçiliği:** Başlık ya da kabul kriterine bir platform/sağlayıcı/kütüphane adı giriyorsa sor — ***"bu issue, açık bırakılmış bir seçimi kapatıyor mu?"*** Evetse `docs/karar-drifti-rehberi.md`'yi uygula: D-NN taslağı + eski "A/B" ifadesini güncelleme takip işi olarak Adım planına ekle (kapsam bekçiliğinin karar tarafındaki kardeşi; D-45 vakası).
 - Türkçe, sade dil; ürün terimleri (radar, ingest, judge…) İngilizce kalır (D-34 hibrit dil kuralı).
 
 > **`gh` yoksa / yalnız web:** issue sayfasını + kontrat dosyasını + bu rehberi AI'a yapıştır — aynı 5 bölümü iste (Gemini AI Studio dahil).

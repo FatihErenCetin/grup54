@@ -83,6 +83,19 @@ async def github_webhook(
     except json.JSONDecodeError as exc:
         raise HTTPException(status_code=400, detail="Geçersiz JSON gövdesi") from exc
 
+    # Hosted demo tek-repo sabitlemesi (#63): DEMO_MODE'da yalnız yapılandırılmış
+    # repo'nun webhook'u işlenir - imzası geçerli ama başka bir repodan gelen
+    # event (App birden fazla repoya kuruluysa) DB'ye tek satır bile yazmadan
+    # yok sayılır. 202+"ignored" (hata değil) - mevcut `ping` davranışıyla aynı;
+    # 4xx dönmek GitHub'ın webhook'u devre dışı bırakmasına yol açar. Bilerek
+    # imza doğrulamasından SONRA (fail-closed sıra bozulmaz).
+    pinned_repo = settings.demo_repo_full_name
+    if settings.DEMO_MODE and pinned_repo:
+        repo_full_name = str((payload.get("repository") or {}).get("full_name") or "")
+        if repo_full_name.casefold() != pinned_repo.casefold():
+            logger.warning("DEMO_MODE: sabit olmayan repo webhook'u yok sayıldı: %s", repo_full_name)
+            return {"status": "ignored", "reason": "repo_not_pinned", "event": x_github_event}
+
     events = parse_events(x_github_event, payload)
     if not events:
         logger.info("İşlenmeyen/boş webhook event'i: %s", x_github_event)

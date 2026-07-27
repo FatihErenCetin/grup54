@@ -9,6 +9,7 @@ from ensemble.integrations.ollama.adapter import OllamaAdapter
 from ensemble.integrations.ollama.client import OllamaClient
 from ensemble.integrations.ollama.errors import OllamaPermanentError, OllamaTransientError
 from ensemble.models import NormalizedEvent
+from ensemble.ports import JudgeUnavailableError
 
 
 def _settings(**overrides) -> Settings:
@@ -159,20 +160,26 @@ def test_permanent_http_error_is_not_retried():
     assert calls == 1
 
 
-def test_judge_failure_fails_low_without_cloud_fallback():
+def test_judge_failure_raises_unavailable_without_cloud_fallback():
+    """#252: yerel judge patlayinca sahte tespit degil, JudgeUnavailableError.
+
+    Adaptorun ozgun niyeti korunuyor: hata halinde buluta DUSULMEZ (yerel-kal
+    karari). Degisen tek sey hatanin nasil bildirildigi — eskiden severity=low
+    /confidence=0.1 bir Detection donuyordu ve bu, "cakisma yok" yargisindan
+    ayirt edilemiyordu. Gemini adaptorunde ayni sekil canlida 19 gercek tespiti
+    131 sahte tespite cevirdi; yerel modu duzeltmeden birakmak ayni hatayi
+    kurulum degisince geri getirirdi.
+    """
     client = _client(lambda _request: httpx.Response(500, json={"error": "down"}))
     adapter = OllamaAdapter(_settings(), client=client)
 
-    result = adapter.judge_conflict(
-        _event("a", "esma"),
-        _event("b", "fatih"),
-        ["src/core.py"],
-        0.45,
-    )
-
-    assert result.severity == "low"
-    assert result.confidence == 0.1
-    assert "Gemini'ye dusmeden" in result.rationale
+    with pytest.raises(JudgeUnavailableError):
+        adapter.judge_conflict(
+            _event("a", "esma"),
+            _event("b", "fatih"),
+            ["src/core.py"],
+            0.45,
+        )
 
 
 def test_same_actor_cheap_gate_skips_ollama_call():

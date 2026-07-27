@@ -8,6 +8,7 @@ from ensemble.integrations.gemini.judge import _build_prompt
 from ensemble.integrations.ollama.client import OllamaClient
 from ensemble.integrations.ollama.errors import OllamaError
 from ensemble.models import Detection, NormalizedEvent
+from ensemble.ports import JudgeUnavailableError
 
 
 class _JudgeVerdict(BaseModel):
@@ -70,19 +71,11 @@ def _local_signal_detection(
     )
 
 
-def _fallback_detection(a: NormalizedEvent, b: NormalizedEvent, reason: str) -> Detection:
-    return Detection(
-        id=f"{a.id}-{b.id}",
-        actors=sorted({a.actor, b.actor}),
-        branches=sorted({x for x in (a.branch, b.branch) if x}),
-        files=sorted(set(a.files) & set(b.files)),
-        severity="low",
-        confidence=0.1,
-        rationale=(
-            "Ollama judge cagrisi basarisiz oldu; Gemini'ye dusmeden dusuk-guven "
-            f"varsayilan sonuc donduruldu: {reason}"
-        ),
-    )
+# NOT (#252): burada da `_fallback_detection` vardi — Gemini adaptorundekiyle
+# ayni fail-open. Adaptorun ozgun tasarim niyeti ("bulut judge'a DUSME, yerel
+# kal") korunuyor: hata halinde hala buluta gecilmiyor. Degisen tek sey, hatanin
+# artik sahte bir Detection yerine JudgeUnavailableError olarak bildirilmesi —
+# yoksa yerel moda gecen kurulum ayni 131-sahte-tespit sorununu geri getirirdi.
 
 
 class OllamaAdapter:
@@ -124,6 +117,8 @@ class OllamaAdapter:
                 rationale=verdict.rationale,
             )
         except OllamaError as exc:
-            return _fallback_detection(a, b, str(exc))
+            raise JudgeUnavailableError(f"{a.id}-{b.id}: Ollama cagrisi basarisiz: {exc}") from exc
         except ValidationError as exc:
-            return _fallback_detection(a, b, f"yanit ayristirilamadi: {exc}")
+            raise JudgeUnavailableError(
+                f"{a.id}-{b.id}: Ollama yaniti semaya uymuyor: {exc}"
+            ) from exc

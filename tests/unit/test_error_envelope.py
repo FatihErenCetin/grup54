@@ -41,6 +41,13 @@ class _Boom:
     def get_detections(self):
         raise self.exc
 
+    # #252: router artik collect() cagiriyor (degraded sayaci icin). Testin
+    # niyeti degismedi: servis KOMPLE patlarsa zarf yine dogru kod/govdeyi
+    # dondurmeli. Tekil ciftin degerlendirilememesi ayri bir yol — o istek
+    # basarisiz olmaz, kismi sonuc + degraded doner (test_radar_router).
+    def collect(self):
+        raise self.exc
+
 
 class _BoomQuery:
     def __init__(self, exc: Exception):

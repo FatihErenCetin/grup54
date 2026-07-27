@@ -16,8 +16,18 @@ def health_check(settings: SettingsDep, radar_service: RadarServiceDep) -> Healt
     # "configured" DOGRULANMIS auth anlamina GELMEZ - yalniz kimlik bilgisi
     # SET EDILMIS (review bulgusu, Semih: gecersiz PEM/anahtarla da ayni
     # sonuc doner, gercek dogrulama ilk API cagrisina kadar bilinmez).
+    #
+    # DEMO_MODE=true iken app.py::_build_judge_port judge'i CachedConflictJudge
+    # (#63, engine/cache.py) ile SARMALAR - port artik GeminiJudgeAdapter degil,
+    # CachedConflictJudge oluyor ve isinstance dogrudan hep "missing" derdi
+    # (gercek regresyon: hosted demo /health hep gemini=missing raporlardi,
+    # #189 make smoke kapisi kalici kirmizi kalirdi). Sarmalayicinin GERCEK
+    # ic port'una in - CachedConflictJudge.inner (bkz. engine/cache.py) - sonra
+    # isinstance uygula. Sarmalanmamis port'ta getattr fallback kendi degerine
+    # doner (no-op).
+    judge_port = getattr(radar_service.judge_port, "inner", radar_service.judge_port)
     github_auth = "configured" if isinstance(radar_service.github_port, GitHubAdapter) else "missing"
-    gemini = "configured" if isinstance(radar_service.judge_port, GeminiJudgeAdapter) else "missing"
+    gemini = "configured" if isinstance(judge_port, GeminiJudgeAdapter) else "missing"
     return HealthResponse(
         status="ok",
         mode=settings.ENSEMBLE_MODE,
