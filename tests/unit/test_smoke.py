@@ -656,3 +656,74 @@ def test_soguk_baslangic_retry_siniri_kalici_503():
     rc = main(env=base_env(web=None, SMOKE_RETRIES="2"), fetch=fake, sleep=lambda s: None)
     assert rc == 1
     assert len(fake.calls) == 3  # 1 + SMOKE_RETRIES
+
+
+# ---------------------------------------------------------------------------
+# CP1252 regresyonu (Semih'in canli Windows bulgusu, 2026-07-27)
+# ---------------------------------------------------------------------------
+
+
+def _cp1252_strict_akis():
+    """Windows varsayilan konsolunun taklidi: CP1252 + errors='strict'."""
+    import io
+
+    return io.TextIOWrapper(io.BytesIO(), encoding="cp1252", errors="strict", newline="")
+
+
+def test_yaz_CP1252_strict_akista_PATLAMAZ():
+    """MUTASYON KILIDI: `yaz()` duz `print`'e cevrilirse bu test kirilir.
+
+    Gercek dusus: Windows'ta varsayilan stdout CP1252. Rapor satirindaki
+    Turkce 'g-breve' basilirken `print` UnicodeEncodeError firlatiyor,
+    script exit 1 ile oluyor ve SPA kontrollerine HIC ULASAMIYOR -- yani
+    hedef sistem tamamen saglikliyken smoke KIRMIZI raporluyordu.
+    """
+    from scripts.smoke import yaz
+
+    akis = _cp1252_strict_akis()
+    yaz("SMOKE YEŞİL — 6 rota doğrulandı, çakışma yok", akis)  # ğ, ş, ı, ç
+
+    akis.flush()
+    cikti = akis.buffer.getvalue().decode("cp1252")
+    assert "SMOKE" in cikti, "satir hic yazilmamis"
+    assert "rota" in cikti, "ASCII kisim korunmali"
+
+
+def test_duz_print_ayni_akista_GERCEKTEN_patliyor():
+    """Yukaridaki testin anlamli oldugunun kaniti.
+
+    `yaz()` olmadan ayni akis+ayni metin PATLIYOR. Bu olmadan ust test
+    "belki cp1252 zaten Turkce karakteri kaldiriyordur" suphesine acik
+    kalirdi -- kilidin gercekten bir sey tuttugunu burada gosteriyoruz.
+    """
+    akis = _cp1252_strict_akis()
+    with pytest.raises(UnicodeEncodeError):
+        print("SMOKE YEŞİL — çakışma yok", file=akis)
+
+
+def test_utf8_ayarla_reconfigure_OLMAYAN_akista_patlamaz():
+    """stdout her zaman TextIOWrapper degil (pipe, IDE konsolu, test sahtesi).
+    Kodlama ayarlanamiyorsa sessizce geciyoruz -- `yaz()` ikinci savunma."""
+    from scripts.smoke import utf8_ayarla
+
+    class _Reconfigureu_Olmayan:
+        encoding = "cp1252"
+
+        def write(self, s):
+            return len(s)
+
+    utf8_ayarla(_Reconfigureu_Olmayan())  # raise ETMEMELI
+
+
+def test_utf8_ayarla_reconfigure_HATA_verse_de_patlamaz():
+    """Bazi akislar `reconfigure` tasir ama cagirinca hata verir (or. detached
+    buffer). Kurulum adimi smoke'u dusurmemeli."""
+    from scripts.smoke import utf8_ayarla
+
+    class _Kizan:
+        encoding = "cp1252"
+
+        def reconfigure(self, **kwargs):
+            raise ValueError("underlying buffer detached")
+
+    utf8_ayarla(_Kizan())  # raise ETMEMELI

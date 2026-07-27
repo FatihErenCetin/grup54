@@ -436,6 +436,49 @@ def _parse_int(value: str | None, default: int) -> int:
         return default
 
 
+def utf8_ayarla(*akislar) -> None:
+    """stdout/stderr'i UTF-8 + hataya-dayanikli hale getirir (mumkunse).
+
+    Neden (Semih'in canli Windows bulgusu, 2026-07-27): varsayilan stdout
+    kodlamasi CP1252. Rapor satirlarindaki Turkce 'g-breve' basilmaya
+    calisilinca `print` `UnicodeEncodeError` firlatiyor, script exit 1 ile
+    oluyor ve SPA kontrollerine HIC ULASAMIYOR. Yani hedef sistem tamamen
+    saglikliyken smoke KIRMIZI raporluyordu -- kendi ciktisi yuzunden.
+
+    `PYTHONUTF8=1` ile duzeliyordu ama operatorun bunu bilmesi gerekiyordu;
+    kanonik komut tek basina calismalidir.
+
+    `reconfigure` yalniz TextIOWrapper'da var; stdout yeniden yonlendirilmis
+    olabilir (test, pipe, IDE konsolu). Yoksa/hata verirse SESSIZCE geciyoruz
+    -- `yaz()` zaten ikinci savunma hatti.
+    """
+    for akis in akislar:
+        rekonfigure = getattr(akis, "reconfigure", None)
+        if rekonfigure is None:
+            continue
+        try:
+            rekonfigure(encoding="utf-8", errors="replace")
+        except (ValueError, OSError, AttributeError):
+            pass
+
+
+def yaz(metin: str, file=None) -> None:
+    """Hicbir kodlamada PATLAMAYAN yazma katmani (`print` ile ayni imza).
+
+    `utf8_ayarla` tek basina yetmez: stdout reconfigure edilemeyen,
+    `errors='strict'` bir CP1252 akisiysa `print` yine patlar. Burada
+    karakter kaybetmeyi, calismayi durdurmaya TERCIH ediyoruz -- smoke'un
+    isi hedefi raporlamak, kendi ciktisinda olmek degil.
+    """
+    akis = sys.stdout if file is None else file
+    try:
+        print(metin, file=akis)
+    except UnicodeEncodeError:
+        kodlama = getattr(akis, "encoding", None) or "ascii"
+        guvenli = metin.encode(kodlama, errors="replace").decode(kodlama, errors="replace")
+        print(guvenli, file=akis)
+
+
 def main(
     argv: list[str] | None = None,
     *,
@@ -446,13 +489,15 @@ def main(
     """Tüm karar mantığı burada koşar. `argv` şu an kullanılmıyor (env-only
     sözleşme) — imzada tutulur ki ileride bayrak eklemek çağıranları kırmasın."""
     del argv
+    # ILK IS: kendi ciktimiz yuzunden olmeyelim (bkz. utf8_ayarla docstring'i).
+    utf8_ayarla(sys.stdout, sys.stderr)
     env = os.environ if env is None else env
 
     api_raw = (env.get("SMOKE_API_URL") or "").strip()
     web_raw = (env.get("SMOKE_WEB_URL") or "").strip()
 
     if not api_raw:
-        print(
+        yaz(
             "HATA: SMOKE_API_URL boş.\n"
             "  Zorunlu: SMOKE_API_URL (backend base URL)\n"
             "  Opsiyonel: SMOKE_WEB_URL (frontend base URL — yoksa CORS+SPA atlanır)\n"
@@ -494,14 +539,14 @@ def main(
         )
 
     for line in rep.lines:
-        print(line)
+        yaz(line)
 
     if rep.failures:
-        print(f"SMOKE KIRMIZI — {len(rep.failures)} hata, {len(rep.warnings)} uyarı")
+        yaz(f"SMOKE KIRMIZI — {len(rep.failures)} hata, {len(rep.warnings)} uyarı")
         return 1
 
     suffix = f" ({len(rep.warnings)} uyarı)" if rep.warnings else ""
-    print(f"SMOKE YEŞİL{suffix}")
+    yaz(f"SMOKE YEŞİL{suffix}")
     return 0
 
 
