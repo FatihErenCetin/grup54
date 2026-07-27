@@ -1,6 +1,7 @@
 import pytest
 from google.genai import types
 
+import ensemble.integrations.gemini.embeddings as embeddings_module
 from ensemble.config import Settings
 from ensemble.integrations.gemini.client import ResilientGeminiClient
 from ensemble.integrations.gemini.embeddings import GeminiEmbeddingsAdapter
@@ -36,6 +37,28 @@ def test_gemini_embeddings_adapter_empty_batch_skips_client():
 
     assert adapter.embed([], task_type="SEMANTIC_SIMILARITY") == []
     assert client.calls == []
+
+
+def test_gemini_embeddings_adapter_clienti_ilk_batchte_bir_kez_kurar(monkeypatch):
+    created: list[_StubEmbeddingClient] = []
+
+    def build_client(settings: Settings) -> _StubEmbeddingClient:
+        del settings
+        client = _StubEmbeddingClient()
+        created.append(client)
+        return client
+
+    monkeypatch.setattr(embeddings_module, "ResilientGeminiClient", build_client)
+    adapter = GeminiEmbeddingsAdapter(_settings())
+
+    adapter.embed(["a"], task_type="RETRIEVAL_DOCUMENT")
+    adapter.embed(["b"], task_type="RETRIEVAL_QUERY")
+
+    assert len(created) == 1
+    assert created[0].calls == [
+        (("a",), "RETRIEVAL_DOCUMENT"),
+        (("b",), "RETRIEVAL_QUERY"),
+    ]
 
 
 class _FakeApiError(Exception):
@@ -76,9 +99,7 @@ class _FakeSdkClient:
 def _patch_genai_client(monkeypatch, fake_models: _FakeEmbeddingModels) -> None:
     import ensemble.integrations.gemini.client as client_module
 
-    monkeypatch.setattr(
-        client_module.genai_errors, "APIError", _FakeApiError, raising=False
-    )
+    monkeypatch.setattr(client_module.genai_errors, "APIError", _FakeApiError, raising=False)
     monkeypatch.setattr(
         client_module.genai,
         "Client",
@@ -138,9 +159,7 @@ def test_resilient_client_rejects_short_embedding_batch(monkeypatch):
     class _ShortModels(_FakeEmbeddingModels):
         def embed_content(self, model: str, contents: list[str], config=None):
             self.calls += 1
-            return types.EmbedContentResponse(
-                embeddings=[types.ContentEmbedding(values=[1.0])]
-            )
+            return types.EmbedContentResponse(embeddings=[types.ContentEmbedding(values=[1.0])])
 
     fake_models = _ShortModels()
     _patch_genai_client(monkeypatch, fake_models)
