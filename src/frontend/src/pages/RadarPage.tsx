@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { components } from "../api/schema.d.ts";
 import { DetailSheet } from "../components/DetailSheet";
 import { FeedItem } from "../components/FeedItem";
+import { IsiMatrisi } from "../components/IsiMatrisi";
 import { PresenceStrip } from "../components/PresenceStrip";
 import { EmptyState, HataDurumu, SonGuncelleme, YuklemeIskeleti } from "../components/ui";
 import { useRadar } from "../lib/useRadar";
@@ -307,6 +308,11 @@ export default function RadarPage() {
           )}
         </>
       )}
+
+      {/* #105 — "neden" haritası: radar detections'tan bağımsız (GET /graph
+          kaynaklı), bu yüzden detections boş/dolu her durumda görünür kalır.
+          Varsayılan KAPALI, kapalıyken hiç istek atmaz (bkz. IsiMatrisi.tsx). */}
+      <IsiMatrisi />
     </div>
   );
 }

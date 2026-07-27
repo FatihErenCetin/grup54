@@ -30,8 +30,12 @@ type NormalizedEvent = components["schemas"]["NormalizedEvent"];
  * GÜN başlığı). Zone eki yoksa `Z` ekleyip UTC kabul ediyoruz.
  *
  * Gün başlığı, saat ve sıralama HEPSİ bu tek helper'dan geçer — üç yerde üç
- * farklı parse, üç farklı kayma demek olurdu. */
-function parseUtc(iso: string): Date {
+ * farklı parse, üç farklı kayma demek olurdu.
+ *
+ * `export`: aynı `NormalizedEvent.ts` alanını başka bir yüzde (#105 ısı
+ * matrisi hücre tıklaması → olay listesi) render eden her yer AYNI parse'ı
+ * kullanmalı — ikinci bir kopya açılırsa iki farklı kayma riski geri gelir. */
+export function parseUtc(iso: string): Date {
   const zoneli = /[Zz]$|[+-]\d{2}:?\d{2}$/.test(iso) ? iso : `${iso}Z`;
   return new Date(zoneli);
 }
