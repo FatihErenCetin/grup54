@@ -42,13 +42,15 @@ def test_config_sirlar_yokken_disabled():
     with _client() as client:
         resp = client.get("/auth/config")
     assert resp.status_code == 200
-    assert resp.json() == {"enabled": False}
+    # T-294: email_enabled AUTH_SESSION_SECRET'e bağlı (GitHub'dan bağımsız) —
+    # burada o da yok, ikisi de False.
+    assert resp.json() == {"enabled": False, "email_enabled": False}
 
 
 def test_config_ucu_de_doluyken_enabled():
     with _client(**_AUTH_SETTINGS) as client:
         resp = client.get("/auth/config")
-    assert resp.json() == {"enabled": True}
+    assert resp.json() == {"enabled": True, "email_enabled": True}
 
 
 @pytest.mark.parametrize(
@@ -58,7 +60,13 @@ def test_config_tek_biri_eksikse_disabled(missing):
     values = {k: v for k, v in _AUTH_SETTINGS.items() if k != missing}
     with _client(**values) as client:
         resp = client.get("/auth/config")
-    assert resp.json() == {"enabled": False}
+    # T-294: email_enabled yalnız AUTH_SESSION_SECRET'e bakar — GITHUB_OAUTH_*
+    # eksikken bile (AUTH_SESSION_SECRET doluysa) email kaydı AÇIK olmalı;
+    # bu ikisinin BAĞIMSIZ kapılar olduğunun asıl kanıtı.
+    assert resp.json() == {
+        "enabled": False,
+        "email_enabled": missing != "AUTH_SESSION_SECRET",
+    }
 
 
 # --- /auth/login ---
@@ -181,7 +189,8 @@ def test_me_gecerli_cerezle_200():
         client.cookies.set(SESSION_COOKIE_NAME, token)
         resp = client.get("/auth/me")
     assert resp.status_code == 200
-    assert resp.json() == {"handle": "fatih", "avatar_url": None}
+    # T-294: AuthUserResponse'a `email` eklendi (GitHub oturumunda None).
+    assert resp.json() == {"handle": "fatih", "avatar_url": None, "email": None}
 
 
 def test_me_auth_devre_disiyken_gecerli_cerezle_bile_401():

@@ -1,6 +1,7 @@
 from typing import Annotated
 
 from fastapi import Depends, Request
+from sqlalchemy.orm import Session, sessionmaker
 
 from ensemble.config import Settings
 from ensemble.engine import BoardService, EventService, GraphService, RadarService, ScopeService
@@ -12,6 +13,15 @@ from ensemble.ports import VectorIndexPort
 
 def get_settings(request: Request) -> Settings:
     return request.app.state.settings
+
+
+def get_session_factory(request: Request) -> sessionmaker[Session]:
+    """`/auth/register` + `/auth/login` (T-294) `users` tablosuna yazmak için
+    kullanır. `lifespan` (app.py) bunu HER zaman kurar (DEMO_MODE/ENSEMBLE_MODE
+    fark etmez) — `get_board_service`'in aksine burada savunmacı bir kurulum-
+    zamanı fallback'i YOK, çünkü bu dependency yalnızca gerçek uygulama
+    yaşam-döngüsü (TestClient dahil, `with` bloğu) üzerinden çağrılır."""
+    return request.app.state.session_factory
 
 
 def get_radar_service(request: Request) -> RadarService:
@@ -60,3 +70,4 @@ VectorIndexDep = Annotated[VectorIndexPort, Depends(get_vector_index)]
 BoardServiceDep = Annotated[BoardService, Depends(get_board_service)]
 GraphServiceDep = Annotated[GraphService, Depends(get_graph_service)]
 EventServiceDep = Annotated[EventService, Depends(get_event_service)]
+SessionFactoryDep = Annotated[sessionmaker[Session], Depends(get_session_factory)]

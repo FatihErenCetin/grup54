@@ -281,14 +281,26 @@ class Settings(BaseSettings):
 
     @property
     def auth_enabled(self) -> bool:
-        """`/auth/login` + `/auth/callback` fail-closed açılışı için TEK
-        kaynak — üçü de set edilmeden giriş asla açılmaz (imzasız/doğrulanamaz
-        bir çerez asla üretilmez). `/auth/config` de bunu birebir yayınlar."""
+        """`/auth/login` + `/auth/callback` (GitHub OAuth) fail-closed açılışı
+        için TEK kaynak — üçü de set edilmeden giriş asla açılmaz (imzasız/
+        doğrulanamaz bir çerez asla üretilmez). `/auth/config` de bunu
+        birebir yayınlar."""
         return bool(
             self.GITHUB_OAUTH_CLIENT_ID
             and self.GITHUB_OAUTH_CLIENT_SECRET
             and self.AUTH_SESSION_SECRET
         )
+
+    @property
+    def email_auth_enabled(self) -> bool:
+        """`/auth/register` + `/auth/login` (email+parola, T-294/D-57) fail-
+        closed açılışı için TEK kaynak. GitHub OAuth'tan (`auth_enabled`)
+        BAĞIMSIZDIR — email akışı `GITHUB_OAUTH_*` gerektirmez, yalnızca
+        `AUTH_SESSION_SECRET`e ihtiyaç duyar (oturum çerezini imzalamak için;
+        `sign_session` bu sır olmadan çağrılamaz — bkz. api/auth_session.py).
+        `/auth/config` bunu `email_enabled` alanıyla yayınlar (frontend hangi
+        formu göstereceğini bilsin)."""
+        return bool(self.AUTH_SESSION_SECRET)
 
 
 @lru_cache

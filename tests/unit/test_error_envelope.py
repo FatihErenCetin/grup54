@@ -177,6 +177,30 @@ def test_framework_http_hatalari_da_zarfta():
     assert body.error == "http_404"
 
 
+def test_http_exception_headers_zarfa_tasinir():
+    """T-294: `HTTPException(..., headers={...})` ile eklenen başlıklar
+    (örn. auth rate-limit'in `Retry-After`'i) eskiden `http_exception`
+    handler'ında SESSİZCE düşüyordu — `_envelope_response` kendi boş
+    `headers` sözlüğünden başlayıp `exc.headers`'i hiç görmüyordu. Bu genel
+    kilit, `api/routers/auth.py::_enforce_auth_rate_limit`'ten BAĞIMSIZ
+    olarak mekanizmanın kendisini doğrular (ad-hoc bir route ile)."""
+    from fastapi import HTTPException
+
+    app = create_app(Settings(ENSEMBLE_MODE="local"))
+
+    @app.get("/__test-headers-route")
+    def _patlar():
+        raise HTTPException(
+            status_code=429, detail="test-detay", headers={"Retry-After": "7"}
+        )
+
+    resp = TestClient(app).get("/__test-headers-route")
+    assert resp.status_code == 429
+    assert resp.headers.get("retry-after") == "7"
+    body = ErrorEnvelope.model_validate(resp.json())
+    assert body.error == "http_429"
+
+
 def test_preflight_calisiyor():
     # CORS'un preflight bacagi da korunuyor (allow_methods=[GET])
     app = create_app(Settings(ENSEMBLE_MODE="local"))
