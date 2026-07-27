@@ -84,7 +84,7 @@ Bu dosya `T-190-deploy-runbook` dalının kendisi. Bağımlı/ilişkili işlerin
 
 ## 2. Env → platform eşleme tablosu
 
-`.env.example`'daki **43 anahtarın tamamı** aşağıda (**42'si düz `ANAHTAR=` satırı, 1'i — `CORS_ORIGINS` — yalnız yorum-satırı örneği; ikisi de sayılır**). Bu sayı, T-190 ilk taslağının iddia ettiği 38'den **5 fazla** — aradaki fark `main`'e bu dal yazıldıktan sonra inen `#252/#254/#255` (Groq yedek judge + judge paralelleştirme) ile `.env.example`'a eklenen `GROQ_API_KEY` · `GROQ_MODEL` · `RADAR_JUDGE_CONCURRENCY` `#218` ile eklenen `ENSEMBLE_ALLOW_FAKE_SEED` ve `#259` ile eklenen `VERDICT_TTL_DAYS`. *(38 değil 43 — bu PR'ın kendi drift-kilidi test'i bu farkı yakaladığı için yeniden sayıldı, uydurulmadı.)*
+`.env.example`'daki **48 anahtarın tamamı** aşağıda (**47'si düz `ANAHTAR=` satırı, 1'i — `CORS_ORIGINS` — yalnız yorum-satırı örneği; ikisi de sayılır**). Bu sayı, T-190 ilk taslağının iddia ettiği 38'den **10 fazla** — aradaki fark `main`'e bu dal yazıldıktan sonra inen `#252/#254/#255` (Groq yedek judge + judge paralelleştirme) ile `.env.example`'a eklenen `GROQ_API_KEY` · `GROQ_MODEL` · `RADAR_JUDGE_CONCURRENCY` `#218` ile eklenen `ENSEMBLE_ALLOW_FAKE_SEED` `#259` ile eklenen `VERDICT_TTL_DAYS` ve `#79` ile eklenen beş auth anahtarı (`GITHUB_OAUTH_*`, `AUTH_*`). *(38 değil 48 — bu PR'ın kendi drift-kilidi test'i bu farkı yakaladığı için yeniden sayıldı, uydurulmadı.)*
 
 Dört sınıf — Fly döneminden **isim değişti**, kavram aynı:
 
@@ -112,33 +112,38 @@ Dört sınıf — Fly döneminden **isim değişti**, kavram aynı:
 | 14 | `RADAR_JUDGE_CONCURRENCY` | sunucu env dosyası (opsiyonel) | — | 🆕 `#254` — kod default `8`; sağlayıcının RPM tavanına göre ayarla, `1` = tamamen sıralı |
 | 15 | `ENSEMBLE_ALLOW_FAKE_SEED` | **hiçbir yerde set EDİLMEZ** (varsayılan kapalı) | — | 🆕 `#218` — `make rebuild` gerçek GitHub App'e ulaşamayıp `FakeGitHubAdapter`'a düşerse **SystemExit(1)** ile reddeder (D-51 fail-closed: sahte veri gerçek DB'nin üstüne YAZILMAZ). `1` yalnız **bilinçli demo-seed** için, üretimde ASLA |
 | 16 | `VERDICT_TTL_DAYS` | sunucu env dosyası (opsiyonel) | — | 🆕 `#259` — kod default `7.0`. Kalıcı judge yargı önbelleğinin (`judge_verdicts`) tazelik sınırı. **Çok kısa**: #259'un amacı olan "CD redeploy'ları arasında restart maliyeti ~0" kaybolur. **Çok uzun**: prompt/rubrik veya model drift'i sonsuza kadar gizlenir — çünkü prompt `cache_key`'in parçası DEĞİL |
-| 17 | `GEMINI_EMBEDDING_MODEL` | sunucu env dosyası (opsiyonel) | — | kod default `gemini-embedding-001` |
-| 18 | `GEMINI_EMBEDDING_DIMENSIONS` | sunucu env dosyası (opsiyonel) | — | kod default `768`; `vector(N)` migration'ıyla **hizalı** olmalı (Ek C3) |
-| 19 | `GEMINI_TIMEOUT_S` | sunucu env dosyası (opsiyonel) | — | kod default `10` |
-| 20 | `GEMINI_MAX_RETRIES` | sunucu env dosyası (opsiyonel) | — | kod default `3` |
-| 21 | `OLLAMA_BASE_URL` | yalnız-local | — | VDS'te Ollama çalıştırılmıyor; kod zaten yalnız `127.0.0.1`/`localhost` kabul ediyor (loopback zorunluluğu) |
-| 22 | `OLLAMA_MODEL` | yalnız-local | — | tam-yerel gizlilik modu (#78) |
-| 23 | `OLLAMA_EMBEDDING_MODEL` | yalnız-local | — | " |
-| 24 | `OLLAMA_EMBEDDING_DIMENSIONS` | yalnız-local | — | " |
-| 25 | `OLLAMA_TIMEOUT_S` | yalnız-local | — | " |
-| 26 | `OLLAMA_MAX_RETRIES` | yalnız-local | — | " |
-| 27 | `GITHUB_APP_ID` | sunucu env dosyası | `/etc/ensemble/ensemble.env` | `4257285` (sır değil, yine de env dosyasında set edilir) |
-| 28 | `GITHUB_APP_PRIVATE_KEY_PATH` | yalnız-local | — | sunucuda **boş bırak** (mount yok — imajda `.pem` dosyası yok) |
-| 29 | `GITHUB_APP_PRIVATE_KEY` | sunucu env dosyası (**PEM İÇERİĞİ**) | bkz. §3.1 adım 2, ayrı kutu | **path DEĞİL**, ham PEM metni; `config.py` çözümleme sırası: PATH varsa PATH kazanır (yerel), yoksa bu alan (hosted) |
-| 30 | `GITHUB_APP_INSTALLATION_ID` | sunucu env dosyası | — | `145474476` |
-| 31 | `GITHUB_REPO_OWNER` | sunucu env dosyası | — | izlenen repo sahibi — **`#63` ile**: `DEMO_MODE=true` iken bu ikisi eksikse uygulama **hiç açılmaz** (fail-closed, §6) |
-| 32 | `GITHUB_REPO_NAME` | sunucu env dosyası | — | izlenen repo adı — aynı fail-closed şart |
-| 33 | `GITHUB_DEFAULT_BRANCH` | sunucu env dosyası (opsiyonel) | — | kod default `main` |
-| 34 | `GITHUB_BACKFILL_LIMIT` | sunucu env dosyası (opsiyonel) | — | kod default `50` |
-| 35 | `GITHUB_WEBHOOK_SECRET` | sunucu env dosyası | — | webhook imza doğrulaması (D-35); **rotate** prosedürü §9 |
-| 36 | `GITHUB_WEBHOOK_PROXY_URL` | yalnız-local | — | hosted'da webhook doğrudan sunucu URL'ine gelir (smee kanalı yalnız local geliştirme) |
-| 37 | `RADAR_WINDOW_DAYS` | sunucu env dosyası (opsiyonel) | — | kalibrasyon çıktısı (#18); kod default `14` |
-| 38 | `RADAR_MIN_JACCARD` | sunucu env dosyası (opsiyonel) | — | kod default `0.0` (kalibrasyon sonucu, placeholder değil) |
-| 39 | `RADAR_MIN_SIMILARITY` | sunucu env dosyası (opsiyonel) | — | kod default `0.0` |
-| 40 | `DATABASE_URL` | compose `environment:` (**türetilir**, sunucu env dosyasına YAZILMAZ) | `docker-compose.prod.yml`: `postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}` | ⚠️ **tuzak** — aşağıdaki kutuya bak; Fly'daki `grup54-db.internal` yerine artık compose ağındaki `db` servis adı |
-| 41 | `VITE_API_BASE_URL` | **Vercel env** (build-time) | Vercel dashboard → *Environment Variables* → Production | `= https://api.recommend2me.com`; **yalnız origin (+ opsiyonel path öneki)** — query/hash `lib/config.ts` tarafından reddedilir; değişince **redeploy şart** (build-time gömülür, "Save" yetmez) |
-| 42 | `VITE_MOCK` | yalnız-local; Vercel'de **BOŞ** | — | yalnız `"1"` mock açar; prod'da tanımlarsan `vite.config.ts` build'i **kendi kırar** (#188 guard) |
-| 43 | `CORS_ORIGINS` | sunucu env dosyası | `/etc/ensemble/ensemble.env` | `= https://recommend2me.com,https://www.recommend2me.com` (A2 çift-yön, aşağıda ayrı bölüm); asla `*` — config açılışta reddeder (`config.py::_decode_cors_origins`) |
+| 17 | `GITHUB_OAUTH_CLIENT_ID` | sunucu env dosyası | — | 🆕 `#79` — GitHub App'in **user-authorization** Client ID'si. Sır DEĞİL (OAuth adresinde zaten açıkta gider). Boşsa `/auth/config` `{enabled:false}` döner ve giriş **kapalı** açılır — uygulama yine çalışır, demo giriş İSTEMEZ |
+| 18 | `GITHUB_OAUTH_CLIENT_SECRET` | sunucu env dosyası | — | 🆕 `#79` — SIR. Hiçbir log/hata mesajı/yanıta girmez (yalnız *değişken adı* "eksik" uyarısında geçer) |
+| 19 | `AUTH_SESSION_SECRET` | sunucu env dosyası | — | 🆕 `#79` — oturum çerezini imzalayan HMAC anahtarı. **Sunucuda yerinde üretilir** (`secrets.token_urlsafe(48)`), hiçbir yerde görünmez. Değiştirmek TÜM oturumları düşürür |
+| 20 | `AUTH_POST_LOGIN_URL` | sunucu env dosyası | — | 🆕 `#79` — **MUTLAK URL zorunlu**, fail-closed validator ile doğrulanır. Göreli yol (`/radar`) verilirse tarayıcı bunu callback'in çalıştığı origin'e (`api.recommend2me.com`) göre çözer → **404**. Üretim: `https://recommend2me.com/radar` |
+| 21 | `AUTH_COOKIE_DOMAIN` | sunucu env dosyası (opsiyonel) | — | 🆕 `#79` — **boş bırakılır**: çerez yalnız `api` alt alanına bağlanır (host-only). Frontend çerezi OKUMAZ, tarayıcı yalnız API çağrılarında gönderir — daha dar, dolayısıyla daha güvenli |
+| 22 | `GEMINI_EMBEDDING_MODEL` | sunucu env dosyası (opsiyonel) | — | kod default `gemini-embedding-001` |
+| 23 | `GEMINI_EMBEDDING_DIMENSIONS` | sunucu env dosyası (opsiyonel) | — | kod default `768`; `vector(N)` migration'ıyla **hizalı** olmalı (Ek C3) |
+| 24 | `GEMINI_TIMEOUT_S` | sunucu env dosyası (opsiyonel) | — | kod default `10` |
+| 25 | `GEMINI_MAX_RETRIES` | sunucu env dosyası (opsiyonel) | — | kod default `3` |
+| 26 | `OLLAMA_BASE_URL` | yalnız-local | — | VDS'te Ollama çalıştırılmıyor; kod zaten yalnız `127.0.0.1`/`localhost` kabul ediyor (loopback zorunluluğu) |
+| 27 | `OLLAMA_MODEL` | yalnız-local | — | tam-yerel gizlilik modu (#78) |
+| 28 | `OLLAMA_EMBEDDING_MODEL` | yalnız-local | — | " |
+| 29 | `OLLAMA_EMBEDDING_DIMENSIONS` | yalnız-local | — | " |
+| 30 | `OLLAMA_TIMEOUT_S` | yalnız-local | — | " |
+| 31 | `OLLAMA_MAX_RETRIES` | yalnız-local | — | " |
+| 32 | `GITHUB_APP_ID` | sunucu env dosyası | `/etc/ensemble/ensemble.env` | `4257285` (sır değil, yine de env dosyasında set edilir) |
+| 33 | `GITHUB_APP_PRIVATE_KEY_PATH` | yalnız-local | — | sunucuda **boş bırak** (mount yok — imajda `.pem` dosyası yok) |
+| 34 | `GITHUB_APP_PRIVATE_KEY` | sunucu env dosyası (**PEM İÇERİĞİ**) | bkz. §3.1 adım 2, ayrı kutu | **path DEĞİL**, ham PEM metni; `config.py` çözümleme sırası: PATH varsa PATH kazanır (yerel), yoksa bu alan (hosted) |
+| 35 | `GITHUB_APP_INSTALLATION_ID` | sunucu env dosyası | — | `145474476` |
+| 36 | `GITHUB_REPO_OWNER` | sunucu env dosyası | — | izlenen repo sahibi — **`#63` ile**: `DEMO_MODE=true` iken bu ikisi eksikse uygulama **hiç açılmaz** (fail-closed, §6) |
+| 37 | `GITHUB_REPO_NAME` | sunucu env dosyası | — | izlenen repo adı — aynı fail-closed şart |
+| 38 | `GITHUB_DEFAULT_BRANCH` | sunucu env dosyası (opsiyonel) | — | kod default `main` |
+| 39 | `GITHUB_BACKFILL_LIMIT` | sunucu env dosyası (opsiyonel) | — | kod default `50` |
+| 40 | `GITHUB_WEBHOOK_SECRET` | sunucu env dosyası | — | webhook imza doğrulaması (D-35); **rotate** prosedürü §9 |
+| 41 | `GITHUB_WEBHOOK_PROXY_URL` | yalnız-local | — | hosted'da webhook doğrudan sunucu URL'ine gelir (smee kanalı yalnız local geliştirme) |
+| 42 | `RADAR_WINDOW_DAYS` | sunucu env dosyası (opsiyonel) | — | kalibrasyon çıktısı (#18); kod default `14` |
+| 43 | `RADAR_MIN_JACCARD` | sunucu env dosyası (opsiyonel) | — | kod default `0.0` (kalibrasyon sonucu, placeholder değil) |
+| 44 | `RADAR_MIN_SIMILARITY` | sunucu env dosyası (opsiyonel) | — | kod default `0.0` |
+| 45 | `DATABASE_URL` | compose `environment:` (**türetilir**, sunucu env dosyasına YAZILMAZ) | `docker-compose.prod.yml`: `postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}` | ⚠️ **tuzak** — aşağıdaki kutuya bak; Fly'daki `grup54-db.internal` yerine artık compose ağındaki `db` servis adı |
+| 46 | `VITE_API_BASE_URL` | **Vercel env** (build-time) | Vercel dashboard → *Environment Variables* → Production | `= https://api.recommend2me.com`; **yalnız origin (+ opsiyonel path öneki)** — query/hash `lib/config.ts` tarafından reddedilir; değişince **redeploy şart** (build-time gömülür, "Save" yetmez) |
+| 47 | `VITE_MOCK` | yalnız-local; Vercel'de **BOŞ** | — | yalnız `"1"` mock açar; prod'da tanımlarsan `vite.config.ts` build'i **kendi kırar** (#188 guard) |
+| 48 | `CORS_ORIGINS` | sunucu env dosyası | `/etc/ensemble/ensemble.env` | `= https://recommend2me.com,https://www.recommend2me.com` (A2 çift-yön, aşağıda ayrı bölüm); asla `*` — config açılışta reddeder (`config.py::_decode_cors_origins`) |
 
 > **yalnız-local** = platforma hiç girilmez · **sunucu env dosyası** = backend çalışma-zamanı (`/etc/ensemble/ensemble.env` → `env_file:`) · **compose `environment:`** = backend çalışma-zamanı ama sır değil, `docker-compose.prod.yml`'de commit'li · **Vercel env** = frontend build-time · **CI secret** = pipeline (bugün fiilen kullanılmıyor). Aynı anahtar iki sütunda **olamaz** — istisna: local ile hosted'ın **farklı** değeri (`ENSEMBLE_MODE`, `DATABASE_URL`, PEM yolu-vs-içeriği).
 

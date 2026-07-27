@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from ensemble.api.errors import ERROR_RESPONSES, ErrorEnvelope, register_exception_handlers
 from ensemble.api.rate_limit import DemoRateLimitMiddleware
-from ensemble.api.routers import board, events, graph, health, query, radar, scope, webhook
+from ensemble.api.routers import auth, board, events, graph, health, query, radar, scope, webhook
 from ensemble.config import Settings, get_settings
 from ensemble.engine.board import BoardService
 from ensemble.engine.cache import CachedConflictJudge, CachedQueryJudge, CachedScopeJudge
@@ -490,13 +490,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     if settings.DEMO_MODE:
         app.add_middleware(DemoRateLimitMiddleware, settings=settings)
 
-    # CORS (#45): açık allowlist — asla "*". Kimlik bilgisi taşınmaz (D-23:
-    # cookie/auth yok); kontrattaki tüm endpoint'ler GET.
+    # CORS (#45): açık allowlist — asla "*". D-23 ("kimlik bilgisi taşınmaz,
+    # tüm uçlar GET") #79 ile SÜPERSEDE edildi: /auth/* imzalı çerez oturumu
+    # taşır ve /auth/logout POST'tur. allow_credentials=True yalnız allowlist'teki
+    # (asla "*") origin'lere Access-Control-Allow-Credentials döner — Starlette
+    # zaten wildcard+credentials kombinasyonunu izin vermez, burada da CORS_ORIGINS
+    # "*" içeremiyor (config.py::_decode_cors_origins). POST yalnız /auth/logout
+    # için eklendi; diğer TÜM uçlar hâlâ GET (kontrat değişmedi).
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.CORS_ORIGINS,
-        allow_credentials=False,
-        allow_methods=["GET"],
+        allow_credentials=True,
+        allow_methods=["GET", "POST"],
         allow_headers=["*"],
     )
 
@@ -522,5 +527,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         401: {"model": ErrorEnvelope, "description": "Eksik/geçersiz webhook imzası"},
     }
     app.include_router(webhook.router, responses=_webhook_responses)
+
+    # #79 daraltılmış dilim: /auth/login 503 (yapılandırılmamış), /auth/callback
+    # 400 (state uyuşmazlığı) + 502/503 (GitHub hatası, ERROR_RESPONSES'tan
+    # miras), /auth/me 401 (oturum yok/geçersiz) — webhook'un 400/401 ekleme
+    # deseniyle AYNI (Ek D'ye genel eklenmez, GET router'lara uymuyor).
+    _auth_responses = {
+        **ERROR_RESPONSES,
+        400: {"model": ErrorEnvelope, "description": "OAuth state doğrulanamadı"},
+        401: {"model": ErrorEnvelope, "description": "Oturum yok/geçersiz"},
+    }
+    app.include_router(auth.router, responses=_auth_responses)
 
     return app

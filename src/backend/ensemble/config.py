@@ -199,6 +199,79 @@ class Settings(BaseSettings):
             return None
         return f"{self.GITHUB_REPO_OWNER}/{self.GITHUB_REPO_NAME}"
 
+    # --- Kullanıcı girişi (GitHub App kullanıcı-yetkilendirme akışı, #79
+    # daraltılmış dilim) — VARSAYILAN KAPALI: hiçbiri set edilmemişse
+    # /auth/config {"enabled": false} döner, /auth/login 503 verir; TÜM
+    # DİĞER UÇLAR (radar/board/scope/query/...) bundan ETKİLENMEZ — giriş
+    # yalnızca "kim olduğunu göster" katmanıdır, uygulamayı KAPATMAZ.
+    # access_token BU AKIŞTA HİÇBİR YERDE SAKLANMAZ (ne DB ne cache) — yalnız
+    # callback içinde `/user` çağrısı için kullanılır, sonra atılır
+    # (integrations/github/oauth.py). Kullanıcı/identity tablosu, installation
+    # picker, çok-kiracılık = #79'un AYRI/kalan dilimi — bu bayraklar yalnız
+    # tek-repo (#63 pin) tek-kullanıcı-oturumu akışını açar.
+    GITHUB_OAUTH_CLIENT_ID: str | None = None
+    GITHUB_OAUTH_CLIENT_SECRET: str | None = None
+    # Oturum çerezini imzalayan HMAC anahtarı — `itsdangerous` YERİNE stdlib
+    # `hmac` (webhook.py::verify_signature ile AYNI desen, GITHUB_WEBHOOK_SECRET
+    # ikizi; bkz. api/auth_session.py).
+    AUTH_SESSION_SECRET: str | None = None
+    # callback başarıyla bittiğinde tarayıcının döneceği yer (frontend rotası).
+    # MUTLAK URL OLMAK ZORUNDA (şema + host dahil) — callback FastAPI'de
+    # (api.<domain>) çalışır ve `RedirectResponse` bir GÖRELİ yol (örn.
+    # "/radar") alırsa tarayıcı bunu MEVCUT (api) origin'ine karşı çözer,
+    # frontend origin'ine değil. Üretimde tam olarak bu yaşandı: kod
+    # varsayılanı göreli "/radar" idi, giriş "başarılı" görünüyordu ama
+    # tarayıcı `https://api.recommend2me.com/radar`'a düşüyordu — orada
+    # sayfa yok, sessiz 404 (#258). Sunucuda mutlak URL ile elle düzeltildi;
+    # varsayılan burada de facto DOĞRU (aşağıdaki local doğrulayıcı) ve yanlış
+    # (göreli) bir değer artık açılışta REDDEDİLİR — CORS_ORIGINS'in "*"
+    # reddi ve DEMO_MODE'un repo-pin zorunluluğuyla AYNI fail-closed desen:
+    # yanlış yapılandırma sessizce 404 üretmek yerine uygulamayı hiç
+    # başlatmaz. Üretim değeri (`https://recommend2me.com/radar`) BİLEREK
+    # burada hardcode EDİLMEDİ — hangi origin'in "doğru" olduğu ortama göre
+    # değişir; tek güvenli varsayılan yereldir (CORS_ORIGINS'in local
+    # girdileriyle AYNI köken: http://localhost:5173).
+    AUTH_POST_LOGIN_URL: str = "http://localhost:5173/radar"
+    # Çerez Domain'i — paylaşılan üst alan adından türetilir (örn.
+    # "ensemble-demo.com") ki api.<domain> ve app.<domain> aynı çerezi
+    # paylaşabilsin; yerelde None kalır (Domain set edilmez, localhost çalışır).
+    AUTH_COOKIE_DOMAIN: str | None = None
+
+    @field_validator("AUTH_POST_LOGIN_URL")
+    @classmethod
+    def _validate_auth_post_login_url_absolute(cls, value: str) -> str:
+        # Fail-SAFE değil fail-OPEN olurdu: göreli bir yolu "olduğu gibi"
+        # kabul edip RedirectResponse'a öylece geçirmek — tarayıcı onu
+        # sessizce API origin'ine karşı çözer, giriş "302 döndü" diye BAŞARILI
+        # raporlanır ama kullanıcı 404'e düşer (#258'in ta kendisi). Burada
+        # bunun yerine gerçek hata sinyali (ValidationError, açılışta patlar)
+        # veriliyor — "yokluk" ile ayırt edilemeyen sahte bir varsayılana
+        # ASLA çökmüyor.
+        parsed = urlparse(value)
+        if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+            raise ValueError(
+                "AUTH_POST_LOGIN_URL MUTLAK bir URL olmalı, şema+host dahil "
+                f"(örn. 'https://app.example.com/radar') — göreli bir yol "
+                f"(alınan: {value!r}) callback'in çalıştığı API origin'ine "
+                "karşı çözülür, frontend origin'ine DEĞİL (#258 üretim "
+                "olayı: '/radar' -> https://api.recommend2me.com/radar -> "
+                "404, sessizce). Yerelde varsayılanı kullan "
+                "(http://localhost:5173/radar) ya da gerçek frontend "
+                "origin'ini mutlak yaz."
+            )
+        return value
+
+    @property
+    def auth_enabled(self) -> bool:
+        """`/auth/login` + `/auth/callback` fail-closed açılışı için TEK
+        kaynak — üçü de set edilmeden giriş asla açılmaz (imzasız/doğrulanamaz
+        bir çerez asla üretilmez). `/auth/config` de bunu birebir yayınlar."""
+        return bool(
+            self.GITHUB_OAUTH_CLIENT_ID
+            and self.GITHUB_OAUTH_CLIENT_SECRET
+            and self.AUTH_SESSION_SECRET
+        )
+
 
 @lru_cache
 def get_settings() -> Settings:

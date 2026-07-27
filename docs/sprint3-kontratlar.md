@@ -91,7 +91,7 @@ GITHUB_APP_PRIVATE_KEY: str | None = None      # PEM İÇERİĞİ (hosted); PATH
 
 > **Sahibi:** backend/AI (router başına) · **Tüketicisi:** frontend TS client (Ek E) + MCP (Ek D). 🔒 **FROZEN path + query + response**. Taşınan **model** şekilleri S2 Ek A/B'de donuk — burada yalnız **route imzası** (path, query param, cursor, zarf) kilitlenir. `openapi.json` bu route'larla yeniden üretilir; frontend `npm run gen:api`.
 
-Mevcut router'lar: `/health` · `/radar` · `/scope/check` · `/board` · `/query` (openapi'de var). S3 bunları **zenginleştirir** + `/events` · `/presence` · `/graph` **ekler**.
+Mevcut router'lar: `/health` · `/radar` · `/scope/check` · `/board` · `/query` (openapi'de var). S3 bunları **zenginleştirir** + `/events` · `/presence` · `/graph` · `/auth/*` **ekler**.
 
 ### B1 · `GET /board` (#51) — 🔒
 
@@ -148,6 +148,21 @@ GET /graph?window_days=14  →  TouchGraph { window_days, nodes: GraphNode[], ed
 ```
 - Model = S2 **Ek A** (D-33'te #106 ile dondurulmuştu) — AYNEN. Sıfır LLM: saf `NormalizedEvent` + `active/` aggregation. Modül = path'in ilk 2 segmenti (**hesaplanır**, şemaya yazılmaz).
 - **Sahibi:** backend · **Tüketicisi:** Radar ısı matrisi (#105) + Actors sayfası (#129, client-side filtre).
+
+### B6 · `/auth/*` (#79 — kullanıcı girişi) — 🔒 GitHub OAuth-user oturumu
+
+> S2 Ek B6'da "gate'li, kapsam dışı" olarak ertelenmişti (D-28) — çekirdek eval (#17+#18) yeşile döndükten sonra gate açıldı, imza burada donuyor. `#16`'nın **makine** App-auth'ından (`GITHUB_APP_*`, Ek A) tamamen ayrı katman; radar/board/scope/query gibi hiçbir mevcut uç buna bağımlı DEĞİL.
+
+```
+GET  /auth/config   →  200 { enabled: bool }                       # sır yoksa da HER ZAMAN 200
+GET  /auth/login    →  302 GitHub yetkilendirme adresine            # enabled=false → 503
+GET  /auth/callback →  302 frontend'e (AUTH_POST_LOGIN_URL) + Set-Cookie(oturum)
+GET  /auth/me       →  200 { handle: str, avatar_url: str | None } | 401
+POST /auth/logout   →  204 + çerezi siler                           # oturum yoksa da idempotent 204
+```
+- Çerez: imzalı (stdlib `hmac`, `webhook.py::verify_signature` ile aynı disiplin), `HttpOnly` + `Secure` + `SameSite=Lax`; `Domain` = `AUTH_COOKIE_DOMAIN` (paylaşılan üst alan adı — Fly alt-domaini kendi cookie'sini yazmasın diye); yerelde `Domain` set edilmez.
+- `access_token` hiçbir yerde saklanmaz — yalnız `callback` içinde `/user` çağrısı için bellekte tutulur, sonra atılır (#79 kuralı). Kullanıcı/identity tablosu, installation picker, çok-kiracılık = #79'un kalan/ayrı dilimi (kapsam dışı).
+- **Sahibi:** backend (Esma) · **Tüketicisi:** Login/profil sayfası (frontend `useAuth`).
 
 ---
 

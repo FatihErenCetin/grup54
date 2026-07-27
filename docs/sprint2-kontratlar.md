@@ -281,7 +281,7 @@ GET /events?since=<ISO>&before=<ISO|id>&limit=<n>&actor=<handle>&branch=<ad>
 | `waiver{actor, reason, ref}` | "Muaf" rozeti S3 itiraz akışıyla birlikte |
 | `confidence.basis` (Ask) | Açıklama metni; opsiyonel iyileştirme |
 | SSE streaming (/query) | Tek-atım S3'te kalır; sahte-canlılık yasak |
-| Auth/session kontratı (login/profil ekranları) | **#79 gate'li — bu ekin kapsamı DIŞI** (D-28) |
+| Auth/session kontratı (login/profil ekranları) | ~~#79 gate'li — bu ekin kapsamı DIŞI (D-28)~~ → gate açıldı, imza donuk: `docs/sprint3-kontratlar.md` Ek B6 |
 
 ## Ek C (12 Tem) — Eval veri kontratı: `ConflictCase` (#26/#27 → #28/#29)
 

@@ -3,7 +3,7 @@
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import AppLayout from "../src/components/AppLayout";
 import { FeedItem, moduleOf } from "../src/components/FeedItem";
 import { PresenceStrip } from "../src/components/PresenceStrip";
@@ -12,6 +12,10 @@ import RadarPage from "../src/pages/RadarPage";
 
 const mockUseRadar = vi.fn();
 vi.mock("../src/lib/useRadar", () => ({ useRadar: () => mockUseRadar() }));
+// Presence şeridi #60'tan beri CANLI (GET /presence) → RadarPage'i provider'sız
+// render edebilmek için hook mock'lanır (useRadar ile aynı kalıp)
+const mockUsePresence = vi.fn();
+vi.mock("../src/lib/usePresence", () => ({ usePresence: () => mockUsePresence() }));
 // AppLayout rozet testi için mock:true; apiBaseUrl mockFetch önek testiyle uyumlu
 vi.mock("../src/lib/config", () => ({
   config: { apiBaseUrl: "http://localhost:8000", mode: "local", mock: true },
@@ -24,6 +28,19 @@ const dolu = {
   isFetching: false,
   dataUpdatedAt: Date.now(),
 };
+
+const presenceBos = {
+  data: { entries: [], latest_ts: "2026-07-13T09:00:00Z" },
+  error: null,
+  isLoading: false,
+  isFetching: false,
+  dataUpdatedAt: Date.now(),
+};
+
+beforeEach(() => {
+  // RadarPage şeridi gömüyor; varsayılan = dürüst boş presence
+  mockUsePresence.mockReturnValue(presenceBos);
+});
 
 describe("moduleOf", () => {
   it("yoldan modül etiketi çıkarır", () => {
@@ -54,11 +71,79 @@ describe("FeedItem", () => {
   });
 });
 
-describe("PresenceStrip", () => {
-  it("dürüstlük etiketi HER ZAMAN görünür (Ek B1 — canlı S3'te)", () => {
+describe("PresenceStrip (canlı GET /presence — #60)", () => {
+  const canli = {
+    ...presenceBos,
+    data: {
+      entries: [
+        {
+          actor: { handle: "asmarufoglu", type: "human" as const, responsible: null },
+          module: "engine",
+          task: "T-17",
+          branch: "T-17-cakisma-radari",
+          since: "2026-07-13T08:20:00Z",
+        },
+        {
+          actor: {
+            handle: "fatih-claude",
+            type: "agent" as const,
+            responsible: "FatihErenCetin",
+          },
+          module: "frontend",
+          task: "T-21",
+          branch: null,
+          since: "2026-07-13T08:55:00Z",
+        },
+      ],
+      latest_ts: "2026-07-13T08:55:00Z",
+    },
+  };
+
+  it("veri gelince aktör + modül çizer; ajan tipini ActorRef'ten okur (sezgiden değil)", () => {
+    mockUsePresence.mockReturnValue(canli);
     render(<PresenceStrip />);
-    expect(screen.getByText("(örnek — canlı S3'te)")).toBeInTheDocument();
     expect(screen.getByText("asmarufoglu")).toBeInTheDocument();
+    expect(screen.getByText("engine")).toBeInTheDocument();
+    expect(screen.getByTitle("fatih-claude (AI ajanı)")).toBeInTheDocument();
+  });
+
+  it("boş: şerit KAYBOLMAZ, dürüst 'kimse beyan etmemiş' basar", () => {
+    mockUsePresence.mockReturnValue(presenceBos);
+    render(<PresenceStrip />);
+    expect(screen.getByText(/kimse çalışma beyan etmemiş/)).toBeInTheDocument();
+  });
+
+  it("hata: sessizce kaybolmaz, görünür uyarı + teknik ayrıntı basar", () => {
+    mockUsePresence.mockReturnValue({
+      ...presenceBos,
+      data: undefined,
+      error: { message: "Failed to fetch" },
+    });
+    render(<PresenceStrip />);
+    expect(screen.getByRole("alert")).toBeInTheDocument();
+    expect(screen.getByText(/Presence alınamadı/)).toBeInTheDocument();
+    expect(screen.getByText(/Failed to fetch/)).toBeInTheDocument();
+  });
+
+  it("falsy error ('') yutulmaz — sahte 'kimse yok' basılmaz", () => {
+    // openapi-fetch boş-gövdeli non-ok cevapta error="" verebilir (RadarPage bulgusu)
+    mockUsePresence.mockReturnValue({ ...presenceBos, data: undefined, error: "" });
+    render(<PresenceStrip />);
+    expect(screen.getByRole("alert")).toBeInTheDocument();
+    expect(screen.queryByText(/kimse çalışma beyan etmemiş/)).not.toBeInTheDocument();
+  });
+
+  it("geçici poll hatası eldeki şeridi GİZLEMEZ", () => {
+    mockUsePresence.mockReturnValue({ ...canli, error: new Error("tek poll patladı") });
+    render(<PresenceStrip />);
+    expect(screen.getByText("asmarufoglu")).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("yükleniyor: iskelet yer tutar (sayfa zıplamaz)", () => {
+    mockUsePresence.mockReturnValue({ ...presenceBos, data: undefined, isLoading: true });
+    render(<PresenceStrip />);
+    expect(screen.getByLabelText("Presence yükleniyor")).toBeInTheDocument();
   });
 });
 
@@ -124,6 +209,15 @@ describe("mock zinciri (PR manşet kararı — commit'li testte)", () => {
     const body = await ok.json();
     expect(body.detections.length).toBeGreaterThan(0);
     expect(mockFetch(new Request("http://localhost:8000/bilinmeyen")).status).toBe(404);
+  });
+
+  it("mockFetch: /presence 200 + PresenceResponse gövdesi", async () => {
+    const ok = mockFetch(new Request("http://localhost:8000/presence"));
+    expect(ok.status).toBe(200);
+    const body = await ok.json();
+    expect(body.entries.length).toBeGreaterThan(0);
+    expect(body.entries[0].actor.type).toMatch(/human|agent/);
+    expect(body.latest_ts).toBeTruthy();
   });
 
   it("api → mockFetch zinciri VITE_MOCK=1 iken uçtan uca çalışır", async () => {
@@ -207,8 +301,16 @@ describe("DetailSheet (#156 — Pencil MOGXv'ye dönüş)", () => {
 
 
 describe("DetailSheet — doğrulama bulgularının kilitleri", () => {
+  // #158 sonrası tespit satırları TEK liste değil: yüksek/orta "Tespit listesi"nde,
+  // düşük-güvenliler katlanan "Düşük güvenli tespitler" listesinde duruyor. Helper
+  // yalnız ana listeye baksaydı klavye gezinmesi bölüm sınırını geçtiği anda satırı
+  // bulamazdı (bu testi kırdıran şey buydu) — satırlar DOM sırasında aranıyor.
+  // aria-controls="detay-paneli" yalnız FeedItem satırlarında var: filtre butonları
+  // ve katlama düğmesi bu seçime girmez.
   const feedBtn = (i: number) =>
-    within(screen.getByRole("list", { name: "Tespit listesi" })).getAllByRole("button")[i];
+    screen.getAllByRole("button").filter((b) => b.getAttribute("aria-controls") === "detay-paneli")[
+      i
+    ];
 
   it("hayalet panel yok: filtre gidiş-dönüşünde panel tıklamasız GERİ AÇILMAZ", async () => {
     const user = userEvent.setup();
@@ -235,6 +337,12 @@ describe("DetailSheet — doğrulama bulgularının kilitleri", () => {
     await user.keyboard("{ArrowDown}");
     expect(document.activeElement).toBe(feedBtn(1)); // ring seçimle birlikte
     await user.keyboard("{ArrowDown}{ArrowDown}{ArrowDown}"); // son satırı aşmaya çalış
+    // 4. satır katlanan bölümde (#158): ↑↓ oraya adım atınca bölüm AÇILMALI, yoksa
+    // focus mount olmamış satıra gidemez. Önce onu doğruluyoruz ki bir regresyonda
+    // hata "satır bulunamadı" diye değil, sebebiyle görünsün.
+    expect(
+      screen.getByRole("button", { name: /düşük-güven tespit/ }),
+    ).toHaveAttribute("aria-expanded", "true");
     expect(document.activeElement).toBe(feedBtn(3)); // son satırda durdu
   });
 

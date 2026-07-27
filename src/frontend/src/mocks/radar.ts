@@ -11,6 +11,7 @@
 
 import type { components } from "../api/schema.d.ts";
 import { config } from "../lib/config";
+import { mockPresenceResponse } from "./presence";
 
 type RadarResponse = components["schemas"]["RadarResponse"];
 type Detection = components["schemas"]["Detection"];
@@ -82,9 +83,17 @@ export function mockFetch(req: Request): Response {
   if (path === "/radar") {
     return Response.json(mockRadarResponse());
   }
+  if (path === "/presence") {
+    return Response.json(mockPresenceResponse());
+  }
   return Response.json({ detail: `mock: bilinmeyen yol ${path}` }, { status: 404 });
 }
 
-// Presence örnek verisi ayrı modülde (mocks/presence.ts): o modül bundle'a
-// bilerek girer (şerit S3'e dek hep örnek), bu dosya ise yalnız VITE_MOCK'ta
-// dynamic import'la yüklenir — prod bundle'a radar fixture'ı sızmaz.
+// Kapsam bilinçli olarak DAR: mock zinciri yalnız /radar + /presence'ı besler.
+// /board · /scope/* · /graph · /query için fixture YOK — o sayfalar canlı
+// backend ister (`make dev`); VITE_MOCK=1 ile açılırlarsa dürüstçe "ulaşılamıyor"
+// durumu basarlar (sessiz boş liste değil). Fixture eklemek = ayrı, bilinçli iş.
+//
+// Presence örnek verisi ayrı modülde (mocks/presence.ts) ve yalnız BURADAN
+// import edilir; bu dosya ise yalnız VITE_MOCK'ta dynamic import'la yüklenir —
+// prod bundle'a ne radar ne presence fixture'ı sızar (#188).
