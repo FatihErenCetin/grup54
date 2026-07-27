@@ -147,7 +147,35 @@ def test_auth_varsayilan_alanlar_bos():
     assert settings.GITHUB_OAUTH_CLIENT_SECRET is None
     assert settings.AUTH_SESSION_SECRET is None
     assert settings.AUTH_COOKIE_DOMAIN is None
-    assert settings.AUTH_POST_LOGIN_URL == "/radar"
+    # Mutlak URL (#258) - goreli "/radar" degil; bkz. asagidaki
+    # test_auth_post_login_url_* kilit testleri.
+    assert settings.AUTH_POST_LOGIN_URL == "http://localhost:5173/radar"
+
+
+def test_auth_post_login_url_goreli_yol_acilista_reddedilir():
+    # #258: goreli bir yol RedirectResponse'a oldugu gibi gecerse tarayici
+    # onu API origin'ine karsi cozer (frontend'e degil) -> sessiz 404.
+    # Fail-closed: acilista ValidationError, calisirken sessiz 404 DEGIL.
+    with pytest.raises(ValidationError, match="MUTLAK bir URL"):
+        Settings(_env_file=None, AUTH_POST_LOGIN_URL="/radar")
+
+
+@pytest.mark.parametrize(
+    "goreli_deger",
+    ["/radar", "radar", "//api.recommend2me.com/radar", ""],
+)
+def test_auth_post_login_url_semasiz_veya_hostsuz_degerler_reddedilir(goreli_deger):
+    # "//host/path" (semasiz protokol-goreli) ve bos string de ayni sinif:
+    # scheme yok -> RedirectResponse tarayicida mevcut sayfaya gore cozulur.
+    with pytest.raises(ValidationError, match="MUTLAK bir URL"):
+        Settings(_env_file=None, AUTH_POST_LOGIN_URL=goreli_deger)
+
+
+def test_auth_post_login_url_mutlak_url_kabul_edilir():
+    settings = Settings(
+        _env_file=None, AUTH_POST_LOGIN_URL="https://recommend2me.com/radar"
+    )
+    assert settings.AUTH_POST_LOGIN_URL == "https://recommend2me.com/radar"
 
 
 def test_auth_enabled_ucu_de_bos_ise_false():

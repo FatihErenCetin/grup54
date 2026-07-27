@@ -186,15 +186,50 @@ class Settings(BaseSettings):
     # ikizi; bkz. api/auth_session.py).
     AUTH_SESSION_SECRET: str | None = None
     # callback başarıyla bittiğinde tarayıcının döneceği yer (frontend rotası).
-    # "/radar" — #260 ile "/" artık kimliksiz/statik Landing sayfası oldu;
-    # gerçek bir GitHub girişi bittiğinde kullanıcı pazarlama sayfasına değil
-    # uygulamaya dönmeli (doğrulama bulgusu: happy-path testi bunu zaten
-    # "/radar" ile override ediyordu, varsayılan geride kalmıştı).
-    AUTH_POST_LOGIN_URL: str = "/radar"
+    # MUTLAK URL OLMAK ZORUNDA (şema + host dahil) — callback FastAPI'de
+    # (api.<domain>) çalışır ve `RedirectResponse` bir GÖRELİ yol (örn.
+    # "/radar") alırsa tarayıcı bunu MEVCUT (api) origin'ine karşı çözer,
+    # frontend origin'ine değil. Üretimde tam olarak bu yaşandı: kod
+    # varsayılanı göreli "/radar" idi, giriş "başarılı" görünüyordu ama
+    # tarayıcı `https://api.recommend2me.com/radar`'a düşüyordu — orada
+    # sayfa yok, sessiz 404 (#258). Sunucuda mutlak URL ile elle düzeltildi;
+    # varsayılan burada de facto DOĞRU (aşağıdaki local doğrulayıcı) ve yanlış
+    # (göreli) bir değer artık açılışta REDDEDİLİR — CORS_ORIGINS'in "*"
+    # reddi ve DEMO_MODE'un repo-pin zorunluluğuyla AYNI fail-closed desen:
+    # yanlış yapılandırma sessizce 404 üretmek yerine uygulamayı hiç
+    # başlatmaz. Üretim değeri (`https://recommend2me.com/radar`) BİLEREK
+    # burada hardcode EDİLMEDİ — hangi origin'in "doğru" olduğu ortama göre
+    # değişir; tek güvenli varsayılan yereldir (CORS_ORIGINS'in local
+    # girdileriyle AYNI köken: http://localhost:5173).
+    AUTH_POST_LOGIN_URL: str = "http://localhost:5173/radar"
     # Çerez Domain'i — paylaşılan üst alan adından türetilir (örn.
     # "ensemble-demo.com") ki api.<domain> ve app.<domain> aynı çerezi
     # paylaşabilsin; yerelde None kalır (Domain set edilmez, localhost çalışır).
     AUTH_COOKIE_DOMAIN: str | None = None
+
+    @field_validator("AUTH_POST_LOGIN_URL")
+    @classmethod
+    def _validate_auth_post_login_url_absolute(cls, value: str) -> str:
+        # Fail-SAFE değil fail-OPEN olurdu: göreli bir yolu "olduğu gibi"
+        # kabul edip RedirectResponse'a öylece geçirmek — tarayıcı onu
+        # sessizce API origin'ine karşı çözer, giriş "302 döndü" diye BAŞARILI
+        # raporlanır ama kullanıcı 404'e düşer (#258'in ta kendisi). Burada
+        # bunun yerine gerçek hata sinyali (ValidationError, açılışta patlar)
+        # veriliyor — "yokluk" ile ayırt edilemeyen sahte bir varsayılana
+        # ASLA çökmüyor.
+        parsed = urlparse(value)
+        if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+            raise ValueError(
+                "AUTH_POST_LOGIN_URL MUTLAK bir URL olmalı, şema+host dahil "
+                f"(örn. 'https://app.example.com/radar') — göreli bir yol "
+                f"(alınan: {value!r}) callback'in çalıştığı API origin'ine "
+                "karşı çözülür, frontend origin'ine DEĞİL (#258 üretim "
+                "olayı: '/radar' -> https://api.recommend2me.com/radar -> "
+                "404, sessizce). Yerelde varsayılanı kullan "
+                "(http://localhost:5173/radar) ya da gerçek frontend "
+                "origin'ini mutlak yaz."
+            )
+        return value
 
     @property
     def auth_enabled(self) -> bool:

@@ -17,6 +17,7 @@ from urllib.parse import parse_qs, urlparse
 
 import pytest
 from fastapi.testclient import TestClient
+from pydantic import ValidationError
 
 from ensemble.api.auth_session import SESSION_COOKIE_NAME, STATE_COOKIE_NAME, sign_session, verify_session
 from ensemble.app import create_app
@@ -99,7 +100,9 @@ def test_callback_github_hatasi_durustce_ele_alinir_oturum_acilmaz():
             follow_redirects=False,
         )
     assert resp.status_code == 302
-    assert resp.headers["location"] == "/radar"
+    # Varsayilan artik MUTLAK bir URL (#258) - goreli "/radar" DEGIL; bkz.
+    # config.py::Settings._validate_auth_post_login_url_absolute.
+    assert resp.headers["location"] == "http://localhost:5173/radar"
     assert SESSION_COOKIE_NAME not in resp.cookies
 
 
@@ -125,20 +128,35 @@ def test_callback_mutlu_yol_oturum_cerezi_kurulur_ve_yonlendirir(monkeypatch):
         "ensemble.api.routers.auth.fetch_github_user",
         lambda access_token, **_kwargs: ("esma6", "https://avatars.example/esma6.png"),
     )
-    with _client(**_AUTH_SETTINGS, AUTH_POST_LOGIN_URL="/radar") as client:
+    # Mutlak URL - production'daki gercek deger (#258): goreli "/radar"
+    # artik Settings acilista reddediyor (bkz. test_config.py).
+    with _client(
+        **_AUTH_SETTINGS, AUTH_POST_LOGIN_URL="https://app.example.com/radar"
+    ) as client:
         client.get("/auth/login", follow_redirects=False)
         state = client.cookies.get(STATE_COOKIE_NAME)
 
         resp = client.get(f"/auth/callback?code=abc&state={state}", follow_redirects=False)
 
         assert resp.status_code == 302
-        assert resp.headers["location"] == "/radar"
+        assert resp.headers["location"] == "https://app.example.com/radar"
         session_cookie = client.cookies.get(SESSION_COOKIE_NAME)
         assert session_cookie is not None
         payload = verify_session("session-secret-xyz", session_cookie)
         assert payload == {"handle": "esma6", "avatar_url": "https://avatars.example/esma6.png"}
         # state çerezi tek kullanımlık — geri gelen yanıtta temizlenmiş olmalı.
         assert client.cookies.get(STATE_COOKIE_NAME) is None
+
+
+def test_callback_goreli_yonlendirme_ayari_sunucu_ayaga_kalkmadan_reddedilir():
+    """#258 kilidi: yanlış yapılandırma (göreli AUTH_POST_LOGIN_URL) canlı bir
+    sunucuda 302 + sessiz 404 üretemez — Settings inşası sırasında (uygulama
+    ayağa kalkmadan) patlar. `_client()` burada BİLEREK TestClient'a hiç
+    girmiyor: regresyon `RedirectResponse`'a değil, `Settings`'e — yanlış
+    katmanda test edilirse (örn. router'ı monkeypatch'leyip yalnız location
+    header'ına bakarsak) validator kaldırılsa bile bu test yeşil kalırdı."""
+    with pytest.raises(ValidationError, match="MUTLAK bir URL"):
+        _client(**_AUTH_SETTINGS, AUTH_POST_LOGIN_URL="/radar")
 
 
 # --- /auth/me ---
