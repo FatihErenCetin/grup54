@@ -32,8 +32,9 @@ type NormalizedEvent = components["schemas"]["NormalizedEvent"];
  * Gün başlığı, saat ve sıralama HEPSİ bu tek helper'dan geçer — üç yerde üç
  * farklı parse, üç farklı kayma demek olurdu.
  *
- * `export`: ActorPage (#129) aynı naive-UTC riskini taşıyan `events[].ts`'i
- * okuyor — ikinci bir parse kopyası açmak yerine BUNU kullanıyor (ONU KULLAN). */
+ * `export`: aynı `NormalizedEvent.ts` alanını render eden HER yüz bu parse'ı
+ * kullanmalı — ActorPage (#129) ve ısı matrisi hücre listesi (#105) dahil.
+ * İkinci bir kopya açılırsa iki farklı kayma riski geri gelir (ONU KULLAN). */
 export function parseUtc(iso: string): Date {
   const zoneli = /[Zz]$|[+-]\d{2}:?\d{2}$/.test(iso) ? iso : `${iso}Z`;
   return new Date(zoneli);
