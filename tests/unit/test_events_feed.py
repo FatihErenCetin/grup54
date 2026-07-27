@@ -48,6 +48,38 @@ def test_get_events_with_since_narrows_payload():
     events, latest_ts = _service(_EVENTS).get_events(since=datetime(2026, 7, 10, 9, 0, 0))
     # since dahil (>=): 09:00 ve sonrası
     assert [e.id for e in events] == ["commit:aaa", "pr:99"]
+
+
+def test_get_events_with_naive_since_works_with_aware_github_data():
+    """Fatih'in #241 blocker'ı: naive since ile aware GitHub data'sı karşılaştırılamıyordu.
+    
+    EventService.get_events() naive datetime alır (router'dan gelir), ama gerçek
+    GitHubAdapter aware datetime'larla karşılaştırma yapar → TypeError olmamalı.
+    """
+    from datetime import timezone
+    
+    # GitHub'dan aware datetime'la gelen events (gerçek durumu simüle eder)
+    aware_events = [
+        NormalizedEvent(
+            id="evt1", type="commit", actor="user", branch=None, files=["x.py"],
+            ts=datetime(2026, 7, 10, 9, 0, 0, tzinfo=timezone.utc), ref="abc",
+        ),
+        NormalizedEvent(
+            id="evt2", type="pr", actor="user2", branch="T-1", files=[],
+            ts=datetime(2026, 7, 10, 10, 0, 0, tzinfo=timezone.utc), ref="1",
+        ),
+    ]
+    
+    service = _service(aware_events)
+    
+    # Router'dan naive datetime gelir (FastAPI parse eder)
+    naive_since = datetime(2026, 7, 10, 9, 0, 0)  # naive
+    
+    # Bu çağrı TypeError vermemeli
+    events, latest_ts = service.get_events(since=naive_since)
+    assert len(events) == 2
+    assert events[0].id == "evt1"
+    assert events[1].id == "evt2"
     assert latest_ts == datetime(2026, 7, 10, 10, 0, 0)
 
 

@@ -115,8 +115,20 @@ class EventService:
         Returns:
             (ts,id'ye göre artan sıralı eventler, en son event ts'i = sonraki cursor)
         """
-        lower_bound = _to_naive_utc(since) if since is not None else datetime.min
+        # Fatih #241 blocker fix: GitHub adapter aware datetime bekler, naive gönderirsek
+        # _fetch_pr_events içinde `datetime.fromisoformat(pr["updated_at"]) >= since`
+        # karşılaştırması TypeError verir. since'i aware UTC'ye çevirip gönderiyoruz.
+        if since is None:
+            # Tüm feed (ilk poll): epoch'tan itibaren, aware UTC
+            lower_bound = datetime.min.replace(tzinfo=timezone.utc)
+        elif since.tzinfo is None:
+            # Naive gelirse aware UTC'ye çevir
+            lower_bound = since.replace(tzinfo=timezone.utc)
+        else:
+            # Zaten aware, olduğu gibi kullan
+            lower_bound = since
+        
         events = self.github_port.fetch_events(lower_bound)
         ordered = sorted(events, key=lambda e: (_to_naive_utc(e.ts), e.id))
-        latest_ts = _to_naive_utc(ordered[-1].ts) if ordered else lower_bound
+        latest_ts = _to_naive_utc(ordered[-1].ts) if ordered else _to_naive_utc(lower_bound)
         return ordered, latest_ts
