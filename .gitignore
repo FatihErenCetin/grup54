@@ -52,3 +52,11 @@ dist/
 # O desen `.env.example` ve `deploy/.env.production.example` şablonlarını
 # da yakalıyordu (takipteki dosyalar etkilenmez ama YENİ bir örnek dosya
 # eklenemezdi). Gerçek sırlar zaten yukarıda satır 2-7'de kapsanıyor.
+# `vercel link` bunu ekliyor (.env.local + VERCEL_OIDC_TOKEN icin) ve
+# KALDIRILIRSA HER LINK'TE GERI GELIYOR. Kaldirmak yerine sablonlari
+# ISTISNA yapiyoruz — cunku ciplak `.env*` `.env.example` ve
+# `deploy/.env.production.example`'i da yakalar (takipteki dosyalar
+# etkilenmez ama YENI bir ornek dosya sessizce yok sayilirdi).
+.env*
+!.env.example
+!deploy/.env.production.example
