@@ -108,6 +108,14 @@ class Settings(BaseSettings):
     # gecmisi kaybediyordu (olculdu: repo 19 Haziran'dan beri ~250 commit,
     # akis 21 Temmuz'dan geriye gitmiyordu). Iki farkli ihtiyac, iki ayar.
     GITHUB_HISTORY_LIMIT: int = 500
+    # 429'da sunucunun dayattigi `retryDelay`'e uyariz (#283) ama INSANIN
+    # BEKLEDIGI istekte bu sinirla kirpilir. Olculdu (2026-07-27): Gemini
+    # generate kotasi GUNDE 20; tukendiginde `retryDelay: 23s` geliyor ama
+    # pencere yarin aciliyor -- 23 sn beklemek hicbir sey kazandirmiyor,
+    # `/radar` 66.7 sn suruyordu ve sonunda yine "degerlendiremedik" diyordu.
+    # Erken pes edip DURUST cevap vermek daha iyi. Toplu isler (`rebuild`)
+    # bunu yukseltip gercekten bekleyebilir.
+    GEMINI_RETRY_AFTER_CAP_S: float = 10.0
     # Judge asamasi I/O-bagimli: canlida 131 aday SIRALI olarak 129 sn surerken
     # konteyner CPU'su %0.7-6 arasindaydi (#254). Ust sinir saglayicinin RPM
     # tavani; 1 yapmak paralelligi tamamen kapatir (sirali yol korunur).

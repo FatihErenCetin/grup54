@@ -360,7 +360,13 @@ def test_retry_GERCEKTEN_dayatilan_sure_kadar_bekler(monkeypatch):
 
     modeller = _Kota429Models()
     _patch_genai_client(monkeypatch, modeller)
-    client = ResilientGeminiClient(_settings(GEMINI_MAX_RETRIES=3))
+    # Sinir BILEREK yuksek: bu test "sarmalayici dekoratore bagli mi" sorusunu
+    # kiliyor, kirpma davranisini degil (onu `test_dayatilan_sure_UST_SINIRLA_
+    # kirpilir` olcuyor). Varsayilan 10 sn'lik sinirla 30 sn'lik dayatma
+    # kirpilirdi ve iki farkli sey tek testte karisirdi.
+    client = ResilientGeminiClient(
+        _settings(GEMINI_MAX_RETRIES=3, GEMINI_RETRY_AFTER_CAP_S=120.0)
+    )
 
     client.embed_content(["a"], task_type="SEMANTIC_SIMILARITY")
 
@@ -369,3 +375,63 @@ def test_retry_GERCEKTEN_dayatilan_sure_kadar_bekler(monkeypatch):
         f"sunucunun dayattigi 30 sn + 1 sn pay beklenirdi, uyunan: {uykular[0]:.2f} sn "
         "-- dekoratorlerden `_bekleme` silinmis olabilir (8 sn tavanina duser)"
     )
+
+
+# ---------------------------------------------------------------------------
+# retryDelay UST SINIRI — interaktif yol ile toplu yolun ihtiyaci farkli
+# ---------------------------------------------------------------------------
+
+
+def test_dayatilan_sure_UST_SINIRLA_kirpilir():
+    """MUTASYON KILIDI: sinir kaldirilirsa interaktif istek 24 sn bekler.
+
+    Uretimde olculdu (2026-07-27): Gemini generate kotasi GUNDE 20 istek;
+    tukendiginde `retryDelay: 23s` geliyor ama pencere YARIN aciliyor --
+    beklemek hicbir sey kazandirmiyor. `/radar` 66.7 saniye surup sonunda
+    yine "degerlendiremedik" diyordu. Erken pes edip durust cevap vermek,
+    gec pes edip AYNI cevabi vermekten iyidir.
+    """
+    from ensemble.integrations.gemini.client import _bekleme
+
+    class _Sonuc:
+        @staticmethod
+        def exception():
+            return GeminiTransientError("429", retry_after=23.0)
+
+    class _Durum:
+        outcome = _Sonuc()
+
+    bekle = _bekleme(lambda _s: 8.0, lambda: 10.0)
+    assert bekle(_Durum()) == 10.0, "24 sn istenmisti, 10 sn'lik sinira kirpilmali"
+
+
+def test_ust_sinir_YUKSELTILEBILIR_toplu_isler_icin():
+    """`rebuild` gibi toplu isler gercekten bekleyebilmeli -- kirpma orada
+    ZARARLI olurdu (embed kotasi dakikalik, beklemek ISE YARIYOR: `make
+    rebuild` tam da bu sayede 250'den 663 olaya cikti)."""
+    from ensemble.integrations.gemini.client import _bekleme
+
+    class _Sonuc:
+        @staticmethod
+        def exception():
+            return GeminiTransientError("429", retry_after=27.0)
+
+    class _Durum:
+        outcome = _Sonuc()
+
+    assert _bekleme(lambda _s: 8.0, lambda: 120.0)(_Durum()) == 28.0
+
+
+def test_sinir_ALTINDA_kalan_sure_kirpilmaz():
+    """Kisa bir dayatma (or. 3 sn) oldugu gibi kullanilmali."""
+    from ensemble.integrations.gemini.client import _bekleme
+
+    class _Sonuc:
+        @staticmethod
+        def exception():
+            return GeminiTransientError("429", retry_after=3.0)
+
+    class _Durum:
+        outcome = _Sonuc()
+
+    assert _bekleme(lambda _s: 8.0, lambda: 10.0)(_Durum()) == 4.0

@@ -49,11 +49,31 @@ def _classify(exc: Exception) -> GeminiTransientError | GeminiPermanentError:
     return GeminiTransientError(metin)
 
 
-def _bekleme(varsayilan_wait):
-    """Sunucunun dayattığı süre varsa ONU, yoksa normal backoff'u kullanır.
+def _bekleme(varsayilan_wait, ust_sinir_saglayici=None):
+    """Sunucunun dayattığı süre varsa ONU, yoksa normal backoff'u kullanır —
+    ama İNSANIN BEKLEDİĞİ bir istekte üst sınırı aşmadan.
 
     tenacity'nin `wait` parametresi retry_state alan bir callable kabul eder;
     böylece bekleme kararını hatanın İÇERİĞİNE göre verebiliyoruz.
+
+    ÜST SINIR NEDEN VAR (üretimde ölçüldü, 2026-07-27): `retryDelay`'e uymak
+    toplu backfill'de doğru (`make rebuild` tam da bu sayede tamamlandı), ama
+    interaktif `/radar` isteğinde YANLIŞ. O gün ölçülen canlı durum:
+
+        Gemini kotası : generate_content 20 istek / GÜN  -> tükenmiş
+        Groq yedeği   : 429
+        retryDelay    : 23 sn
+        /radar        : 66.7 sn
+
+    Kota GÜNLÜK olduğu için 23 saniye beklemek hiçbir şey kazandırmıyordu —
+    pencere yarın açılıyor. Kullanıcı 66 saniye bekleyip yine "değerlendiremedik"
+    görüyordu. Erken pes edip DÜRÜST cevap vermek, geç pes edip aynı cevabı
+    vermekten iyidir.
+
+    Sınır ayardan okunur (`GEMINI_RETRY_AFTER_CAP_S`): `rebuild` gibi toplu
+    işler yükseltip gerçekten bekleyebilir. `GITHUB_BACKFILL_LIMIT` ile
+    `GITHUB_HISTORY_LIMIT` ayrımının aynısı — interaktif yol ile toplu yolun
+    ihtiyacı farklı.
     """
 
     def _wait(retry_state) -> float:
@@ -62,7 +82,9 @@ def _bekleme(varsayilan_wait):
         if dayatilan:
             # +1 sn pay: kota penceresi tam sınırda açılıyorsa erken uyanıp
             # aynı duvara toslamayalım.
-            return float(dayatilan) + 1.0
+            istenen = float(dayatilan) + 1.0
+            ust = ust_sinir_saglayici() if ust_sinir_saglayici else None
+            return min(istenen, ust) if ust is not None else istenen
         return varsayilan_wait(retry_state)
 
     return _wait
@@ -125,7 +147,10 @@ class ResilientGeminiClient:
         @retry(
             retry=retry_if_exception_type(GeminiTransientError),
             stop=stop_after_attempt(self._settings.GEMINI_MAX_RETRIES),
-            wait=_bekleme(wait_random_exponential(multiplier=0.5, max=RETRY_WAIT_CAP_S)),
+            wait=_bekleme(
+                wait_random_exponential(multiplier=0.5, max=RETRY_WAIT_CAP_S),
+                lambda: self._settings.GEMINI_RETRY_AFTER_CAP_S,
+            ),
             reraise=True,
         )
         def _attempt() -> str:
@@ -152,7 +177,10 @@ class ResilientGeminiClient:
         @retry(
             retry=retry_if_exception_type(GeminiTransientError),
             stop=stop_after_attempt(self._settings.GEMINI_MAX_RETRIES),
-            wait=_bekleme(wait_random_exponential(multiplier=0.5, max=RETRY_WAIT_CAP_S)),
+            wait=_bekleme(
+                wait_random_exponential(multiplier=0.5, max=RETRY_WAIT_CAP_S),
+                lambda: self._settings.GEMINI_RETRY_AFTER_CAP_S,
+            ),
             reraise=True,
         )
         def _attempt() -> list[list[float]]:
