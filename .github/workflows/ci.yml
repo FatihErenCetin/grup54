@@ -35,6 +35,15 @@ jobs:
       - name: Eval precision-gate (#30)
         run: make eval-gate
 
+      # Eval cagri-sayisi butcesi (#256): precision-gate'in maliyet ikizi. Sabit
+      # fixture uzerinde RadarService.collect() sayacli sahte port'larla kosar;
+      # judge/embed/GitHub cagrisi beyan edilen butceyi asarsa kirmizi (ör. dosya-
+      # kesisimi filtresi kaldirilirsa aday sayisi C(n,2)'ye firlar). Zaten
+      # `make test` icinde de kosuyor (tests/unit/test_butce_eval.py) - bu adim
+      # eval-gate ile ayni belt-and-suspenders deseni izler.
+      - name: Eval cagri-sayisi butcesi (#256)
+        run: make eval-butce
+
       # Kontrat drift-check (#20): router'lar degisip openapi.json commit'lenmediyse kirmizi
       # Bu adim zorunlu-check listesindeki `lint-test` job'inda yasar (main branch
       # protection). Job'i ayri/zorunlu-olmayan bir job'a TASIMA — enforcement

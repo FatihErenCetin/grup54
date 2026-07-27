@@ -1,4 +1,4 @@
-.PHONY: install dev test lint openapi contracts eval-dataset eval-run eval-sweep eval eval-gate eval-provider eval-model-secimi scope-eval harness-init frontend-build-guard deploy
+.PHONY: install dev test lint openapi contracts eval-dataset eval-run eval-sweep eval eval-gate eval-butce eval-provider eval-model-secimi scope-eval harness-init frontend-build-guard deploy
 
 install:
 	uv sync --all-packages
@@ -38,13 +38,20 @@ eval-run:
 eval-sweep:
 	uv run python -m eval.sweep
 
-# #18 DONE kapısı: eşik+judge geçidi bir komutta + #30 precision-gate.
-eval: eval-run eval-sweep eval-gate
+# #18 DONE kapısı: eşik+judge geçidi bir komutta + #30 precision-gate + #256 butce.
+eval: eval-run eval-sweep eval-gate eval-butce
 
 # CI precision-gate (#30): eval kalibre operasyon noktasında koşar; precision
 # veya F0.5 kalibre tabanın altına düşerse exit 1 (dedektör/judge regresyonu).
 eval-gate:
 	uv run python -m eval.gate
+
+# Cagri-sayisi butcesi (#256) - precision-gate'in maliyet ikizi. Sabit fixture
+# uzerinde RadarService.collect()'i sayacli sahte port'larla kostur; judge/
+# embed/GitHub cagrisi beyan edilen butceyi asarsa exit 1 (ör. dosya-kesisimi
+# filtresi kaldirilirsa aday sayisi C(n,2)'ye firlar). Rapor: eval/butce-raporu.md.
+eval-butce:
+	uv run python -m eval.butce_eval
 
 # #78 canli provider kalibrasyonu. Ornek:
 #   make eval-provider                 # ikisi
