@@ -84,7 +84,7 @@ Bu dosya `T-190-deploy-runbook` dalının kendisi. Bağımlı/ilişkili işlerin
 
 ## 2. Env → platform eşleme tablosu
 
-`.env.example`'daki **49 anahtarın tamamı** aşağıda (**48'i düz `ANAHTAR=` satırı, 1'i — `CORS_ORIGINS` — yalnız yorum-satırı örneği; ikisi de sayılır**). Bu sayı, T-190 ilk taslağının iddia ettiği 38'den **10 fazla** — aradaki fark `main`'e bu dal yazıldıktan sonra inen `#252/#254/#255` (Groq yedek judge + judge paralelleştirme) ile `.env.example`'a eklenen `GROQ_API_KEY` · `GROQ_MODEL` · `RADAR_JUDGE_CONCURRENCY` `#218` ile eklenen `ENSEMBLE_ALLOW_FAKE_SEED` `#259` ile eklenen `VERDICT_TTL_DAYS` `#79` ile eklenen beş auth anahtarı (`GITHUB_OAUTH_*`, `AUTH_*`) ve `#280` ile eklenen `GITHUB_HISTORY_LIMIT`. *(38 değil 48 — bu PR'ın kendi drift-kilidi test'i bu farkı yakaladığı için yeniden sayıldı, uydurulmadı.)*
+`.env.example`'daki **50 anahtarın tamamı** aşağıda (**49'u düz `ANAHTAR=` satırı, 1'i — `CORS_ORIGINS` — yalnız yorum-satırı örneği; ikisi de sayılır**). Bu sayı, T-190 ilk taslağının iddia ettiği 38'den **10 fazla** — aradaki fark `main`'e bu dal yazıldıktan sonra inen `#252/#254/#255` (Groq yedek judge + judge paralelleştirme) ile `.env.example`'a eklenen `GROQ_API_KEY` · `GROQ_MODEL` · `RADAR_JUDGE_CONCURRENCY` `#218` ile eklenen `ENSEMBLE_ALLOW_FAKE_SEED` `#259` ile eklenen `VERDICT_TTL_DAYS` `#79` ile eklenen beş auth anahtarı (`GITHUB_OAUTH_*`, `AUTH_*`) `#280` ile eklenen `GITHUB_HISTORY_LIMIT` ve `#283` takibiyle eklenen `GEMINI_RETRY_AFTER_CAP_S`. *(38 değil 48 — bu PR'ın kendi drift-kilidi test'i bu farkı yakaladığı için yeniden sayıldı, uydurulmadı.)*
 
 Dört sınıf — Fly döneminden **isim değişti**, kavram aynı:
 
@@ -135,6 +135,7 @@ Dört sınıf — Fly döneminden **isim değişti**, kavram aynı:
 | 37 | `GITHUB_REPO_NAME` | sunucu env dosyası | — | izlenen repo adı — aynı fail-closed şart |
 | 38 | `GITHUB_DEFAULT_BRANCH` | sunucu env dosyası (opsiyonel) | — | kod default `main` |
 | 39 | `GITHUB_BACKFILL_LIMIT` | sunucu env dosyası (opsiyonel) | — | kod default `50` — **radarın** ilk doldurması; büyütmek judge kotasını yakar (çiftler kare büyür) |
+| 39c | `GEMINI_RETRY_AFTER_CAP_S` | sunucu env dosyası (opsiyonel) | — | kod default `10` sn — 429'da sunucunun dayattığı `retryDelay`'e uyulur ama **insanın beklediği** istekte bu sınırla kırpılır. Ölçüldü: Gemini generate kotası **günde 20**; tükendiğinde 23 sn "bekle" diyor ama pencere yarın açılıyor → `/radar` 66.7 sn sürüp yine "değerlendiremedik" diyordu. `make rebuild` bunu kendiliğinden 120 sn'ye yükseltir (embed kotası **dakikalık**, orada beklemek işe yarar) |
 | 39b | `GITHUB_HISTORY_LIMIT` | sunucu env dosyası (opsiyonel) | — | kod default `500` — **projeksiyonun** (Activity/Graph/board) geçmiş derinliği, `make rebuild` okur. Radardan **ayrı**: projeksiyon çift üretmez, maliyeti doğrusaldır (#280) |
 | 40 | `GITHUB_WEBHOOK_SECRET` | sunucu env dosyası | — | webhook imza doğrulaması (D-35); **rotate** prosedürü §9 |
 | 41 | `GITHUB_WEBHOOK_PROXY_URL` | yalnız-local | — | hosted'da webhook doğrudan sunucu URL'ine gelir (smee kanalı yalnız local geliştirme) |
@@ -150,7 +151,7 @@ Dört sınıf — Fly döneminden **isim değişti**, kavram aynı:
 
 ### Ek A'nın kapsamadığı anahtarlar (bulgu — kod/kontrat DEĞİŞTİRİLMEDİ)
 
-`docs/sprint3-kontratlar.md` Ek A "bu tablo runbook'un tek kaynağıdır" diyor ama `.env.example`'da olup Ek A'nın satırında **olmayan** 11 anahtar var: `LLM_PROVIDER`, 6× `OLLAMA_*`, `GITHUB_BACKFILL_LIMIT`, `GITHUB_HISTORY_LIMIT`, `GROQ_API_KEY`, `GROQ_MODEL`, `RADAR_JUDGE_CONCURRENCY` (son üçü Ek A donduktan çok sonra, `#255`/`#254` ile eklendi — Ek A hiç güncellenmedi). Yukarıdaki tablo bu yüzden Ek A'nın **üst kümesi** — kabul kriteri "her `.env.example` anahtarı" olduğu için hepsini kapsamak zorunlu. Ek A'ya satır eklemek bu PR'ın işi **değil** — ayrı bir takip issue'da (sahibi: infra) kapatılmalı; bu, yukarıdaki platform-ismi çelişkisiyle (Fly vs self-host) **aynı** takip işine bağlanabilir.
+`docs/sprint3-kontratlar.md` Ek A "bu tablo runbook'un tek kaynağıdır" diyor ama `.env.example`'da olup Ek A'nın satırında **olmayan** 11 anahtar var: `LLM_PROVIDER`, 6× `OLLAMA_*`, `GITHUB_BACKFILL_LIMIT`, `GITHUB_HISTORY_LIMIT`, `GEMINI_RETRY_AFTER_CAP_S`, `GROQ_API_KEY`, `GROQ_MODEL`, `RADAR_JUDGE_CONCURRENCY` (son üçü Ek A donduktan çok sonra, `#255`/`#254` ile eklendi — Ek A hiç güncellenmedi). Yukarıdaki tablo bu yüzden Ek A'nın **üst kümesi** — kabul kriteri "her `.env.example` anahtarı" olduğu için hepsini kapsamak zorunlu. Ek A'ya satır eklemek bu PR'ın işi **değil** — ayrı bir takip issue'da (sahibi: infra) kapatılmalı; bu, yukarıdaki platform-ismi çelişkisiyle (Fly vs self-host) **aynı** takip işine bağlanabilir.
 
 ### Platform-only ekstra anahtarlar (`.env.example`'da YOK, yine de gerekli)
 

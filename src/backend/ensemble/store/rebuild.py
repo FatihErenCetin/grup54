@@ -36,6 +36,12 @@ from ensemble.store.models import EventRow, PresenceRow, TaskProjectionRow, Task
 from ensemble_shared.harness import HarnessPort
 
 
+# Toplu backfill 429'da ne kadar beklemeye RAZI (saniye). Gemini'nin dakikalik
+# embed kotasi tukendiginde sunucu ~30 sn diyor; interaktif sinir (10 sn) burada
+# isi yarim birakirdi.
+_TOPLU_IS_BEKLEME_SINIRI_S = 120.0
+
+
 def append_status_events(session: Session, events: Iterable[TaskStatusEventRow]) -> int:
     """`task_status_events`'e append-only ekleme.
 
@@ -264,6 +270,17 @@ if __name__ == "__main__":
     from ensemble_shared.harness import FileHarnessPort
 
     settings = get_settings()
+
+    # TOPLU IS: 429'da sunucunun dayattigi sureyi TAM bekle.
+    # Interaktif yolda bu sure kirpiliyor (`GEMINI_RETRY_AFTER_CAP_S`, ~10 sn)
+    # cunku insan bekliyor ve gunluk kota penceresi zaten bugun acilmayacak.
+    # Burada tam tersi: kimse beklemiyor ve embed kotasi DAKIKALIK, yani
+    # beklemek GERCEKTEN ise yariyor -- gecmis backfill'i 250'den 663 olaya
+    # cikaran sey tam olarak buydu (#280/#283, olculdu 2026-07-27).
+    if settings.GEMINI_RETRY_AFTER_CAP_S < _TOPLU_IS_BEKLEME_SINIRI_S:
+        settings = settings.model_copy(
+            update={"GEMINI_RETRY_AFTER_CAP_S": _TOPLU_IS_BEKLEME_SINIRI_S}
+        )
 
     github = _build_github_port(settings)
     if isinstance(github, FakeGitHubAdapter) and not settings.ENSEMBLE_ALLOW_FAKE_SEED:
