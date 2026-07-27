@@ -1,6 +1,7 @@
 import { Fragment, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import type { components } from "../api/schema.d.ts";
+import { ISI_SINIFLARI, isiSinifi } from "../lib/isiRampasi";
 import { useEvents } from "../lib/useEvents";
 import { useGraph } from "../lib/useGraph";
 import { parseUtc } from "../pages/ActivityPage";
@@ -29,24 +30,6 @@ type NormalizedEvent = components["schemas"]["NormalizedEvent"];
    satır `<IsiMatrisi />` ile eklenir, mevcut akış bozulmaz. Kapalıyken hiçbir
    istek atılmaz (gövde hiç mount olmaz) — kapalı panel için gereksiz polling
    yok. */
-
-const ISI_SINIFLARI = [
-  "bg-primary/10 text-foreground",
-  "bg-primary/25 text-foreground",
-  "bg-primary/45 text-foreground",
-  "bg-primary/70 text-primary-foreground",
-  "bg-primary text-primary-foreground",
-] as const;
-
-/** Hücrenin ısı sınıfı — en yoğun hücreye GÖRECELİ (GraphPage ile aynı ölçek
-    mantığı). İndeks daima kenetlenir: bozuk/0 `count` className'e `undefined`
-    sızdırmaz. */
-function isiSinifi(count: number, enYogun: number): string {
-  const oran = enYogun > 0 ? count / enYogun : 0;
-  const k = Math.ceil(oran * ISI_SINIFLARI.length);
-  const i = Math.min(ISI_SINIFLARI.length - 1, Math.max(0, k - 1));
-  return ISI_SINIFLARI[i];
-}
 
 /** Backend `engine/graph.py::_module_of` ile BİREBİR AYNI kural (kontrat:
     modül path'ten hesaplanır, şemaya yazılmaz). İki taraf ayrı hesap yaparsa

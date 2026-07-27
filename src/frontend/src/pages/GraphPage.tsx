@@ -8,6 +8,7 @@ import {
   SonGuncelleme,
   YuklemeIskeleti,
 } from "../components/ui";
+import { ISI_SINIFLARI, isiSinifi } from "../lib/isiRampasi";
 import { useGraph } from "../lib/useGraph";
 
 type GraphEdge = components["schemas"]["GraphEdge"];
@@ -39,16 +40,6 @@ type GraphNode = components["schemas"]["GraphNode"];
        çizmektense dürüstçe gate'li bırakıyoruz.
    Kenar başına dosya listesi de YOK: GraphEdge kontratı taşımıyor, uydurma
    alan çizilmez. */
-
-/* Isı rampası — Tailwind JIT literal sınıf adı tarar, bu yüzden dinamik
-   `bg-primary/${n}` KURULMAZ; tam sınıf adları sabit tabloda. */
-const ISI_SINIFLARI = [
-  "bg-primary/10 text-foreground",
-  "bg-primary/25 text-foreground",
-  "bg-primary/45 text-foreground",
-  "bg-primary/70 text-primary-foreground",
-  "bg-primary text-primary-foreground",
-] as const;
 
 const PENCERELER = [7, 14, 30] as const;
 const GUN_MS = 86_400_000;
@@ -86,16 +77,6 @@ function modKaydet(mod: GorunumModu): void {
   } catch {
     /* kalıcılık best-effort — mod yine de state'te değişir, sayfa çalışır */
   }
-}
-
-/** Hücrenin ısı sınıfı. Ölçek en yoğun hücreye GÖRECELİdir (legend bunu
-    sayıyla söyler — gizli normalizasyon yok). İndeks daima kenetlenir:
-    bozuk/0 bir `count` gelse bile className'e `undefined` sızmaz. */
-function isiSinifi(count: number, enYogun: number): string {
-  const oran = enYogun > 0 ? count / enYogun : 0;
-  const k = Math.ceil(oran * ISI_SINIFLARI.length);
-  const i = Math.min(ISI_SINIFLARI.length - 1, Math.max(0, k - 1));
-  return ISI_SINIFLARI[i];
 }
 
 /** Gün cinsinden yaş; tarih çözülemezse null (sessizce "bugün" SAYILMAZ). */
