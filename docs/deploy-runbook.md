@@ -66,7 +66,7 @@ Bu dosya `T-190-deploy-runbook` dalının kendisi. Bağımlı/ilişkili işlerin
                                   │   bu compose'a hiç dokunmuyor)                │
                                   └────────────────────────────────────────────────┘
                           GitHub Actions ──────┘  (workflow_run: CI TAMAMI yeşil →
-                          CI (lint-test + gitleaks + frontend) → Deploy (Self-host, #236 — henüz main'de değil)
+                          CI (lint-test + gitleaks + frontend) → Deploy (Self-host, #236 — ✅ main'de, 27 Tem)
 ```
 
 - **Frontend (Vercel):** statik SPA, `vite build`; `VITE_API_BASE_URL` **build-time** gömülür (rewrite kuralları `src/frontend/vercel.json`'da). İki domain de bağlı ve **ikisi de canlı** — 26 Temmuz'da doğrudan doğrulandı: `curl -I https://recommend2me.com` ve `curl -I https://www.recommend2me.com` ikisi de `200` dönüyor (bkz. §2 A2 notu — hangisinin "primary" sayıldığından bağımsız olarak ikisi de `CORS_ORIGINS`'te listeli, bu yüzden hangi domainden geldiği önemli değil).
@@ -260,9 +260,9 @@ Aynı pencerede sunucu tarafında `CORS_ORIGINS` = `https://recommend2me.com,htt
 
 GitHub App → Webhook URL: `https://api.recommend2me.com/webhooks/github` (⚠️ **`/webhook` DEĞİL** — kanonik route `src/backend/ensemble/api/routers/webhook.py`'de `POST /webhooks/github`, `openapi.json`'da da bu yol var; yanlış URL ile kaydedilirse GitHub'ın her teslimatı 404 alır ve hosted ingest **sessizce** hiç çalışmaz — board hiç dolmaz, hata da görünmez).
 
-#### 8) CD'yi aç (#192, T-192-deploy-cd-fly / PR #236) — **henüz main'de değil, hedef durum**
+#### 8) CD'yi aç (#192, PR #236) — ✅ **YAPILDI (27 Tem), aşağıdaki adımlar uygulandı**
 
-PR #236 merge olduktan **sonra**, sıra kritik:
+Sıra kritikti ve buna uyuldu:
 
 ```bash
 # 1) Sunucuda self-hosted runner'ı kaydet (Settings → Actions → Runners → New self-hosted runner)
@@ -273,6 +273,22 @@ gh variable set DEPLOY_ENABLED --body true --repo FatihErenCetin/grup54
 ```
 
 ⚠️ **Sıra ters çevrilirse:** `DEPLOY_ENABLED=true` runner Idle olmadan set edilirse, ilk yeşil CI'da `deploy` job'ı **kuyruğa girer ve orada sessizce asılı kalır** (kırmızı olmaz, ama hiç bitmez) — Fly döneminin "app not found" hatasından farklı bir sessiz-asılma riski. Runner'ın Idle olduğunu **önce** doğrula.
+
+**Canlı kanıt (27 Tem 12:21 UTC)** — ilk otomatik deploy:
+
+```
+run        : https://github.com/FatihErenCetin/grup54/actions/runs/30265557197
+preflight  ✅ success   (ubuntu-latest)
+deploy     ✅ success   (self-hosted, linux, x64, ensemble-prod)
+smoke      ✅ success
+
+CD'nin deploy ettiği SHA : 93b2579
+main HEAD                : 93b2579        <- eşleşiyor
+konteyner Created        : 2026-07-27T12:21:49Z
+/health                  : 200 {"status":"ok","mode":"hosted"}
+```
+
+Runner: `ensemble-prod-vds` · online · systemd servisi (yeniden başlatmada da kalkar).
 
 Fly'daki `FLY_API_TOKEN` adımının (`gh secret set`) self-host'ta **karşılığı yok** — bu bir eksik değil, mimari sadeleşme: self-hosted runner PULL modeli GitHub'a hiçbir kimlik bilgisi vermez.
 
