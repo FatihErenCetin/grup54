@@ -1067,46 +1067,6 @@ export interface operations {
             };
         };
     };
-    get_presence_presence_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["PresenceResponse"];
-                };
-            };
-            /** @description Kalici saglayici hatasi (GitHub/Gemini/Ollama) */
-            502: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Gecici olarak erisilemez */
-            503: {
-                headers: {
-                    /** @description Saniye — yalniz kendiliginden duzelebilir durumlarda */
-                    "Retry-After"?: number;
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-        };
-    };
     github_webhook_webhooks_github_post: {
         parameters: {
             query?: never;
