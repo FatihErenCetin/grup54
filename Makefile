@@ -30,7 +30,7 @@ eval-dataset:
 	uv run python eval/backtest/build_dataset.py
 
 rebuild:
-	uv run python -c "from ensemble.store.engine import get_engine, get_session_factory; from ensemble.store.rebuild import rebuild_projection; from ensemble.config import get_settings; from ensemble_shared.harness import FileHarnessPort; settings=get_settings(); engine=get_engine(settings); session=get_session_factory(engine)(); harness=FileHarnessPort(); print('Rebuilding projection...'); res=rebuild_projection(session, harness); print(f'Rebuilt: {res}')"
+	uv run python -m ensemble.store.rebuild
 
 eval-run:
 	uv run python -m eval.eval_runner
