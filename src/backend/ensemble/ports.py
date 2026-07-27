@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Protocol
+from typing import TYPE_CHECKING, Protocol
 
 from ensemble.models import (
     Detection,
@@ -11,6 +11,9 @@ from ensemble.models import (
     ScopeJudgement,
     ScopeSubject,
 )
+
+if TYPE_CHECKING:
+    from sqlalchemy.orm import Session
 
 # HarnessPort, shared paketinde (ensemble_shared.harness) yer alıyor ve
 # oradan import edilecek. Buraya tekrar yazmıyoruz (GATE 1 kuralı).
@@ -30,6 +33,14 @@ class EmbeddingsPort(Protocol):
 class VectorIndexPort(Protocol):
     def upsert(self, id: str, vec: list[float], meta: dict) -> None: ...
     def query(self, vec: list[float], k: int) -> list[tuple[str, float]]: ...
+    def clear(self) -> None:
+        """Bağımsız operasyon için; rebuild akışı replace_all kullanır."""
+    def replace_all(
+        self,
+        vectors: list[tuple[str, list[float], dict]],
+        *,
+        session: "Session | None" = None,
+    ) -> None: ...
 
 
 class JudgePort(Protocol):
