@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
+import type { AuthEylemSonucu } from "../lib/useAuth";
 
 /* Çekirdek UI primitive'leri (#19) — shadcn/ui adlandırma/token uyumlu;
    S2 iskeleti için el yazımı, shadcn CLI onboarding'i #21 ile gelir. */
@@ -150,6 +151,32 @@ export function SonGuncelleme({
         ? "Henüz veri yok"
         : `Son güncelleme: ${new Date(dataUpdatedAt).toLocaleTimeString("tr-TR")}`}
     </span>
+  );
+}
+
+/** RegisterPage + LoginPage'in ORTAK sonuç bloğu (T-294) — ikisi de aynı
+    `AuthEylemSonucu` birleşimini aynı kurallarla çizer; iki yerde ayrı ayrı
+    yazılsaydı biri güncellenip diğeri unutulabilirdi (drift). Yalnız
+    `tur !== "basarili"` için çağrılır — başarıda sayfa zaten yönlendirir.
+    429'da saniye biliniyorsa ("Retry-After" başlığı) TAM o cümle basılır
+    (görev brifi: "N saniye sonra tekrar deneyin"); bilinmiyorsa backend'in
+    kendi (uydurma olmayan) genel mesajına düşülür. */
+export function AuthSonucMesaji({
+  sonuc,
+}: {
+  sonuc: Exclude<AuthEylemSonucu, { tur: "basarili" }>;
+}) {
+  const mesaj =
+    sonuc.tur === "cok_fazla_deneme" && sonuc.saniye !== null
+      ? `${sonuc.saniye} saniye sonra tekrar deneyin.`
+      : sonuc.mesaj;
+  return (
+    <p
+      role="alert"
+      className="rounded-lg border border-severity-high/40 bg-severity-high/10 px-3 py-2 text-xs text-severity-high"
+    >
+      {mesaj}
+    </p>
   );
 }
 

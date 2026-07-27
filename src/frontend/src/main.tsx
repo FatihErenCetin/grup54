@@ -13,6 +13,7 @@ const queryClient = new QueryClient();
    gerçek sayfalar büyüdükçe (#21+) ilk yükleme küçük kalır. */
 const LandingPage = lazy(() => import("./pages/LandingPage"));
 const LoginPage = lazy(() => import("./pages/LoginPage"));
+const RegisterPage = lazy(() => import("./pages/RegisterPage"));
 const RadarPage = lazy(() => import("./pages/RadarPage"));
 const BoardPage = lazy(() => import("./pages/BoardPage"));
 const ScopePage = lazy(() => import("./pages/ScopePage"));
@@ -31,10 +32,12 @@ createRoot(document.getElementById("root")!).render(
           }
         >
           <Routes>
-            {/* Landing + Login: AppLayout DIŞINDA (#260 — tasarım paketi:
-                "app dışında yaşar, sidebar'a girmez"). Statik/kimliksiz sayfalar. */}
+            {/* Landing + Login + Kayıt: AppLayout DIŞINDA (#260 — tasarım
+                paketi: "app dışında yaşar, sidebar'a girmez"). Statik/kimliksiz
+                sayfalar (T-294: /kayit email+parola üyeliğinin giriş noktası). */}
             <Route path="/" element={<LandingPage />} />
             <Route path="/login" element={<LoginPage />} />
+            <Route path="/kayit" element={<RegisterPage />} />
             <Route element={<AppLayout />}>
               <Route path="radar" element={<RadarPage />} />
               <Route path="board" element={<BoardPage />} />

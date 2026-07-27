@@ -1,6 +1,6 @@
 import { Link, NavLink, Outlet } from "react-router-dom";
 import { config } from "../lib/config";
-import { useAuth, useCikisYap } from "../lib/useAuth";
+import { gorunenAd, useAuth, useCikisYap } from "../lib/useAuth";
 import { ActorChip } from "./ui";
 
 /* Ters-L kabuk (Linear deseni): sol dar sidebar + üst ince bar.
@@ -15,21 +15,22 @@ const NAV = [
   { to: "/ask", label: "Ask" },
 ];
 
-/* Başlıktaki KÜÇÜK auth göstergesi (#79) — demo giriş İSTEMEZ, bu yüzden
-   bilinçli sessiz: yükleniyor / gerçek hata / bu kurulumda giriş yapılandırılmamış
-   (enabled=false) durumlarının HİÇBİRİNDE bir şey göstermez (görev brifi —
-   "enabled=false ise HİÇBİR ŞEY gösterme, gürültü yapma"; yükleniyor/hata da
-   aynı ilkeye tabi, bu ikincil bir gösterge — tam sayfa HataDurumu değil). */
+/* Başlıktaki KÜÇÜK auth göstergesi (#79, T-294 ile GitHub+email ikisini de
+   kapsar) — demo giriş İSTEMEZ, bu yüzden bilinçli sessiz: yükleniyor / gerçek
+   hata / hiçbir giriş yöntemi yapılandırılmamış (`enabled=false` VE
+   `emailEnabled=false`) durumlarının HİÇBİRİNDE bir şey göstermez (görev
+   brifi — "hiçbir şey gösterme, gürültü yapma"; yükleniyor/hata da aynı
+   ilkeye tabi, bu ikincil bir gösterge — tam sayfa HataDurumu değil). */
 function AuthGostergesi() {
-  const { enabled, kullanici, isLoading, error } = useAuth();
+  const { enabled, emailEnabled, kullanici, isLoading, error } = useAuth();
   const { cikisYap, yukleniyor } = useCikisYap();
 
-  if (isLoading || error != null || !enabled) return null;
+  if (isLoading || error != null || (!enabled && !emailEnabled)) return null;
 
   if (kullanici) {
     return (
       <span className="flex items-center gap-2">
-        <ActorChip handle={kullanici.handle} type="human" />
+        <ActorChip handle={gorunenAd(kullanici)} type="human" />
         <button
           type="button"
           onClick={() => void cikisYap()}
@@ -42,8 +43,8 @@ function AuthGostergesi() {
     );
   }
 
-  // Girişli DEĞİL ama girişe yapılandırılmış: KÜÇÜK, ikincil davet — demo
-  // giriş istemediği için burada büyük bir CTA yok, yalnız bir link.
+  // Girişli DEĞİL ama en az bir yöntem yapılandırılmış: KÜÇÜK, ikincil davet —
+  // demo giriş istemediği için burada büyük bir CTA yok, yalnız bir link.
   return (
     <Link to="/login" className="text-xs text-muted-foreground hover:text-foreground">
       Giriş yap
