@@ -15,6 +15,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=str(_REPO_ROOT / ".env"), extra="ignore")
 
     ENSEMBLE_MODE: Literal["local", "hosted"] = "local"
+    ENSEMBLE_ALLOW_FAKE_SEED: bool = False
 
     # LLM saglayicisi calisma modundan bagimsizdir (#78): local engine Gemini,
     # hosted engine Ollama (ayni makinede) kullanabilir. Varsayilan, geriye
