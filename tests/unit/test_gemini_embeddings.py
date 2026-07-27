@@ -167,3 +167,81 @@ def test_resilient_client_rejects_short_embedding_batch(monkeypatch):
 
     with pytest.raises(GeminiPermanentError, match="one vector per text"):
         client.embed_content(["a", "b"], task_type="SEMANTIC_SIMILARITY")
+
+
+# ---------------------------------------------------------------------------
+# Batch tavani (#280 takibi) - Gemini tek cagrida en fazla 100 istek alir
+# ---------------------------------------------------------------------------
+
+
+class _BatchSayanModels:
+    """Her cagrinin BOYUTUNU kaydeder ve metni vektore GERI IZLENEBILIR gomer.
+
+    Vektorun ilk bileseni metnin kendi sirasi -> sira korunuyor mu, olculebilir.
+    """
+
+    def __init__(self, tavan: int = 100):
+        self.boyutlar: list[int] = []
+        self._tavan = tavan
+
+    def embed_content(self, model: str, contents: list[str], config=None):
+        self.boyutlar.append(len(contents))
+        if len(contents) > self._tavan:
+            # Gercek API'nin davranisi: 400 INVALID_ARGUMENT
+            raise _FakeApiError(400)
+        return types.EmbedContentResponse(
+            embeddings=[
+                types.ContentEmbedding(values=[float(t.split("-")[1]), 0.5])
+                for t in contents
+            ]
+        )
+
+
+def test_embed_content_100_USTU_girdiyi_parcalar(monkeypatch):
+    """MUTASYON KILIDI: parcalama kaldirilirsa sahte API 400 firlatir.
+
+    Gercek dusus (uretim, 2026-07-27): #280 gecmis backfill'i 250 olaya
+    cikarinca `make rebuild` TAMAMEN dustu --
+      400 INVALID_ARGUMENT: at most 100 requests can be in one batch
+    Tavan cagri BASINA; toplam girdiye sinir yok, parcalamak yeterli.
+    """
+    modeller = _BatchSayanModels()
+    _patch_genai_client(monkeypatch, modeller)
+    client = ResilientGeminiClient(_settings())
+
+    metinler = [f"olay-{i}" for i in range(250)]
+    vektorler = client.embed_content(metinler, task_type="SEMANTIC_SIMILARITY")
+
+    assert len(vektorler) == 250, "her metne bir vektor donmeli"
+    assert max(modeller.boyutlar) <= 100, (
+        f"hicbir cagri 100'u asmamali; gorulen boyutlar: {modeller.boyutlar}"
+    )
+    assert modeller.boyutlar == [100, 100, 50], (
+        f"250 girdi 100/100/50 diye bolunmeli; gorulen: {modeller.boyutlar}"
+    )
+
+
+def test_parcalama_SIRAYI_bozmaz(monkeypatch):
+    """Parca sinirinda kayma olsa vektorler YANLIS olaya baglanirdi -- ve bu
+    hicbir hata vermeden, yalnizca benzerlik skorlarini bozarak olurdu."""
+    modeller = _BatchSayanModels()
+    _patch_genai_client(monkeypatch, modeller)
+    client = ResilientGeminiClient(_settings())
+
+    metinler = [f"olay-{i}" for i in range(250)]
+    vektorler = client.embed_content(metinler, task_type="SEMANTIC_SIMILARITY")
+
+    # Sahte model vektorun ilk bilesenine metnin kendi numarasini koyuyor.
+    assert [int(v[0]) for v in vektorler] == list(range(250)), (
+        "vektor sirasi girdi sirasiyla birebir eslesmeli (parca sinirinda kayma yok)"
+    )
+
+
+def test_tek_parca_gerektiginde_FAZLADAN_cagri_yok(monkeypatch):
+    """100 ve alti tek cagri kalmali -- parcalama eskiyi pahalilastirmiyor."""
+    modeller = _BatchSayanModels()
+    _patch_genai_client(monkeypatch, modeller)
+    client = ResilientGeminiClient(_settings())
+
+    client.embed_content([f"olay-{i}" for i in range(100)], task_type="SEMANTIC_SIMILARITY")
+    assert modeller.boyutlar == [100], f"tek cagri bekleniyordu: {modeller.boyutlar}"
