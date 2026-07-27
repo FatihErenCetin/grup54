@@ -33,7 +33,8 @@ class EmbeddingsPort(Protocol):
 class VectorIndexPort(Protocol):
     def upsert(self, id: str, vec: list[float], meta: dict) -> None: ...
     def query(self, vec: list[float], k: int) -> list[tuple[str, float]]: ...
-    def clear(self) -> None: ...
+    def clear(self) -> None:
+        """Bağımsız operasyon için; rebuild akışı replace_all kullanır."""
     def replace_all(
         self,
         vectors: list[tuple[str, list[float], dict]],

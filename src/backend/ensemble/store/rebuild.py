@@ -97,3 +97,40 @@ def rebuild_projection(
         raise
 
     return {"tasks": len(task_rows), "presence": len(presence_rows), "events": len(event_rows)}
+if __name__ == "__main__":
+    from ensemble.app import _build_embeddings_port, _build_github_port
+    from ensemble.config import get_settings
+    from ensemble.store.engine import get_engine, get_session_factory
+    from ensemble.store.vector_store import build_vector_index
+    from ensemble_shared.harness import FileHarnessPort
+    from ensemble.integrations.github.fake import FakeGitHubAdapter
+
+    settings = get_settings()
+
+    github = _build_github_port(settings)
+    if isinstance(github, FakeGitHubAdapter) and not settings.ENSEMBLE_ALLOW_FAKE_SEED:
+        raise SystemExit(
+            "rebuild reddedildi: gercek GitHub App yok (FakeGitHubAdapter). "
+            "events/vector_index sahte veriyle EZILMEZ. Bilerek demo seed'i "
+            "istiyorsan ENSEMBLE_ALLOW_FAKE_SEED=1 ver."
+        )
+
+    engine = get_engine(settings)
+    session_factory = get_session_factory(engine)
+    with session_factory() as session:
+        harness = FileHarnessPort()
+        embeddings = _build_embeddings_port(settings)
+        vector_index = build_vector_index(
+            settings, session_factory=session_factory if settings.ENSEMBLE_MODE == "hosted" else None
+        )
+
+        print("Rebuilding projection...")
+        res = rebuild_projection(
+            session,
+            harness,
+            github=github,
+            backfill_limit=settings.GITHUB_BACKFILL_LIMIT,
+            vector_index=vector_index,
+            embeddings=embeddings,
+        )
+        print(f"Rebuilt: {res}")

@@ -324,7 +324,7 @@ def test_rebuild_writes_vector_index_in_same_db_transaction():
     session.close()
 
 
-def test_rebuild_seed_semantic_query_not_empty():
+def test_rebuild_stages_vectors_into_index():
     """#191 kabul kriteri: seed sonrası semantik sorgu boş DEĞİL — en az 1 gerçek sonuç."""
     from ensemble.engine.embeddings import HashEmbeddings
     from ensemble.integrations.github.fake import FakeGitHubAdapter
@@ -357,3 +357,64 @@ def test_rebuild_seed_semantic_query_not_empty():
     assert len(hits) >= 1, "seed sonrası semantik sorgu boş dönmemeli (#191 kanıtı)"
 
     session.close()
+
+
+def test_rebuild_main_entrypoint_blocks_fake_github_port():
+    import os
+    import subprocess
+    import sys
+    import tempfile
+    from datetime import datetime, timezone
+    
+    from ensemble.config import Settings
+    from ensemble.store.engine import get_engine, get_session_factory
+    from ensemble.store.models import Base, EventRow
+    
+    with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as tmp:
+        db_path = tmp.name
+        
+    db_url = f"sqlite:///{db_path}"
+    settings = Settings(DATABASE_URL=db_url)
+    engine = get_engine(settings)
+    Base.metadata.create_all(engine)
+    
+    session_factory = get_session_factory(engine)
+    with session_factory() as session:
+        session.add(EventRow(id="existing", type="test", actor="user", branch="b", ts=datetime.now(timezone.utc), ref="abc"))
+        session.commit()
+    
+    env = os.environ.copy()
+    env["DATABASE_URL"] = db_url
+    env["ENSEMBLE_ALLOW_FAKE_SEED"] = "0"
+    
+    # Set fake github port via missing settings (no GITHUB_APP_ID etc.)
+    if "GITHUB_APP_ID" in env:
+        del env["GITHUB_APP_ID"]
+    
+    # Add project root to PYTHONPATH so `ensemble` module can be found
+    project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "src", "backend"))
+    if "PYTHONPATH" in env:
+        env["PYTHONPATH"] = f"{project_root}{os.pathsep}{env['PYTHONPATH']}"
+    else:
+        env["PYTHONPATH"] = project_root
+
+    result = subprocess.run(
+        [sys.executable, "-m", "ensemble.store.rebuild"],
+        env=env,
+        capture_output=True,
+        text=True
+    )
+    
+    assert result.returncode != 0
+    assert "rebuild reddedildi: gercek GitHub App yok" in result.stderr or "rebuild reddedildi: gercek GitHub App yok" in result.stdout
+    
+    with session_factory() as session:
+        events = session.query(EventRow).all()
+        assert len(events) == 1
+        assert events[0].id == "existing"
+        
+    engine.dispose()
+    try:
+        os.unlink(db_path)
+    except PermissionError:
+        pass
