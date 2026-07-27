@@ -5,19 +5,8 @@ from types import SimpleNamespace
 import pytest
 
 from ensemble.config import Settings
+from ensemble.store.engine import get_engine, normalize_database_url
 from ensemble.store.vector_store import PgVectorIndex, build_vector_index
-
-try:
-    from ensemble.store.engine import get_engine, normalize_database_url
-except ImportError:
-    from ensemble.store.engine import get_engine  # type: ignore
-
-    def normalize_database_url(url: str) -> str:
-        if url.startswith("postgres://"):
-            return url.replace("postgres://", "postgresql+psycopg://", 1)
-        if url.startswith("postgresql://"):
-            return url.replace("postgresql://", "postgresql+psycopg://", 1)
-        return url
 
 
 def test_hosted_pgvector_config_and_dsn_sql_shape_smoke():
