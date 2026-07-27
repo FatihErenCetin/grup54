@@ -22,7 +22,14 @@ Gerekçe: `T-<id>` branch + `Closes #<id>` PR ile entegre, kartları PR/issue
 durumundan otomatik oynatır (dogfood).
 ```
 
-## ⚠️ Bu klasör bugün BOŞ — bilinçli, migrasyon yapılmadı
+## Bu klasörde bugün TEK kayıt var — toplu migrasyon HÂLÂ yapılmadı
+
+`D-56` (27 Temmuz 2026) buraya, **toplu migrasyondan bağımsız** olarak yazıldı:
+amacı Sprint 3 teslim edilirken jüriye görünür hesap verilebilirlik sağlamak ve
+`internal/` gitignored olduğu için public repoda görünmüyor. Aşağıdaki gerekçe
+D-01…D-55 için **aynen geçerli** — onlar hâlâ `internal/grup54_karar_logu.md`'de.
+
+## ⚠️ D-01…D-55 buraya taşınmadı — bilinçli, migrasyon yapılmadı
 
 Ekibin bugüne kadarki operasyonel karar kaydı `internal/grup54_karar_logu.md`
 dosyasında yaşıyor (D-01…D-39+) — ama o dosya **gitignored** (özel strateji,
@@ -45,3 +52,9 @@ içindeki hangi D-NN'lerin "operasyonel + public-safe" olduğuna karar verip
 onları burada `D-NN-*.md` olarak yeniden yazar (front-matter + kısa gövde).
 Bu PR o kararı **almıyor** — yalnızca boş, şemaya uygun bir iskelet + bu
 migrasyon notunu bırakıyor.
+
+## Mevcut kayıtlar
+
+| id | tarih | konu |
+|---|---|---|
+| [D-56](D-56-review-beklemeden-merge.md) | 2026-07-27 | Sprint 3 son gününde review beklemeden merge — gerekçe, kapsam, bedel |
