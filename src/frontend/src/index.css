@@ -23,6 +23,17 @@
   --primary: oklch(0.7 0.17 50);
   --primary-foreground: oklch(0.18 0.03 50);
 
+  /* ısı rampasının en sıcak 2 kademesi için (T-293) KOYULAŞTIRILMIŞ marka
+     tonu — aynı ton/kroma (H=50, C=0.17), yalnız L düşürülmüş. Neden: düz
+     `--primary` (L=0.7) üstünde beyaz metin 2.30:1 verir (WCAG AA 4.5'in
+     çok altında, okunmaz); koyu metne (`--primary-foreground`) dönmek
+     yerine (PO şikayeti tam bunun tutarsızlığıydı — bazı ısı hücreleri
+     beyaz bazıları siyah) zemini koyulaştırıp TÜM kademelerde beyaz metni
+     okunur kılıyoruz. L=0.50 → ölçülen kontrast 5.19:1 (bkz.
+     tests/isiKontrasti.test.ts, gerçek değerden ölçülür, iddia edilmez).
+     Kullanım: src/lib/isiRampasi.ts (tek kaynak; GraphPage + IsiMatrisi). */
+  --primary-strong: oklch(0.5 0.17 50);
+
   /* severity — low GRİ (yeşil yalnız done'a saklanır); med ALTIN
      (markadaki turuncudan bilinçli ayrışır — uyarı ≠ marka) */
   --severity-high: oklch(0.58 0.21 25);
@@ -62,6 +73,7 @@
   --color-border: var(--border);
   --color-primary: var(--primary);
   --color-primary-foreground: var(--primary-foreground);
+  --color-primary-strong: var(--primary-strong);
   --color-severity-high: var(--severity-high);
   --color-severity-med: var(--severity-med);
   --color-severity-low: var(--severity-low);
