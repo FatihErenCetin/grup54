@@ -3,8 +3,8 @@ title: Sprint 3 — go-live (canliya alma) + web MVP'nin gerisi
 status: frozen
 owner: Fatih Eren Cetin (PO)
 version: '1'
-ref: main
-commit_sha: 5cf20097ed30a95162c5b2e8775c305a74792f1a
+ref: .harness/scope/sprint-3.md
+commit_sha: 18f846fba6b2c45c3374b61a69d43a328254d1a0
 frozen_at: '2026-07-25T17:33:02+03:00'
 goals:
 - 'Go-live mekanigi: Fly.io backend + Vercel frontend canliya alinir (docs/sprint3-kontratlar.md

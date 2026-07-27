@@ -98,8 +98,23 @@ stretch'tir — bkz. `docs/sprint3-kontratlar.md` Ek D.
 
 `goal`/`in_scope`/`non_goals` **uydurulmadı**; `docs/sprint3-kontratlar.md`
 (Ek A–F, 🔒 FROZEN) + GitHub milestone "Sprint 3" (#3, bitiş 2026-08-02)
-metninden birebir taşındı. `commit_sha`/`frozen_at`, o dosyaya en son dokunan
-gerçek commit'e (`5cf2009`) işaret eder. Kapsam değişirse **PO** bu dosyayı
+metninden birebir taşındı.
+
+`ref`/`commit_sha` **bu dosyanın kendisini** işaret eder — kaynak belgeyi değil.
+Sözleşme (`docs/sprint2-kontratlar.md:229`) alanı *"donmuş **dosyanın** SHA'sı —
+`#L14` evidence linki"* diye tanımlıyor; amaç `blob/<sha>/.harness/scope/
+sprint-3.md#L14` biçiminde **çözülebilir bir kanıt bağlantısı** kurmak. Bir
+zamanlar burada kaynak belgenin commit'i (`5cf2009`) yazıyordu ve o commit'te
+bu dosya henüz **yoktu** → permalink çözülmüyordu (#257 bulgu 1-2). Sözleşme
+kanonik, bu doküman türev: çelişkide sözleşme kazanır.
+
+`frozen_at`, kapsamın dondurulduğu andır (kaynak belgenin donma anıyla aynı
+kalabilir — o an değişmedi).
+
+Kapsam yeniden dondurulursa `commit_sha` **yeniden pinlenmelidir**; bir dosya
+kendisini ekleyen commit'in SHA'sını içinde taşıyamaz (tavuk-yumurta), o yüzden
+pin her zaman bir sonraki commit'te yapılır. `tests/unit/test_scope_kanit.py`
+bunu kilitler: SHA, dosyanın VAR OLDUĞU bir commit'i göstermek zorunda. Kapsam değişirse **PO** bu dosyayı
 düzenler/dondurur (`internal/grup54_dizin_yapisi.md` §3).
 
 `status` alanının **`ScopeService`'in okuduğu tek geçerli "kullanılabilir"

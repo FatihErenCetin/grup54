@@ -45,10 +45,23 @@ Kapsam = `$ARGUMENTS` (bir doküman, bir dizin, bir sprint); boşsa tüm repo.
 
 **Adım 1 — Açık-seçim işaretçilerini topla.** İki tarama, sırayla:
 
+> **Önce kaynakları doğrula.** `internal/` **gitignored**: senin makinende var,
+> takım arkadaşında ve CI'da YOK. Aşağıdaki komutlar eksik yolda çökmez ama
+> **eksik kaynağı rapora yazmak zorunludur** — taranmayan bir yer "temiz"
+> sayılamaz (#257 bulgu 8).
+>
+> ```bash
+> # Hangi kaynaklar GERÇEKTEN okunabiliyor? Raporun "kapsam" satırı bu.
+> for k in internal docs README.md AGENTS.md .env.example; do
+>   [ -e "$k" ] && echo "  okunabilir: $k" || echo "  EKSİK (taranmadı): $k"
+> done
+> ```
+
 ```bash
 # (a) ikili aday kalıbı "A/B" — düşük gürültülü, ÖNCE bunu koş (yol adları filtreleniyor)
-grep -rnoE "\b[A-Z][A-Za-z]{2,}/[A-Za-z][A-Za-z]{2,}\b" \
-  internal/*.md docs/*.md README.md AGENTS.md .env.example \
+# `--include` + dizin: eksik dizinde zsh glob'u komutun TAMAMINI iptal etmez.
+grep -rnoE --include="*.md" "\b[A-Z][A-Za-z]{2,}/[A-Za-z][A-Za-z]{2,}\b" \
+  internal docs README.md AGENTS.md .env.example 2>/dev/null \
   | awk -F: '{print $NF}' \
   | grep -vE "Sprint|Board|Screenshot|DailyScrum|Burndown|Meetings|General|README" \
   | sort | uniq -c | sort -rn
@@ -80,8 +93,21 @@ Açık PR dallarını atlamak **yanlış sonuç** verir: Fly/Render vakasında F
 **Adım 4 — Kayıt kontrolü.**
 
 ```bash
-grep -niE "<alternatif-1>|<alternatif-2>" \
-  internal/grup54_karar_logu.md internal/grup54_vizyon_ve_karar_kaydi.md
+# ÖNCE kaynak okunabilir mi? Boş çıktı iki AYRI şey demek olabilir:
+#   (1) arandı, kayıt yok        -> hüküm verilebilir
+#   (2) dosya hiç yok, aranamadı -> hüküm VERİLEMEZ
+# Bu ayrım yapılmazsa `internal/` olmayan bir makinede (her takım arkadaşı,
+# CI) kayıtlı bir karar 🚩 DRİFT diye bayraklanır (#257 bulgu 9 — ana kopyada
+# aynı grep D-39/D-43/D-45/D-46'yı döndürüyor, yani kayıt VAR).
+KAYNAKLAR="internal/grup54_karar_logu.md internal/grup54_vizyon_ve_karar_kaydi.md"
+EKSIK=""
+for f in $KAYNAKLAR; do [ -f "$f" ] || EKSIK="$EKSIK $f"; done
+if [ -n "$EKSIK" ]; then
+  echo "KAYIT KAYNAĞI OKUNAMADI:$EKSIK"
+  echo "-> Adım 5'te 'kaynak okunamadı' satırına düş; DRİFT İDDİA ETME."
+else
+  grep -niE "<alternatif-1>|<alternatif-2>" $KAYNAKLAR
+fi
 ```
 
 Aranan: seçimi **açıkça yapan** bir satır ("X seçildi çünkü…", "Y elendi"). Seçimi **varsayan** satır (D-39'un Fly'ı veri olarak alması) kayıt sayılmaz — tersine, driftin katılaştığının kanıtıdır.
@@ -94,6 +120,7 @@ Aranan: seçimi **açıkça yapan** bir satır ("X seçildi çünkü…", "Y ele
 | **Hiçbiri** yok | — | ❌ bulgu değil — seçim gerçekten açık; not düş, izle |
 | **Tam biri** var | D-NN **var** | ✅ sağlıklı — yalnız metindeki eski "A/B" ifadesini güncelle |
 | **Tam biri** var | D-NN **yok** | 🚩 **KARAR DRİFTİ** → §4 katılık + §5 rapor |
+| **Tam biri** var | kayıt kaynağı **okunamadı** | ⚠️ **hüküm YOK** — "`internal/` bu makinede yok, kayıt doğrulanamadı" diye raporla. Drift İDDİA ETME (#257 bulgu 9) |
 
 ## 4. Katılık — geri almak ne kadar pahalı?
 
