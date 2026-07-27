@@ -156,8 +156,18 @@ def test_groq_anahtari_varsa_yedek_kurulur():
     judge = _build_judge_port(Settings(_env_file=None, GEMINI_API_KEY="g", GROQ_API_KEY="q"))
 
     assert isinstance(judge, FallbackJudge)
-    assert isinstance(judge.primary, GeminiJudgeAdapter)
-    assert isinstance(judge.secondary, GroqJudgeAdapter)
+    # #288: her sağlayıcı KENDİ devre kesicisiyle sarılır. Sarma bilerek
+    # İÇERİDE (her dalda ayrı) — dıştan tek kesici, Gemini'nin günlük kotası
+    # bitince ÇALIŞAN Groq'a gitmeyi de keserdi (bkz.
+    # test_devre_kesici.py::test_devre_kesici_YEDEGI_kesmez).
+    from ensemble.engine.devre_kesici import DevreKesiciJudge
+
+    assert isinstance(judge.primary, DevreKesiciJudge)
+    assert isinstance(judge.secondary, DevreKesiciJudge)
+    # Kesicinin ARDINDA doğru sağlayıcılar duruyor — asıl iddia bu, ve
+    # gevşetilmedi: hangi sağlayıcının hangi dalda olduğu hâlâ kilitli.
+    assert isinstance(judge.primary.inner, GeminiJudgeAdapter)
+    assert isinstance(judge.secondary.inner, GroqJudgeAdapter)
 
 
 def test_yedek_cache_in_ICINDE_kalir():
