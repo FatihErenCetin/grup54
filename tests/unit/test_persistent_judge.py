@@ -10,6 +10,7 @@ doğrulanmış durumda; burada onun ARKASINDAKİ sarmalama mantığı test edili
 """
 
 import logging
+from datetime import datetime, timedelta
 
 import pytest
 
@@ -20,7 +21,7 @@ from ensemble.engine.persistence import PersistentJudge
 from ensemble.models import Detection, NormalizedEvent
 from ensemble.ports import JudgeUnavailableError
 from ensemble.store.engine import get_engine, get_session_factory
-from ensemble.store.models import Base
+from ensemble.store.models import Base, JudgeVerdictRow
 from ensemble.store.verdict_store import get_verdict, put_verdict
 
 
@@ -225,6 +226,121 @@ def test_db_yazma_hatasi_judge_yolunu_bozmaz_ama_gorunur_kalir(
     assert "yazımı başarısız" in caplog.text
 
 
+def test_db_okuma_hatasi_inner_a_duser_gercek_yargi_doner_read_failures_artar(
+    session_factory, monkeypatch, caplog
+):
+    """Semih blocker A (PR #264): eskiden yalnızca YAZMA tarafı try/except
+    içindeydi; OKUMA (`get_verdict`) yalın çağrılıyordu — DB düşerse
+    (bağlantı kopması, tablo yok, kilitlenme) istisna TÜM `/radar` isteğini
+    patlatıyordu, oysa `inner` (asıl judge) hâlâ çalışıyor olabilirdi.
+
+    Bu FAIL-SAFE'tir, fail-OPEN DEĞİLDİR: `stored` `None`'a düşer (MISS),
+    `inner`'a gidilir ve dönen `sonuc` `inner`'ın GERÇEKTEN ürettiği bir
+    `Detection`'dır — sahte/icat edilmiş bir varsayılan değil. Sessiz de
+    değildir: `read_failures` sayacı + log görünür kalır.
+
+    MUTASYON KİLİDİ: `judge_conflict` içindeki OKUMA try/except'ini kaldır
+    (`get_verdict` çağrısını yalın bırak) -> bu test KIRILIR (istisna
+    testten dışarı sızar, `inner.calls` hiç artmaz).
+    """
+    import ensemble.engine.persistence as persistence_module
+
+    def _patlayan_get_verdict(session, cache_key, ttl_days=None):
+        raise RuntimeError("db baglantisi koptu")
+
+    monkeypatch.setattr(persistence_module, "get_verdict", _patlayan_get_verdict)
+
+    a, b = _cift()
+    inner = _IcPort("gercek-yargi-okuma-hatasinda-da-doner")
+    judge = PersistentJudge(inner, session_factory=session_factory, model=MODEL)
+
+    with caplog.at_level(logging.ERROR, logger="ensemble.judge.persistence"):
+        sonuc = judge.judge_conflict(a, b, ["src/x.py"], 0.5)
+
+    assert sonuc.rationale == "gercek-yargi-okuma-hatasinda-da-doner"
+    assert inner.calls == 1
+    assert judge.read_failures == 1
+    assert "okuması başarısız" in caplog.text
+
+
+def test_ttl_gecmis_satir_miss_sayilir_inner_yeniden_cagrilir_created_at_tazelenir(
+    session_factory,
+):
+    """Semih blocker B (PR #264): `created_at` sütunu VARDI ama hiçbir okuma
+    yolu KULLANMIYORDU — DB'deki bir yargı sonsuza kadar servis edilirdi.
+    TTL'i geçmiş bir satır artık MEŞRU bir MISS sayılmalı (silinmesi şart
+    değil, okunmaması yeterli) ve `inner`'a yeniden gidilmeli; taze sonuç
+    `created_at`'i TAZELEYEREK üzerine yazılmalı — aksi halde satır bir kez
+    süresi dolunca SONSUZA dek MISS kalırdı (TTL'in amacını tersine çevirir).
+
+    MUTASYON KİLİDİ: `get_verdict`/`PersistentJudge` içindeki TTL kontrolünü
+    kaldır -> bu test KIRILIR (`inner.calls` 0 kalır, eski/bayat yargı döner).
+    """
+    a, b = _cift()
+    overlap = ["src/x.py"]
+    sim = 0.5
+    key = _cache_key(a, b, overlap, sim, MODEL)
+
+    with session_factory() as session:
+        put_verdict(session, key, MODEL, _detection("eski-bayat-yargi"))
+        session.commit()
+        # created_at'i TTL'in (varsayılan 7 gün) çok ötesine elle geçmişe it -
+        # gerçek bir sürecin günler/haftalar beklemesini simüle eder (uyku
+        # yok, deterministik).
+        row = session.get(JudgeVerdictRow, key)
+        row.created_at = datetime.utcnow() - timedelta(days=30)
+        session.commit()
+
+    inner = _IcPort("taze-yargi-ttl-sonrasi")
+    judge = PersistentJudge(inner, session_factory=session_factory, model=MODEL, ttl_days=7)
+
+    sonuc = judge.judge_conflict(a, b, overlap, sim)
+
+    assert sonuc.rationale == "taze-yargi-ttl-sonrasi"
+    assert inner.calls == 1
+
+    with session_factory() as session:
+        row = session.get(JudgeVerdictRow, key)
+        assert row.detection["rationale"] == "taze-yargi-ttl-sonrasi"
+        # created_at TAZELENDİ - bir sonraki çağrıda artık HIT olmalı (aksi
+        # halde sonsuz MISS döngüsü olurdu).
+        assert row.created_at > datetime.utcnow() - timedelta(minutes=1)
+
+    # İkinci çağrı: artık TAZE (created_at yenilendi) -> HIT, inner tekrar
+    # ÇAĞRILMAMALI.
+    ikinci = judge.judge_conflict(a, b, overlap, sim)
+    assert ikinci.rationale == "taze-yargi-ttl-sonrasi"
+    assert inner.calls == 1
+
+
+def test_ttl_icindeki_satir_hit_sayilir_inner_cagrilmaz(session_factory):
+    """TTL süresi İÇİNDEKİ bir satır mevcut davranışı korur — HIT, `inner`'a
+    hiç gidilmez. Blocker B'nin regresyon-karşıtı testi: TTL eklemek süresi
+    dolmamış satırların davranışını BOZMAMALI."""
+    a, b = _cift()
+    overlap = ["src/x.py"]
+    sim = 0.5
+    key = _cache_key(a, b, overlap, sim, MODEL)
+    onceden_yazilmis = _detection("ttl-icinde-hala-gecerli")
+
+    with session_factory() as session:
+        put_verdict(session, key, MODEL, onceden_yazilmis)
+        session.commit()
+        # created_at'i TTL (7 gün) içinde ama "hemen şimdi" değil bir noktaya
+        # çek - gerçekçi bir kısmi-eskime senaryosu.
+        row = session.get(JudgeVerdictRow, key)
+        row.created_at = datetime.utcnow() - timedelta(days=1)
+        session.commit()
+
+    inner = _IcPort("inner-hic-cagrilmamali-ttl-icinde")
+    judge = PersistentJudge(inner, session_factory=session_factory, model=MODEL, ttl_days=7)
+
+    sonuc = judge.judge_conflict(a, b, overlap, sim)
+
+    assert sonuc == onceden_yazilmis
+    assert inner.calls == 0
+
+
 def test_farkli_model_ayni_cifti_ayri_satirda_tutar(session_factory):
     """`model`in anahtara katılması: aynı çift farklı bir model tarafından
     yargılanırsa DB'de ayrı satır olarak tutulur — biri diğerinin üzerine
@@ -308,6 +424,10 @@ def test_hosted_modda_session_factory_ile_persistentjudge_zincire_girer(tmp_path
     assert isinstance(judge, PersistentJudge)
     assert isinstance(judge.inner, GeminiJudgeAdapter)
     assert judge.model == f"gemini:{settings.GEMINI_MODEL}"
+    # Semih blocker B (#264): `Settings.VERDICT_TTL_DAYS` gerçekten
+    # `PersistentJudge`'a kadar AKMALI — wiring'i bir modül-seviyesi
+    # varsayılana sessizce düşürmek (unutmak) bu assert'i kırar.
+    assert judge.ttl_days == settings.VERDICT_TTL_DAYS
 
 
 def test_local_modda_persistentjudge_KURULMAZ_session_factory_olsa_bile(tmp_path):

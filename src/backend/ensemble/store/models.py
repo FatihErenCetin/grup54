@@ -162,6 +162,12 @@ class JudgeVerdictRow(Base):
     cache_key: Mapped[str] = mapped_column(String(64), primary_key=True)
     model: Mapped[str] = mapped_column(String(100), index=True)
     detection: Mapped[dict] = mapped_column(JSON)
+    # #264 (Semih blocker B): bu sütun ÖNCE yalnızca gözlem içindi, hiçbir
+    # okuma yolu KULLANMIYORDU. Artık `verdict_store.py::get_verdict`'in
+    # (opsiyonel) `ttl_days` karşılaştırmasında OKUNUR — `put_verdict` bu
+    # sütunu HEM ilk INSERT'te HEM de mevcut satırın üzerine her yazışta
+    # `datetime.utcnow()`'a tazeler (kolon varsayılanı yalnızca INSERT'te
+    # devreye girer, UPDATE'te tazelenmez — bkz. o fonksiyonun docstring'i).
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 # Vektör kolonu burada YOK — #15 (Semih) ekleyecek.
 # pgvector extension migration'ı ayrı bir alembic adımında (002_pgvector_extension.py).

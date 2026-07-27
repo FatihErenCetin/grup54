@@ -223,7 +223,12 @@ def _build_judge_port(
         # düşüşü"dür (kilit zaman aşımına uğrar, bekleyen thread kilitsiz
         # devam eder — en kötü ihtimalle DB sorgusu/az sayıda hesaplama
         # tekrarlanır, cache asla yanlış bir şey saklamaz).
-        judge = PersistentJudge(judge, session_factory=session_factory, model=model_identity)
+        judge = PersistentJudge(
+            judge,
+            session_factory=session_factory,
+            model=model_identity,
+            ttl_days=settings.VERDICT_TTL_DAYS,
+        )
 
     if settings.DEMO_MODE:
         # #63: hosted public demo — Radar'ın 10 sn'lik poll'u aynı çifti
