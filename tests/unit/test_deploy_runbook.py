@@ -42,6 +42,7 @@ _REPO_ROOT = Path(__file__).resolve().parents[2]
 _ENV_EXAMPLE = _REPO_ROOT / ".env.example"
 _RUNBOOK = _REPO_ROOT / "docs" / "deploy-runbook.md"
 _CI_YML = _REPO_ROOT / ".github" / "workflows" / "ci.yml"
+_DEPLOY_YML = _REPO_ROOT / ".github" / "workflows" / "deploy.yml"
 
 # .env.example'daki duz "ANAHTAR=" satirlarini yakalar (yorum satirlari HARIC —
 # CORS_ORIGINS bilerek bu regex'in disinda kaliyor, bkz. asagidaki ayri test).
@@ -459,3 +460,35 @@ def test_runbookta_sir_degeri_yok():
     for eslesme in cig_deger_re.finditer(runbook):
         deger = eslesme.group(1)
         assert False, f"placeholder olmayan uzun deger bulundu: {deger!r}"
+
+
+def test_imaj_budama_sayisi_runbook_ile_deploy_yml_arasinda_esit():
+    """#262 drift kilidi: `deploy.yml`'in 'Eski imajlari budala' adiminin
+    `IMAGE_KEEP_COUNT` degeri ile runbook'un §5 Rollback bolumunde iddia
+    ettigi 'tutulan surum sayisi' AYNI olmali -- biri guncellenip digeri
+    unutulursa (orn. workflow'da 5 -> 10 degisir ama runbook hala 'son 5
+    SHA etiketini' der) operator yanlis bir rollback penceresine gore
+    planlama yapar (N deploy once bir SHA'nin hala yerelde oldugunu sanip
+    '--no-build' dener, aslinda budanmis olabilir)."""
+    assert _DEPLOY_YML.exists(), f"Deploy workflow bulunamadi: {_DEPLOY_YML}"
+    deploy = yaml.safe_load(_DEPLOY_YML.read_text(encoding="utf-8"))
+    deploy_steps = deploy["jobs"]["deploy"].get("steps", []) or []
+    prune_step = next((s for s in deploy_steps if "docker rmi" in (s.get("run") or "")), None)
+    assert prune_step is not None, "deploy.yml'de 'docker rmi' kosan bir adim bulunamadi."
+
+    keep_count_raw = prune_step.get("env", {}).get("IMAGE_KEEP_COUNT")
+    assert keep_count_raw is not None, "budama adiminin env.IMAGE_KEEP_COUNT'u yok."
+    keep_count = int(keep_count_raw)
+
+    runbook = _runbook_text()
+    eslesme = re.search(r"son \*\*(\d+) SHA etiketini\*\*", runbook)
+    assert eslesme, (
+        "runbook'ta 'son **<N> SHA etiketini**' bicimli bir tutma-sayisi iddiasi "
+        "bulunamadi -- ifade degistiyse bu testin regex'ini guncelle"
+    )
+    iddia_edilen = int(eslesme.group(1))
+    assert iddia_edilen == keep_count, (
+        f"runbook 'son {iddia_edilen} SHA etiketini' diyor ama deploy.yml'in budama "
+        f"adiminda IMAGE_KEEP_COUNT={keep_count} -- sayilar birbirinden kaymis "
+        "(workflow guncellenip runbook unutulmus, ya da tam tersi)."
+    )
