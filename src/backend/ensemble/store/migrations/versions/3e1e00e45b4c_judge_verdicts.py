@@ -19,7 +19,10 @@ from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = "3e1e00e45b4c"
-down_revision: Union[str, None] = "c4f1d6a2b8e9"
+# #263 (task_status_events, d1a7c3e90f42) main'e ONCE indi; bu migration
+# onun USTUNE zincirlenir. Ikisi de c4f1d6a2b8e9'a baglanirsa alembic IKI
+# head gorur ve `upgrade head` belirsiz kalir.
+down_revision: Union[str, None] = "d1a7c3e90f42"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

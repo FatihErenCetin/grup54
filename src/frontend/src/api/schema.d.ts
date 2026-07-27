@@ -239,6 +239,14 @@ export interface components {
         BoardResponse: {
             /** Cards */
             cards: components["schemas"]["BoardCard"][];
+            /** Last Transition At */
+            last_transition_at?: string | null;
+            /**
+             * Source
+             * @default seed
+             * @enum {string}
+             */
+            source: "seed" | "ingest";
         };
         /** Citation */
         Citation: {

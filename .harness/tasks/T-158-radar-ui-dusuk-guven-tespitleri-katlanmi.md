@@ -1,8 +1,9 @@
 ---
 title: 'Radar UI: dusuk-guven tespitleri katlanmis bolumde (tasarima sadakat)'
-status: todo
+status: in_review
 assignee: FatihErenCetin
 paths: []
+branch: T-33-sayfalari-canli-veriye-bagla
 type: task
 task_id: T-158
 ---
