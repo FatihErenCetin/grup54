@@ -18,7 +18,7 @@
 | **Engine** | ingest (polling) · projeksiyon (events→board/presence) · NL "projeye sor" |
 | **Web** | React pano: Radar · Board · Scope · Ask · Activity (üretilen OpenAPI client + polling) |
 | **MCP** | `who_is_touching` · `check_scope` (read-first) · `declare_work` (tek write-back, stretch) |
-| **Altyapı** | `.harness/` IO + şema · GitHub App auth (makine) · Postgres/SQLite + pgvector/FAISS (cache) · tek hosted demo (Fly+Vercel) |
+| **Altyapı** | `.harness/` IO + şema · GitHub App auth (makine) · Postgres/SQLite + pgvector/FAISS (cache) · tek hosted demo (self-host VDS+Vercel, D-46) |
 
 ## 🚫 KAPSAM DIŞI — YAPMA (tasarım gereği yok)
 
@@ -40,7 +40,7 @@
 - ❌ **API versioning / kendi rate-limit'in / ağır pagination** — tek-ekip aracı; `since=`/ETag cursor yeter. *(istisna: hosted public demo — #63, `DEMO_MODE` arkasında; satır 11 zaten "IP/rate cap" diyor.)*
 - ❌ **Local'de webhook/ngrok/tunnel** — laptop'un public URL'i yok; local = polling.
 - ❌ **Local MCP'de auth** — stdio, OS-kullanıcı güveni. *(Sadece hosted HTTP MCP = B'de gerekir.)*
-- ❌ **Full observability (Prometheus/Grafana/Sentry/OTel)** · **K8s/Helm/Terraform/canary** — tek küçük Fly + Vercel; minimal log yeter.
+- ❌ **Full observability (Prometheus/Grafana/Sentry/OTel)** · **K8s/Helm/Terraform/canary** — tek küçük self-host VDS + Vercel; minimal log yeter.
 
 ## 🔭 Hosted üyelik — EVRELİ yol haritası (D-28)
 

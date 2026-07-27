@@ -1,0 +1,11 @@
+# actionlint konfigurasyonu (#192, T-192 self-host donusumu).
+#
+# `deploy` job'i (deploy.yml) artik GitHub-hosted degil, sunucudaki
+# self-hosted runner'da kosuyor -- actionlint kendi bilinen etiket
+# listesinde olmayan ozel bir etiket ("ensemble-prod") gorunce bunu
+# "unknown label" olarak isaretler (bkz. runner-label kurali). Bu, o
+# runner'i kuran/kaydeden bizim kendi konvansiyonumuz -- burada acikca
+# beyan edilerek yanlis-pozitif kapatilir.
+self-hosted-runner:
+  labels:
+    - ensemble-prod
