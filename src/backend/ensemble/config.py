@@ -15,6 +15,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=str(_REPO_ROOT / ".env"), extra="ignore")
 
     ENSEMBLE_MODE: Literal["local", "hosted"] = "local"
+    ENSEMBLE_ALLOW_FAKE_SEED: bool = False
 
     # LLM saglayicisi calisma modundan bagimsizdir (#78): local engine Gemini,
     # hosted engine Ollama (ayni makinede) kullanabilir. Varsayilan, geriye
@@ -108,6 +109,35 @@ class Settings(BaseSettings):
     # Store — local: SQLite (repo kökünde, gitignored) · hosted: PostgreSQL DSN.
     # Varsayılan SQLite yolu: ensemble.db (repo kökü, .gitignore'da).
     DATABASE_URL: str = f"sqlite:///{_REPO_ROOT / 'ensemble.db'}"
+
+    # --- Kalıcı judge yargı TTL'si (#264, Semih blocker B) ---
+    # `judge_verdicts` tablosu (engine/persistence.py + store/verdict_store.py,
+    # #259) `created_at` sütununu TAŞIYORDU ama HİÇBİR okuma yolu
+    # KULLANMIYORDU — DB'deki bir yargı sonsuza kadar servis edilirdi.
+    # Risk: `cache_key` a/b/overlap/sim/model'den üretilir (bkz.
+    # `engine/persistence.py`); rubriğin KENDİSİ (`gemini/judge.py::
+    # _build_prompt`) anahtara KATILMAZ — rubrik değişince (örn. severity
+    # eşiği kalibre edilince) eski satırlar farklı bir rubrikle üretilmiş
+    # olsa bile aynı anahtarla eşleşmeye sonsuza dek devam ederdi.
+    #
+    # Varsayılan 7 gün — iki yönde de sınırlı, bilinçli bir denge:
+    #   - ÇOK KISA olursa #259'un TÜM amacı (konteyner yeniden yaratmanın,
+    #     CD #236, Gemini/Groq faturasını SIFIRLAMASI) kaybolur — her
+    #     restart yeniden ödeme demektir.
+    #   - ÇOK UZUN (ya da bugünkü gibi sınırsız) olursa prompt/model
+    #     değişikliği sessizce sonsuza dek gizlenir (yukarıdaki risk).
+    # 7 gün tipik bir sprint döngüsünden kısa (rubrik/model değişikliği
+    # genelde bu aralıkta olur) ama günlük CD restart'ları arasında bolca
+    # kalır. Süresi geçmiş satır SİLİNMEZ, yalnızca okunmaz sayılır —
+    # gerekçe: `store/verdict_store.py::get_verdict` docstring'i.
+    VERDICT_TTL_DAYS: float = 7.0
+
+    @field_validator("VERDICT_TTL_DAYS")
+    @classmethod
+    def _validate_verdict_ttl_days(cls, value: float) -> float:
+        if value <= 0:
+            raise ValueError("VERDICT_TTL_DAYS pozitif olmali (#264)")
+        return value
 
     # Radar eşikleri (#151, kalibre: #18) — 0.0/0.0 kalibrasyon SONUCU, placeholder
     # değil: sweep (#29) 60 kombinasyonun hiçbirinde FP eklemeden recall

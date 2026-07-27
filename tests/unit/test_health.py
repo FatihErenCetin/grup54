@@ -103,3 +103,80 @@ def test_health_demo_modda_gercek_wiring_uzerinden_gemini_configured_raporlar(tm
     body = resp.json()
     assert body["gemini"] == "configured"
     assert body["mode"] == "local"
+
+
+# ---------------------------------------------------------------------------
+# #238 canlı smoke bulgusu — sarmalayıcı ZİNCİRİ, tek kat değil
+#
+# Regresyon: `getattr(port, "inner", port)` YALNIZ BİR kat açıyordu. O düzeltme
+# yazıldığında tek sarmalayıcı vardı (CachedConflictJudge) ve doğruydu. #255
+# ikinci katı ekleyince (FallbackJudge) zincir `Cached -> Fallback -> Gemini`
+# oldu; bir kat açınca elde FallbackJudge kalıyor ve isinstance False dönüyordu.
+#
+# Sonuç canlıda ölçüldü: /health `gemini="missing"` raporladı ve STRICT modda
+# `make smoke` (#189) KIRMIZI kaldı — anahtar doğru ayarlı olmasına rağmen.
+# Yani sağlık kontrolü "yapılandırma yok" diye YALAN söylüyordu.
+# ---------------------------------------------------------------------------
+
+
+def _gemini_judge() -> GeminiJudgeAdapter:
+    return GeminiJudgeAdapter(Settings(_env_file=None, GEMINI_API_KEY="fake-key"))
+
+
+def test_health_tek_sarmalayicida_gemini_bulur():
+    from ensemble.engine.cache import CachedConflictJudge
+
+    sarmalanmis = CachedConflictJudge(_gemini_judge(), ttl_s=60, max_entries=8)
+    sonuc = health_check(
+        settings=Settings(ENSEMBLE_MODE="hosted"),
+        radar_service=_radar_service(github_port=FakeGitHubAdapter(), judge_port=sarmalanmis),
+    )
+    assert sonuc.gemini == "configured"
+
+
+def test_health_IKI_sarmalayicida_da_gemini_bulur():
+    """MUTASYON KİLİDİ: zincir yürüyüşünü tek-kat `getattr(...,"inner",...)`'a
+    geri çevir → bu test kırılır (canlıda olan tam olarak buydu)."""
+    from ensemble.engine.cache import CachedConflictJudge
+    from ensemble.engine.fallback import FallbackJudge
+    from ensemble.integrations.gemini.fake import FakeJudgeAdapter as _Yedek
+
+    zincir = CachedConflictJudge(
+        FallbackJudge(primary=_gemini_judge(), secondary=_Yedek()),
+        ttl_s=60,
+        max_entries=8,
+    )
+    sonuc = health_check(
+        settings=Settings(ENSEMBLE_MODE="hosted"),
+        radar_service=_radar_service(github_port=FakeGitHubAdapter(), judge_port=zincir),
+    )
+    assert sonuc.gemini == "configured"
+
+
+def test_health_gemini_YEDEKTEYKEN_de_bulur():
+    """Gemini zincirin ikincil dalındaysa da bulunmalı — `secondary` de gezilir."""
+    from ensemble.engine.fallback import FallbackJudge
+
+    zincir = FallbackJudge(primary=FakeJudgeAdapter(), secondary=_gemini_judge())
+    sonuc = health_check(
+        settings=Settings(ENSEMBLE_MODE="hosted"),
+        radar_service=_radar_service(github_port=FakeGitHubAdapter(), judge_port=zincir),
+    )
+    assert sonuc.gemini == "configured"
+
+
+def test_health_zincirde_gemini_YOKSA_missing():
+    """Simetrik kilit: zincir yürüyüşü her şeye 'configured' DEMEMELİ."""
+    from ensemble.engine.cache import CachedConflictJudge
+    from ensemble.engine.fallback import FallbackJudge
+
+    zincir = CachedConflictJudge(
+        FallbackJudge(primary=FakeJudgeAdapter(), secondary=FakeJudgeAdapter()),
+        ttl_s=60,
+        max_entries=8,
+    )
+    sonuc = health_check(
+        settings=Settings(ENSEMBLE_MODE="hosted"),
+        radar_service=_radar_service(github_port=FakeGitHubAdapter(), judge_port=zincir),
+    )
+    assert sonuc.gemini == "missing"

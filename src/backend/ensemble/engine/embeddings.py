@@ -10,10 +10,11 @@ from ensemble.ports import EmbeddingsPort
 
 
 DEFAULT_EMBEDDING_DIMENSIONS = 768
+DEFAULT_EMBEDDING_CACHE_MAX_ENTRIES = 2048
 
 # `TtlLruCache` pozitif (sonlu) `max_entries` zorunlu kılar - `CachedEmbeddings`
-# ise `max_entries=None`'ı "sınırsız" (bugünkü/local-dev davranışı, sıfır
-# regresyon) olarak destekler. Bu sentinel, "sınırsız"ı TtlLruCache'in
+# ise açıkça `max_entries=None` verildiğinde "sınırsız" kullanımı destekler.
+# Bu sentinel, "sınırsız"ı TtlLruCache'in
 # sözleşmesine uyan pratikte-asla-ulaşılamayacak dev bir üst sınıra çevirir -
 # TtlLruCache'in KENDİSİNİ (üç judge sarmalayıcısının da paylaştığı ortak
 # kod) "None = sınırsız" özel-durumuyla kirletmemek için (#63 takip).
@@ -54,10 +55,10 @@ class HashEmbeddings:
 class CachedEmbeddings:
     """Content-hash cache wrapper that preserves EmbeddingsPort's batch API.
 
-    `max_entries=None` (varsayılan) = bugünkü sınırsız davranış, sıfır
-    regresyon. Hosted demo modda (#63) serbest metin `q` sınırsız cache
-    büyütebileceği için (public demo, 512 MB Fly VM) `DEMO_CACHE_MAX_ENTRIES`
-    ile bir üst sınır + LRU tahliye devreye sokulur.
+    Varsayılan kapasite 2048 girdidir; böylece local/dev süreci de uzun ömürlü
+    kullanımda sınırsız büyümez. Hosted demo modunda (#63) daha sıkı
+    `DEMO_CACHE_MAX_ENTRIES` değeri wiring katmanından verilir. Bilinçli olarak
+    sınırsız kullanım gereken özel çağrılar açıkça `max_entries=None` geçebilir.
 
     **#63 takip (ikinci tur) — el yazması `OrderedDict` yerine `engine/cache.py`
     ortak alt yapısı:** eski uygulama `get(key)`/`move_to_end(key)`'i KİLİTSİZ
@@ -110,7 +111,7 @@ class CachedEmbeddings:
         inner: EmbeddingsPort,
         key_fn: Callable[[str, str], str] = content_hash,
         *,
-        max_entries: int | None = None,
+        max_entries: int | None = DEFAULT_EMBEDDING_CACHE_MAX_ENTRIES,
         ttl_s: float = float("inf"),
         single_flight_wait_s: float | None = None,
         time_fn: Callable[[], float] = time.monotonic,
@@ -119,7 +120,7 @@ class CachedEmbeddings:
             raise ValueError("max_entries must be positive")
         self.inner = inner
         self.key_fn = key_fn
-        # Dış görünüme (test_app_wiring.py) AYNEN korunur: None = sınırsız.
+        # Açıkça None verilmesi, geriye uyumlu sınırsız kullanım kaçışıdır.
         self.max_entries = max_entries
         effective_max_entries = (
             max_entries if max_entries is not None else _UNBOUNDED_MAX_ENTRIES

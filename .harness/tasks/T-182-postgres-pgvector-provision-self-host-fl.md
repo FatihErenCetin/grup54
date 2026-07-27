@@ -1,7 +1,7 @@
 ---
 title: 🐘 Postgres + pgvector provision (self-host · Fly app+volume) + DATABASE_URL
   secret
-status: in_review
+status: in_progress
 assignee: EnesErdemT
 paths: []
 branch: T-182-postgres-pgvector

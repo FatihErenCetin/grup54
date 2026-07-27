@@ -15,12 +15,13 @@ import pytest
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
+from ensemble.api.routers import webhook as webhook_module
 from ensemble.api.routers.webhook import verify_signature
 from ensemble.app import create_app
 from ensemble.config import Settings
 from ensemble.integrations.github.normalize import webhook_push_to_events
 from ensemble.store.engine import get_engine
-from ensemble.store.models import Base, EventRow
+from ensemble.store.models import Base, EventRow, TaskProjectionRow, TaskStatusEventRow
 
 _SECRET = "test-webhook-secret"
 
@@ -219,3 +220,185 @@ def test_webhook_push_to_events_dosyalari_birlestirir():
 
 def test_webhook_push_to_events_bos_commits_bos_liste():
     assert webhook_push_to_events({"ref": "refs/heads/main", "commits": []}) == []
+
+
+# --- D-55 (İş 3, GOREV 3/4): webhook -> transitions_from_webhook -> apply_transitions ---
+#
+# Bugün canlıda ölçülen arızanın (T-158 dosyada "todo" ama issue #158 kapalıydı)
+# birebir regresyon kilidi: webhook -> Projector.apply_transitions -> GET /board.
+
+
+def _seed_task(session_factory, task_id: str, status: str = "todo", title: str = "Görev") -> None:
+    with session_factory() as session:
+        session.add(TaskProjectionRow(task_id=task_id, title=title, status=status, seed_status=status))
+        session.commit()
+
+
+def _board_status(client: TestClient, task_id: str) -> str | None:
+    resp = client.get("/board")
+    assert resp.status_code == 200
+    for card in resp.json()["cards"]:
+        if card["task_id"] == task_id:
+            return card["status"]
+    return None
+
+
+def test_kapanan_issue_karti_done_yapar(client):
+    """`x_github_event=issues` + `action=closed` -> GET /board T-158'i `done` gösterir.
+
+    MUTASYON KILIDI (2/3): webhook.py'den `transitions_from_webhook` çağrısı
+    SİLİNİRSE bu test KIRMIZI olmalı.
+    """
+    _seed_task(client.app.state.session_factory, "T-158", status="todo")
+
+    payload = {
+        "action": "closed",
+        "issue": {"number": 158, "updated_at": "2026-07-25T09:00:00Z", "user": {"login": "esma"}},
+    }
+    body = json.dumps(payload).encode()
+    resp = client.post(
+        "/webhooks/github",
+        content=body,
+        headers={"X-Hub-Signature-256": _sign(body), "X-GitHub-Event": "issues"},
+    )
+    assert resp.status_code == 202
+    data = resp.json()
+    assert data["applied"] == 1
+    assert data["unmatched"] == 0
+
+    assert _board_status(client, "T-158") == "done"
+
+
+def test_merge_edilen_pr_govdesindeki_closes_ile_karti_done_yapar(client):
+    """`pull_request` + `action=closed` + `merged=true` + gövdede `Closes #158`
+    -> aynı sonuç (T-158 `done`). Ardından AYNI payload TEKRAR gönderildiğinde
+    (GitHub redelivery) `task_status_events` ÇOĞALMAZ ve board DEĞİŞMEZ."""
+    _seed_task(client.app.state.session_factory, "T-158", status="todo")
+
+    payload = {
+        "action": "closed",
+        "pull_request": {
+            "number": 258,
+            "updated_at": "2026-07-25T11:00:00Z",
+            "user": {"login": "fatih"},
+            "head": {"ref": "hotfix-alakasiz-dal"},  # T-<id> DEĞİL — yalnız Closes #158 geçiş üretsin
+            "body": "Closes #158",
+            "merged": True,
+        },
+    }
+    body = json.dumps(payload).encode()
+    headers = {"X-Hub-Signature-256": _sign(body), "X-GitHub-Event": "pull_request"}
+
+    resp1 = client.post("/webhooks/github", content=body, headers=headers)
+    assert resp1.status_code == 202
+    assert resp1.json()["applied"] == 1
+    assert _board_status(client, "T-158") == "done"
+
+    def _status_event_count() -> int:
+        with client.app.state.session_factory() as session:
+            return session.query(TaskStatusEventRow).count()
+
+    assert _status_event_count() == 1
+
+    # Redelivery: GitHub aynı webhook'u tekrar gönderebilir (retry/at-least-once).
+    resp2 = client.post("/webhooks/github", content=body, headers=headers)
+    assert resp2.status_code == 202
+    assert resp2.json()["applied"] == 0
+    assert resp2.json()["unchanged"] == 1
+    assert _status_event_count() == 1  # çoğalmadı
+    assert _board_status(client, "T-158") == "done"  # board değişmedi
+
+
+def test_eslesmeyen_task_id_webhook_uzerinden_unmatched_sayilir(client):
+    """.harness'te (task_projection'da) karşılığı olmayan bir task_id için
+    webhook 202 + `unmatched=1` döner — sessizce yutulmaz, kart da uydurulmaz."""
+    payload = {
+        "action": "closed",
+        "issue": {"number": 424242, "updated_at": "2026-07-25T09:00:00Z", "user": {"login": "esma"}},
+    }
+    body = json.dumps(payload).encode()
+    resp = client.post(
+        "/webhooks/github",
+        content=body,
+        headers={"X-Hub-Signature-256": _sign(body), "X-GitHub-Event": "issues"},
+    )
+    assert resp.status_code == 202
+    data = resp.json()
+    assert data["applied"] == 0
+    assert data["unmatched"] == 1
+    assert _board_status(client, "T-424242") is None
+
+
+def test_events_bos_ama_transitions_dolu_olsa_bile_gecisler_uygulanir(client, monkeypatch):
+    """`parse_events` (NormalizedEvent üretimi) boş dönse bile
+    `transitions_from_webhook` (StatusTransition üretimi) doluysa geçişler
+    YİNE DE uygulanır — biri diğerini sessizce yutmaz (D-55 kabul kriteri).
+    Gerçek payload'larda ikisi birlikte boş/dolu olma eğiliminde olduğu için
+    ayrışmayı doğrudan kilitlemek amacıyla `parse_events` monkeypatch'lenir."""
+    _seed_task(client.app.state.session_factory, "T-158", status="todo")
+    monkeypatch.setattr(webhook_module, "parse_events", lambda event_type, payload: [])
+
+    payload = {
+        "action": "closed",
+        "issue": {"number": 158, "updated_at": "2026-07-25T09:00:00Z", "user": {"login": "esma"}},
+    }
+    body = json.dumps(payload).encode()
+    resp = client.post(
+        "/webhooks/github",
+        content=body,
+        headers={"X-Hub-Signature-256": _sign(body), "X-GitHub-Event": "issues"},
+    )
+    assert resp.status_code == 202
+    data = resp.json()
+    assert data["events_processed"] == 0
+    assert data["applied"] == 1
+    assert _board_status(client, "T-158") == "done"
+
+
+def test_demo_modda_yabanci_repo_icin_transitions_de_uygulanmaz(tmp_path):
+    """`test_demo_repo_pin.py::test_demo_modda_yabanci_repo_webhooku_yok_sayilir`
+    yalnız `EventRow` sayısını (0) kilitler — bu görev (D-55, İş 3) yeni bir
+    yazma yolu (`apply_transitions` -> `task_status_events`/`task_projection`)
+    eklediği için repo-pin'in bu yolu da fail-closed durdurduğunu AYRICA
+    kilitliyoruz (o dosya bu görevin dosya kapsamı DIŞINDA, bkz. GOREV 3/4).
+
+    MUTASYON KILIDI (3/3): `apply_transitions` çağrısı repo-pin kontrolünden
+    ÖNCEYE alınırsa bu test KIRMIZI olmalı.
+    """
+    db_path = tmp_path / "repo-pin-transitions.db"
+    settings = Settings(
+        _env_file=None,
+        DATABASE_URL=f"sqlite:///{db_path}",
+        GITHUB_WEBHOOK_SECRET=_SECRET,
+        DEMO_MODE=True,
+        GITHUB_REPO_OWNER="FatihErenCetin",
+        GITHUB_REPO_NAME="grup54",
+    )
+    engine = get_engine(settings)
+    Base.metadata.create_all(engine)
+    engine.dispose()
+
+    app = create_app(settings)
+    with TestClient(app) as pin_client:
+        _seed_task(pin_client.app.state.session_factory, "T-158", status="todo")
+
+        payload = {
+            "action": "closed",
+            "issue": {"number": 158, "updated_at": "2026-07-25T09:00:00Z", "user": {"login": "esma"}},
+            "repository": {"full_name": "baskasi/baska-repo"},
+        }
+        body = json.dumps(payload).encode()
+        resp = pin_client.post(
+            "/webhooks/github",
+            content=body,
+            headers={"X-Hub-Signature-256": _sign(body), "X-GitHub-Event": "issues"},
+        )
+        assert resp.status_code == 202
+        assert resp.json() == {"status": "ignored", "reason": "repo_not_pinned", "event": "issues"}
+
+        with pin_client.app.state.session_factory() as session:
+            assert session.query(EventRow).count() == 0
+            assert session.query(TaskStatusEventRow).count() == 0
+            assert (
+                session.query(TaskProjectionRow).filter_by(task_id="T-158").one().status == "todo"
+            )
