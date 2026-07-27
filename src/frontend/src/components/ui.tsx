@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { Link } from "react-router-dom";
 
 /* Çekirdek UI primitive'leri (#19) — shadcn/ui adlandırma/token uyumlu;
    S2 iskeleti için el yazımı, shadcn CLI onboarding'i #21 ile gelir. */
@@ -170,21 +171,36 @@ export function ConfidenceMeter({ value }: { value: number }) {
 
 const AGENT_SUFFIX = /-(claude|gemini|codex|kiro|bot|ai)$/i;
 
+/** handle sonekinden insan/ajan SEZGİSİ — yalnız `ActorRef.type` yokken (#129).
+    Tahmin ≠ veri: presence'tan gerçek tip gelirse HER ZAMAN onu tercih et. */
+export function aktorTipiSezgisi(handle: string): "human" | "agent" {
+  return AGENT_SUFFIX.test(handle) ? "agent" : "human";
+}
+
 export function ActorChip({
   handle,
   /** ActorRef.type — TAŞIYAN projeksiyonlarda (örn. PresenceEntry) verilir;
       verilmezse handle sonekinden sezilir (Detection.actors hâlâ düz string[]). */
   type,
+  /** true ise `/actors/:handle` hub sayfasına link verir (#129 kabul kriteri:
+      "Activity/Board/Radar'da handle tıklanabilir olsun"). Varsayılan false —
+      görev kapsamı bu üç yüzeyle sınırlı (Graph/Presence/Login/AppLayout
+      bilinçli DOKUNULMADI, "mevcut sayfaları minimum değiştir"). DİKKAT:
+      `<a>` bir `<button>`/`<a>` İÇİNE giremez (geçersiz iç içe etkileşim) —
+      true yalnız çip kendi başına duran bir konumdaysa güvenli (FeedItem'ın
+      aktör satırı bilinçle butonun DIŞINA taşındı, bkz. FeedItem.tsx). */
+  linkli = false,
 }: {
   handle: string;
   type?: "human" | "agent";
+  linkli?: boolean;
 }) {
   // Tasarım dili: insan = daire, AI ajanı = kare (D-34). Kesin tip (Ek B1 ActorRef)
   // artık /presence'ta GELİYOR → varsa sezgiyi değil onu kullan (tahmin ≠ veri).
-  const isAgent = type !== undefined ? type === "agent" : AGENT_SUFFIX.test(handle);
+  const isAgent = type !== undefined ? type === "agent" : aktorTipiSezgisi(handle) === "agent";
   const initials = handle.slice(0, 2).toUpperCase();
-  return (
-    <span className="inline-flex items-center gap-1" title={isAgent ? `${handle} (AI ajanı)` : handle}>
+  const icerik = (
+    <>
       <span
         aria-hidden
         className={`inline-flex size-5 items-center justify-center bg-muted text-[10px] font-medium ${
@@ -194,6 +210,25 @@ export function ActorChip({
         {initials}
       </span>
       <span className="text-xs text-muted-foreground">{handle}</span>
+    </>
+  );
+  const baslik = isAgent ? `${handle} (AI ajanı)` : handle;
+  if (linkli) {
+    // title AYNEN korunur (linksiz varyantla): mevcut testler bu metni arıyor
+    // (getByTitle) — link olmak tooltip'in ANLAMINI değiştirmez.
+    return (
+      <Link
+        to={`/actors/${encodeURIComponent(handle)}`}
+        title={baslik}
+        className="inline-flex items-center gap-1 hover:underline"
+      >
+        {icerik}
+      </Link>
+    );
+  }
+  return (
+    <span className="inline-flex items-center gap-1" title={baslik}>
+      {icerik}
     </span>
   );
 }

@@ -19,7 +19,10 @@ export function moduleOf(files: string[]): string {
 }
 
 /* Radar satır anatomisi (#21, tasarım paketi /radar):
-   [severity][rationale 1 cümle][aktörler][modül çipi][confidence].
+   [severity][rationale 1 cümle][modül çipi][confidence] tıklanabilir disclosure
+   satırında; [aktörler] AYRI bir alt satırda (#129) — aktör çipleri kendi
+   aktör hub'ına (`/actors/:handle`) link verir, `<a>` `<button>` İÇİNE
+   giremez (geçersiz iç içe etkileşim + çift tık anlamı) diye satırdan çıkarıldı.
    Tıklama = SEÇİM → sağdan DetailSheet (#156, Pencil MOGXv); accordion
    kaldırıldı (tasarıma dönüş). Gate'li kalanlar: yaş (Ek B1 S3) · aksiyon
    butonları (Ek B6). */
@@ -56,16 +59,17 @@ export function FeedItem({
         <span className="min-w-0 flex-1 truncate text-sm" title={detection.rationale}>
           {detection.rationale}
         </span>
-        <span className="flex shrink-0 items-center gap-2">
-          {detection.actors.map((a, i) => (
-            <ActorChip key={`${a}-${i}`} handle={a} />
-          ))}
-        </span>
         <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 font-mono text-xs text-muted-foreground">
           {moduleOf(detection.files)}
         </span>
         <ConfidenceMeter value={detection.confidence} />
       </button>
+      <div className="flex flex-wrap items-center gap-2 border-t border-border px-4 py-2">
+        <span className="text-[11px] text-muted-foreground">aktörler:</span>
+        {detection.actors.map((a, i) => (
+          <ActorChip key={`${a}-${i}`} handle={a} linkli />
+        ))}
+      </div>
     </li>
   );
 }

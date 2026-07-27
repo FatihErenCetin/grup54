@@ -19,6 +19,7 @@ const ScopePage = lazy(() => import("./pages/ScopePage"));
 const GraphPage = lazy(() => import("./pages/GraphPage"));
 const ActivityPage = lazy(() => import("./pages/ActivityPage"));
 const AskPage = lazy(() => import("./pages/AskPage"));
+const ActorPage = lazy(() => import("./pages/ActorPage"));
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
@@ -41,6 +42,8 @@ createRoot(document.getElementById("root")!).render(
               <Route path="graph" element={<GraphPage />} />
               <Route path="activity" element={<ActivityPage />} />
               <Route path="ask" element={<AskPage />} />
+              {/* #129 — aktör hub'ı; sidebar'da YOK (ActorChip'lerden linklenir) */}
+              <Route path="actors/:handle" element={<ActorPage />} />
             </Route>
           </Routes>
         </Suspense>
