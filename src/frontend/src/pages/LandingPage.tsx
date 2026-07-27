@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
 import { Card } from "../components/ui";
+import { gorunenAd, useAuth } from "../lib/useAuth";
 
 // Repo linki: gerçek origin'den (git remote) — uydurma URL değil.
 const REPO_URL = "https://github.com/FatihErenCetin/grup54";
@@ -19,17 +20,52 @@ const ADIMLAR = [
   },
 ];
 
-/* Landing (#260) — AppLayout DIŞINDA, kimliksiz + STATİK sayfa: hiçbir veri
-   çağrısı yok, backend kapalıyken bile açılır (kabul kriteri). Emsal: Evil
-   Martians 100-landing normu — ortalanmış hero + tek başlık + ürün görseli +
-   2 CTA. Kaynak: README.md üst kısmı + internal/urun_aciklamasi.md; hiçbir
-   sayı/istatistik uydurulmadı (dogfood metrik bloğu bu yüzden bilinçli YOK —
-   gerçek PR/task/uyarı sayısı için canlı veri gerekir, statik sayfa yalan
-   söylemesin diye eklenmedi). */
+/* Landing (#260, T-294 ile Üye ol/Giriş yap eklendi) — AppLayout DIŞINDA,
+   kimliksiz + neredeyse STATİK sayfa: demo CTA'sı/video/adımlar hiçbir veri
+   çağrısı yapmaz, backend kapalıyken bile açılır (kabul kriteri — DEĞİŞMEDİ).
+   Emsal: Evil Martians 100-landing normu — ortalanmış hero + tek başlık +
+   ürün görseli + 2 CTA. Kaynak: README.md üst kısmı + internal/urun_aciklamasi.md;
+   hiçbir sayı/istatistik uydurulmadı (dogfood metrik bloğu bu yüzden bilinçli
+   YOK — gerçek PR/task/uyarı sayısı için canlı veri gerekir, statik sayfa
+   yalan söylemesin diye eklenmedi).
+
+   PO şikayeti ("üye ol/giriş yap yok") burada TEK istisnayla kapanıyor:
+   sağ üstteki iki link `/auth/config`e göre KOŞULLU (useAuth zaten bunu
+   sorguluyor) — `enabled`/`emailEnabled` ikisi de kapalıysa ya da sorgu
+   başarısız olursa (backend gerçekten kapalıyken) HİÇBİRİ basılmaz
+   ("çalışmayan buton basma", AppLayout kuralı ile aynı ilke); sayfanın geri
+   kalanı bundan TAMAMEN bağımsız render olmaya devam eder. */
 export default function LandingPage() {
+  const { enabled, emailEnabled, kullanici, isLoading, error } = useAuth();
+  const authLinkleriGoster = !isLoading && error == null && (enabled || emailEnabled);
+
   return (
     <div className="min-h-screen bg-background text-foreground">
       <div className="mx-auto max-w-5xl px-6 py-16">
+        {authLinkleriGoster && (
+          <div className="mb-8 flex items-center justify-end gap-4 text-xs">
+            {kullanici ? (
+              <Link to="/login" className="text-muted-foreground hover:text-foreground">
+                {gorunenAd(kullanici)} olarak giriş yaptın
+              </Link>
+            ) : (
+              <>
+                {emailEnabled && (
+                  <Link to="/kayit" className="text-muted-foreground hover:text-foreground">
+                    Üye ol
+                  </Link>
+                )}
+                <Link
+                  to="/login"
+                  className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:opacity-90"
+                >
+                  Giriş yap
+                </Link>
+              </>
+            )}
+          </div>
+        )}
+
         <div className="mx-auto max-w-2xl text-center">
           <p className="text-xs font-medium text-muted-foreground">
             YZTA Bootcamp 2026 · source-available

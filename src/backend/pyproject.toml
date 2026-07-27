@@ -15,6 +15,9 @@ dependencies = [
     "sqlalchemy>=2.0,<3",
     "alembic>=1.13,<2",
     "psycopg[binary]>=3.2",
+    # T-294/D-57: email+parola üyelik — argon2id parola hash'i. bcrypt YERİNE
+    # (72-bayt sessiz kırpma tuzağı var); bkz. api/credentials.py.
+    "argon2-cffi>=23.1,<24",
 ]
 
 [build-system]

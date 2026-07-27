@@ -104,7 +104,9 @@ describe("useAuth", () => {
     expect(result.current.kullanici).toBeNull();
   });
 
-  it("bozuk /auth/me gövdesi (handle yok) hata sayılır", async () => {
+  it("bozuk /auth/me gövdesi (handle YOK ve email de YOK) hata sayılır", async () => {
+    // T-294: handle artık tek başına zorunlu DEĞİL (email-only hesaplar var) —
+    // ama İKİSİ de eksikse gövde gerçekten bozuk demektir.
     fetchSahtele({
       "/auth/config": { status: 200, body: { enabled: true } },
       "/auth/me": { status: 200, body: { avatar_url: "x" } },
@@ -114,5 +116,36 @@ describe("useAuth", () => {
     await waitFor(() => expect(result.current.isLoading).toBe(false));
 
     expect(result.current.error).not.toBeNull();
+  });
+
+  it("T-294: email_enabled=true iken (GitHub kapalı olsa da) /auth/me ÇAĞRILIR", async () => {
+    // MUTASYON KİLİDİ: eski kod yalnız `enabled`e bakıp erken dönüyordu —
+    // email-only oturumlar GitHub kapalıyken sessizce anonim SAYILIRDI.
+    fetchSahtele({
+      "/auth/config": { status: 200, body: { enabled: false, email_enabled: true } },
+      "/auth/me": { status: 200, body: { handle: null, email: "a@b.com", avatar_url: null } },
+    });
+
+    const { result } = renderHook(() => useAuth());
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    expect(result.current.emailEnabled).toBe(true);
+    expect(result.current.enabled).toBe(false);
+    expect(result.current.kullanici?.email).toBe("a@b.com");
+    expect(result.current.kullanici?.handle).toBeNull();
+    expect(result.current.error).toBeNull();
+  });
+
+  it("ikisi de kapalıysa (enabled=false, email_enabled=false) /auth/me'ye HİÇ gidilmez", async () => {
+    fetchSahtele({
+      "/auth/config": { status: 200, body: { enabled: false, email_enabled: false } },
+    });
+
+    const { result } = renderHook(() => useAuth());
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    const cagrilar = (globalThis.fetch as unknown as { mock: { calls: unknown[][] } }).mock.calls;
+    expect(cagrilar.some((c) => String(c[0]).includes("/auth/me"))).toBe(false);
+    expect(result.current.error).toBeNull();
   });
 });

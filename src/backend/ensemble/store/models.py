@@ -4,12 +4,16 @@ NormalizedEvent (#16) ve .harness/ (#13) verisinin hızlı-sorgu projeksiyonu.
 Kanonik DEĞİL — .harness/ + GitHub her zaman kazanır; bu tablolar
 rebuild_projection() ile yeniden kurulabilir (rebuildable cache).
 
-users/accounts/profiles tablosu YOK (kapsam-sinirlari.md: kapsam dışı).
+`UserRow` (T-294/D-57) İSTİSNA — bu tablo bir projeksiyon/cache DEĞİLDİR,
+`.harness/`'ten türetilemez; email+parola üyeliğinin KENDİSİ (kanonik veri).
+PO kararı (D-57) `internal/grup54_dizin_yapisi.md` §5'teki eski "users/
+accounts/profiles tablosu YOK" iddiasını bu tabloya özel olarak geçersiz
+kıldı — bkz. `.harness/decisions/D-57-email-parola-uyeligi.md`.
 """
 
 from datetime import datetime
 
-from sqlalchemy import JSON, Boolean, DateTime, String, Text
+from sqlalchemy import JSON, Boolean, CheckConstraint, DateTime, String, Text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 from ensemble.models import BoardCard, NormalizedEvent
@@ -217,3 +221,46 @@ class JudgeVerdictRow(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 # Vektör kolonu burada YOK — #15 (Semih) ekleyecek.
 # pgvector extension migration'ı ayrı bir alembic adımında (002_pgvector_extension.py).
+
+
+class UserRow(Base):
+    """Email + parola ile gerçek üyelik (T-294/D-57) — "GitHub ile gir"
+    akışının YANINDA, onun yerine değil. GitHub OAuth oturumları (bkz.
+    `api/routers/auth.py::github_oauth_callback`) BU TABLOYA YAZMAZ — iki
+    kimlik yolu bilerek PARALEL yaşıyor, hesap birleştirme bu dilimin kapsamı
+    DIŞINDA (bkz. D-57 "reddedilen seçenekler").
+
+    `password_hash` NULL => yalnız-GitHub hesabı (bu satır hiçbir zaman
+    `/auth/register`/`/auth/login`'den oluşmadı — ileride bir birleştirme
+    akışı olursa diye şema hazır, ama bugün YAZAN tek yol email register).
+    `github_handle` NULL => yalnız-email hesabı (bugünkü TEK üretim yolu).
+
+    CHECK kısıtı (`ck_users_auth_method_present`) ikisinin BİRDEN NULL olduğu
+    bir satırı REDDEDER — kimlik doğrulama yolu olmayan "hayalet" bir hesap
+    hiçbir zaman DB'ye yazılamaz (mutasyon kanıtı: PR gövdesi).
+
+    Email BENZERSİZLİĞİ normalize edilmiş değer üzerindendir — bu tablo
+    kendisi normalize ETMEZ (`ensemble.api.credentials.normalize_email`in
+    işi); `store/user_store.py` yalnızca ZATEN normalize edilmiş bir email
+    BEKLER. İki farklı normalize noktası aynı kişiye iki satır açardı (#294
+    brifingi madde 2) — normalize tek fonksiyonda, çağıran (router) bir kez
+    uygular.
+    """
+
+    __tablename__ = "users"
+    __table_args__ = (
+        CheckConstraint(
+            "password_hash IS NOT NULL OR github_handle IS NOT NULL",
+            name="ck_users_auth_method_present",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    email: Mapped[str] = mapped_column(String(320), unique=True, nullable=False, index=True)
+    password_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    github_handle: Mapped[str | None] = mapped_column(
+        String(255), unique=True, nullable=True, index=True
+    )
+    avatar_url: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+    last_login_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)

@@ -203,3 +203,23 @@ def test_auth_enabled_ucu_de_doluysa_true():
         AUTH_SESSION_SECRET="z",
     )
     assert settings.auth_enabled is True
+
+
+# --- email_auth_enabled (T-294/D-57) — GitHub'dan BAĞIMSIZ kapı ---
+
+
+def test_email_auth_enabled_secret_yoksa_false():
+    assert Settings(_env_file=None).email_auth_enabled is False
+
+
+def test_email_auth_enabled_secret_varsa_true():
+    assert Settings(_env_file=None, AUTH_SESSION_SECRET="z").email_auth_enabled is True
+
+
+def test_email_auth_enabled_github_alanlarindan_bagimsizdir():
+    """Kanıt: GITHUB_OAUTH_* hiç set edilmemiş olsa bile (auth_enabled False
+    kalır) AUTH_SESSION_SECRET tek başına email_auth_enabled'ı True yapar —
+    iki kapı birbirinden BAĞIMSIZ."""
+    settings = Settings(_env_file=None, AUTH_SESSION_SECRET="z")
+    assert settings.auth_enabled is False
+    assert settings.email_auth_enabled is True

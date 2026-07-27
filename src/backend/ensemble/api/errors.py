@@ -224,7 +224,18 @@ def register_exception_handlers(app: FastAPI, settings: Settings) -> None:
         # vaadi eksiksiz olsun); 422 istisnasi Ek D'de beyanli (FastAPI semasi)
         status = getattr(exc, "status_code", 500)
         detail = str(getattr(exc, "detail", "")) or "HTTP hatası"
-        return _envelope_response(status, f"http_{status}", detail)
+        response = _envelope_response(status, f"http_{status}", detail)
+        # T-294: `HTTPException(..., headers={...})` ile ekli basliklar
+        # (orn. 429'un Retry-After'i) eskiden burada SESSIZCE dusuyordu —
+        # `_envelope_response` kendi bos `headers` sozlugunden baslayip
+        # `exc.headers`'i hic gormuyordu. Auth rate-limit (#294) tam da bu
+        # basliga ihtiyac duyuyor; genel duzeltme HER cagiran icin gecerli
+        # (bugune kadar hicbir cagiran headers= kullanmiyordu, bu yuzden
+        # mevcut hicbir davranis DEGISMEDI — yalniz yeni bir yetenek acildi).
+        extra_headers = getattr(exc, "headers", None)
+        if extra_headers:
+            response.headers.update(extra_headers)
+        return response
 
     app.add_exception_handler(StarletteHTTPException, http_exception)
 
