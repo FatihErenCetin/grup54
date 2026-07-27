@@ -69,10 +69,22 @@ x-api-imaj: &api-imaj
   # migrate'e `build:` vermeseydik Compose imaji yerelde bulamayip REGISTRY'den
   # cekmeye kalkabilirdi (boyle bir registry yok). Ikinci build tam cache
   # isabetidir, maliyeti yok.
+  #
+  # `${IMAGE_TAG:-prod}` (#262 kilidi — eskiden sabit `ensemble-api:prod` idi):
+  # CD (`deploy.yml`) `build`/`up` adimlarina `IMAGE_TAG=<deploy edilen SHA>`
+  # veriyordu ama bu YAML hic okumuyordu -> her deploy AYNI `prod` etiketini
+  # sessizce overwrite ediyordu, sunucuda SHA-basina imaj gecmisi HIC
+  # OLUSMUYORDU (geri alma = git checkout + yeniden build, dakikalar surer).
+  # Varsayilan `prod` KORUNUR (`--env-file .env.production up -d --build`,
+  # IMAGE_TAG'siz elle kurulum, ayni davranisi aynen surdurur — §3.1 adim 3).
+  # CD ayrica build SONRASI `docker tag ensemble-api:$IMAGE_TAG ensemble-api:prod`
+  # ile `prod`u da AYNI imaja isaretler (deploy.yml, "Prod etiketini guncelle"
+  # adimi) — boylece IMAGE_TAG'siz sonraki elle komutlar da son basarili CD
+  # imajini bulur, sifirdan REBUILD etmez.
   build:
     context: ..
     dockerfile: Dockerfile
-  image: ensemble-api:prod
+  image: ensemble-api:${IMAGE_TAG:-prod}
 
 services:
   # =========================================================================

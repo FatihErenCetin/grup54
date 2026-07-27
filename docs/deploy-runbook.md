@@ -326,26 +326,31 @@ curl -s -I https://www.recommend2me.com/board       # 200 + SPA rewrite kanıtı
 
 ## 5. Rollback
 
-### Backend (self-host — Fly'ın `fly releases --image` mekanizması YOK)
+### Backend (self-host — Fly'ın `fly releases --image` mekanizması YOK, ama artık build'SİZ)
 
-⚠️ **Bulgu (ölçüldü, önemli):** `deploy/docker-compose.prod.yml`'de imaj etiketi **statik**: `image: ensemble-api:prod` — `${IMAGE_TAG}` gibi bir SHA-bazlı interpolasyon **yok**. `.github/workflows/deploy.yml` (#236) `build`/`up` adımlarına `env: IMAGE_TAG: ${{ needs.preflight.outputs.sha }}` set ediyor ama compose dosyasının hiçbir yerinde `${IMAGE_TAG}` **kullanılmıyor** — yani bu env değişkeni bugün fiilen **etkisizdir** (compose'a hiç ulaşmıyor). Sonuç: sunucuda **SHA-bazlı, adreslenebilir bir imaj geçmişi yok**; her deploy aynı `ensemble-api:prod` etiketini overwrite eder. Fly'daki `fly releases --image` + `fly deploy --image <ref>` deseni bu yüzden **birebir taşınamaz** — kanonik rollback yolu **git-bazlı**:
+✅ **Kapandı (#262, `image: ensemble-api:${IMAGE_TAG:-prod}`):** eskiden imaj etiketi **statik**ti (`image: ensemble-api:prod`) — CD'nin `build`/`up` adımlarına verdiği `IMAGE_TAG=<sha>` compose'a hiç ulaşmıyordu, her deploy aynı `prod` etiketini sessizce overwrite ediyordu, sunucuda SHA-bazlı imaj geçmişi **hiç oluşmuyordu** (rollback = git checkout + yeniden build, dakikalar sürerdi — geri dönme sebebimiz tam da bir şeyin bozuk olması olabilirken). Artık `deploy.yml`:
+
+1. imajı `docker compose ... build api` ile **`ensemble-api:$IMAGE_TAG`** (deploy edilen SHA) olarak kurar,
+2. **aynı imajı** `docker tag ensemble-api:$IMAGE_TAG ensemble-api:prod` ile `prod`a da işaretler ("Prod etiketini güncelle" adımı — `IMAGE_TAG`'siz elle komutlar da her zaman son başarılı CD imajını bulsun diye),
+3. `up -d` ile servisleri ayağa kaldırır,
+4. son **5 SHA etiketini** (+ hep en taze imaja işaretli `prod`) tutup gerisini `docker rmi` ile budar ("Eski imajları budala" adımı, `IMAGE_KEEP_COUNT=5` — disk hijyeni, 45G boş VDS'te imaj başına ~200-300 MB).
+
+**Kanonik rollback artık build GEREKTİRMEZ** — önceki SHA'nın imajı son 5 deploy içindeyse yereldedir:
+
+```bash
+cd grup54/deploy
+git log --oneline -10                                          # geri dönülecek iyi SHA'yı bul (kısa/uzun, ikisi de çalışır)
+IMAGE_TAG=<iyi-sha> docker compose -f docker-compose.prod.yml --env-file .env.production up -d --no-build
+```
+
+`--no-build` ile: compose imajı yerelde `ensemble-api:<iyi-sha>` olarak zaten arar (son 5 deploy'un imajı budanmadı), `migrate` fail-closed zinciri (§3 adım 3) aynen çalışır. `<iyi-sha>` **son 5 deploy'dan eskiyse** (budanmış) bu komut "No such image" ile patlar — o durumda kanonik yol yine git-bazlı yeniden build'e döner:
 
 ```bash
 cd grup54
-git log --oneline -5                     # bozuk commit'ten önceki iyi SHA'yı bul
 git checkout <iyi-sha>                   # ya da: git revert <bozuk-sha> && git checkout main
 cd deploy
 docker compose -f docker-compose.prod.yml --env-file .env.production up -d --build
 ```
-
-**Acil/hızlı yol (rebuild'siz, yalnız önceki imaj hâlâ yerel Docker cache'inde ise işe yarar):** kötü bir deploy'dan **önce** `docker inspect --format='{{.Id}}' ensemble-api:prod` ile o anki imaj ID'sini bir yere not al (`docker images -a` ile "dangling" hâlâ diskte kalır, `docker image prune` çalıştırılmadıysa). Rollback gerekirse:
-
-```bash
-docker tag <onceki-imaj-id> ensemble-api:prod
-docker compose -f docker-compose.prod.yml --env-file .env.production up -d --no-build
-```
-
-Bu yol **kırılgan** (prune edilmişse imaj gitmiş olabilir) — kalıcı çözüm her zaman yukarıdaki git-bazlı yeniden build. *(Bulgu, düzeltilmedi: `IMAGE_TAG`'in compose'a hiç bağlanmaması muhtemelen `#236`'nın kendi bir eksiği/takip maddesi — bu runbook'un kapsamı değil, infra sahibine ayrıca bildirildi.)*
 
 Rollback sonrası **tekrar smoke doğrulaması** yap (§4).
 

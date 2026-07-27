@@ -1157,6 +1157,268 @@ def test_deploy_imaj_etiketi_dogrulanan_shaya_baglanir():
         )
 
 
+def test_deploy_image_tag_uretiliyorsa_compose_tuketir():
+    """#262 kabul kriteri 5 -- sozlesme testi: `.github/workflows/deploy.yml`
+    `docker compose` adimlarina `IMAGE_TAG` env'i URETIYORSA (bir onceki test,
+    `test_deploy_imaj_etiketi_dogrulanan_shaya_baglanir`, bunu zaten dogruluyor),
+    `deploy/docker-compose.prod.yml` bu degiskeni GERCEKTEN TUKETMELI --
+    aksi halde deploy her SHA icin ayni sabit etiketi (`ensemble-api:prod`)
+    overwrite eder, sunucuda SHA-bazli imaj gecmisi hic olusmaz ve rollback
+    build gerektirir (issue #262'nin asil bulgusu -- bu kopukluk bugune kadar
+    hicbir testte YAKALANMIYORDU: IMAGE_TAG deploy.yml'de uretiliyordu ama
+    compose'da tuketilmedigini olcen capraz-dosya testi yoktu).
+
+    MUTASYON KANITI (PR govdesinde raporlanir): `docker-compose.prod.yml`'deki
+    `${IMAGE_TAG:-prod}` referansi gecici olarak sabit `prod`'a cevrilip bu
+    test tekrar calistirildi -> kirmizi oldu; geri alinca yesile dondu."""
+    deploy_steps = _all_steps(DEPLOY["jobs"]["deploy"])
+    compose_steps = [s for s in deploy_steps if "docker compose" in (s.get("run") or "")]
+    assert compose_steps, "deploy job'inda 'docker compose' kosan hicbir adim yok."
+    assert all("IMAGE_TAG" in step.get("env", {}) for step in compose_steps), (
+        "deploy.yml docker compose adimlarinin hepsi IMAGE_TAG env'i uretmiyor -- "
+        "asagidaki tuketim kontrolu anlamsizlasir (test kurulumu bozuk olabilir)."
+    )
+
+    doc = yaml.safe_load(COMPOSE_PATH.read_text(encoding="utf-8"))
+    for servis_adi in ("api", "migrate"):
+        img = doc["services"][servis_adi].get("image")
+        assert img, f"docker-compose.prod.yml:{servis_adi} icin 'image:' alani yok."
+        assert "${IMAGE_TAG" in img, (
+            f"docker-compose.prod.yml:{servis_adi}.image={img!r} -- '${{IMAGE_TAG...}}' "
+            "interpolasyonu icermiyor (sabit bir etikete donmus olabilir) -- deploy.yml'in "
+            "urettigi IMAGE_TAG compose'a hic ULASMIYOR, SHA-bazli imaj gecmisi olusmaz."
+        )
+
+
+def test_deploy_prod_etiketi_build_sonrasi_ayni_imaja_isaretlenir():
+    """#262 kabul kriteri 2: CD, deploy ettigi SHA'yi etiket olarak KULLANMALI
+    (bir onceki test) VE `prod` etiketini de AYNI imaja isaretlemeli -- aksi
+    halde IMAGE_TAG'siz elle komutlar (runbook §3.1/§5) taze imaji hic
+    bulamaz, sifirdan REBUILD etmek zorunda kalir. Adim `docker tag
+    ensemble-api:$IMAGE_TAG ensemble-api:prod` calistirmali, build
+    adimindan SONRA ve up adimindan ONCE (ya da esdegeri) gelmeli, IMAGE_TAG
+    da dogrulanan SHA'ya baglanmali."""
+    deploy_steps = _all_steps(DEPLOY["jobs"]["deploy"])
+    retag_step = next(
+        (s for s in deploy_steps if "docker tag" in (s.get("run") or "")), None
+    )
+    assert retag_step is not None, (
+        "deploy job'inda 'docker tag' kosan bir adim yok -- prod etiketi build "
+        "sonrasi ayni imaja isaretlenmiyor olabilir (#262 kabul kriteri 2)."
+    )
+    run_body = retag_step["run"]
+    assert "ensemble-api:prod" in run_body, (
+        f"docker tag adimi 'ensemble-api:prod' hedefini icermiyor: {run_body!r}"
+    )
+    assert "$IMAGE_TAG" in run_body, (
+        f"docker tag adimi kaynak olarak '$IMAGE_TAG' kullanmiyor: {run_body!r}"
+    )
+    assert _norm_expr(retag_step.get("env", {}).get("IMAGE_TAG", "")) == "${{needs.preflight.outputs.sha}}", (
+        f"docker tag adiminin env.IMAGE_TAG degeri {retag_step.get('env', {}).get('IMAGE_TAG')!r} -- "
+        "needs.preflight.outputs.sha'ya baglanmamis."
+    )
+
+    build_step = next(
+        (s for s in deploy_steps if "docker compose" in (s.get("run") or "") and "build" in s["run"]),
+        None,
+    )
+    up_step = next(
+        (s for s in deploy_steps if "docker compose" in (s.get("run") or "") and "up -d" in s["run"]),
+        None,
+    )
+    assert build_step is not None and up_step is not None, "build/up adimlari bulunamadi."
+    assert deploy_steps.index(build_step) < deploy_steps.index(retag_step) < deploy_steps.index(up_step), (
+        "docker tag adimi build'den SONRA ve up'tan ONCE sirali degil -- build henuz "
+        "olusturmadigi bir imaji etiketlemeye calisabilir, ya da up eski etikete bakabilir."
+    )
+
+
+def test_deploy_eski_imajlar_budanir_ve_job_kirilmaz():
+    """#262 kabul kriteri 4: disk sismesin -- eski SHA-etiketli imajlar
+    budanmali VE bu adim deploy'un basarisini RISKE ATMAMALI (bir temizlik
+    hatasi az once basariyla biten deploy'u geriye donuk kirmiziya
+    cevirmemeli). `continue-on-error` (job/adim seviyesinde YASAKLI, bkz.
+    test_deploy_job_hicbir_adiminda_continue_on_error_yok) yerine govdenin
+    KENDI icinde hata-toleransli oldugu (`set +e` + `exit 0`) dogrulanir."""
+    deploy_steps = _all_steps(DEPLOY["jobs"]["deploy"])
+    prune_step = next(
+        (s for s in deploy_steps if "docker rmi" in (s.get("run") or "")), None
+    )
+    assert prune_step is not None, (
+        "deploy job'inda 'docker rmi' kosan bir adim yok -- eski imajlar budanmiyor "
+        "olabilir (#262 kabul kriteri 4)."
+    )
+    run_body = prune_step["run"]
+    assert "continue-on-error" not in prune_step, (
+        "budama adimi 'continue-on-error' kullaniyor -- bunun yerine govde kendi "
+        "icinde hata-toleransli olmali (set +e + exit 0), YASAKLI anahtar kullanilmis."
+    )
+    assert "set +e" in run_body, (
+        "budama adiminin govdesinde 'set +e' yok -- global 'bash -eo pipefail' "
+        "altinda tek bir 'docker rmi' basarisizligi TUM JOB'U kirabilir."
+    )
+    assert re.search(r"\bexit 0\b", run_body), (
+        "budama adiminin govdesinde acik bir 'exit 0' yok -- son komutun exit kodu "
+        "(orn. basarisiz bir docker rmi) adimin/job'in KENDI sonucunu belirleyebilir."
+    )
+
+    up_step = next(
+        (s for s in deploy_steps if "docker compose" in (s.get("run") or "") and "up -d" in s["run"]),
+        None,
+    )
+    assert up_step is not None, "up adimi bulunamadi."
+    assert deploy_steps.index(up_step) < deploy_steps.index(prune_step), (
+        "budama adimi 'up -d' adimindan ONCE geliyor -- servisler ayaga kalkmadan "
+        "once kullanimda olan bir imaj budanmaya calisilabilir."
+    )
+
+
+# --- Davranis testi: budama adiminin run govdesini de GERCEKTEN bash
+# altinda calistirir (_run_compose_check/_run_ci_check ile AYNI desen) --
+# sahte `docker` PATH'e konur (agsiz, deterministik), gercek siralama/tail
+# mantigi GERCEKTEN calistirilir (metnin kopyasi degil).
+
+
+def _prune_step_run_body() -> str:
+    step = next(s for s in _all_steps(DEPLOY["jobs"]["deploy"]) if "docker rmi" in (s.get("run") or ""))
+    return step["run"]
+
+
+_FAKE_DOCKER_SCRIPT = """#!/usr/bin/env bash
+set -u
+if [ "$1" = "images" ]; then
+  cat "$FAKE_DOCKER_IMAGES_FILE"
+  exit 0
+fi
+if [ "$1" = "rmi" ]; then
+  etiket="$2"
+  echo "$etiket" >> "$FAKE_DOCKER_RMI_LOG"
+  if [ "$etiket" = "${FAKE_DOCKER_RMI_FAIL_TAG:-__hicbiri__}" ]; then
+    echo "fake docker: rmi basarisiz (simule edildi): $etiket" >&2
+    exit 1
+  fi
+  exit 0
+fi
+echo "fake docker: bilinmeyen argumanlar: $*" >&2
+exit 1
+"""
+
+
+def _run_prune_step(tmp_path: Path, *, images_tsv: str, rmi_fail_tag: str = "") -> dict:
+    """Budama adiminin run govdesini GERCEKTEN calistirir -- sahte `docker`
+    PATH'e konur: `docker images` cikisi sabitlenir (gercek siralama/tail
+    mantigi bu sabit girdi uzerinde GERCEKTEN calisir), `docker rmi`
+    cagrilari bir log dosyasina yazilir (hangi etiketlerin GERCEKTEN
+    silinmeye calisildigini dogrulamak icin -- 'prod'un/'<none>''un HIC
+    çağrılmadigini da kanitlar)."""
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir(exist_ok=True)
+    fake_docker = bin_dir / "docker"
+    fake_docker.write_text(_FAKE_DOCKER_SCRIPT)
+    fake_docker.chmod(fake_docker.stat().st_mode | stat.S_IEXEC)
+
+    images_file = tmp_path / "images.tsv"
+    images_file.write_text(images_tsv)
+    rmi_log = tmp_path / "rmi.log"
+    rmi_log.write_text("")
+
+    run_script = tmp_path / "run_prune.sh"
+    run_script.write_text(_prune_step_run_body())
+    run_script.chmod(run_script.stat().st_mode | stat.S_IEXEC)
+
+    env = {
+        "PATH": f"{bin_dir}:{os.environ.get('PATH', '')}",
+        "IMAGE_KEEP_COUNT": "5",
+        "FAKE_DOCKER_IMAGES_FILE": str(images_file),
+        "FAKE_DOCKER_RMI_LOG": str(rmi_log),
+        "FAKE_DOCKER_RMI_FAIL_TAG": rmi_fail_tag,
+    }
+    result = subprocess.run(
+        ["bash", "--noprofile", "--norc", "-eo", "pipefail", str(run_script)],
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    silinmeye_calisilanlar = [line for line in rmi_log.read_text().splitlines() if line]
+    return {
+        "returncode": result.returncode,
+        "stdout": result.stdout,
+        "stderr": result.stderr,
+        "silinmeye_calisilanlar": silinmeye_calisilanlar,
+    }
+
+
+# 8 SHA-etiketli imaj (en yeniden en eskiye) + hep KORUNMASI gereken `prod` +
+# etiketsiz (`<none>`) bir imaj -- IMAGE_KEEP_COUNT=5 ile son 5 SHA (A..E)
+# tutulmali, en eski 3'u (F, G, H) budanmali; `prod`/`<none>` HIC silinmemeli.
+_SEKIZ_IMAJ_TSV = "\n".join(
+    [
+        "2024-01-01 00:00:00 +0000 UTC\tprod",
+        "2024-01-09 00:00:00 +0000 UTC\t<none>",
+        "2024-01-08 00:00:00 +0000 UTC\tshaA",
+        "2024-01-07 00:00:00 +0000 UTC\tshaB",
+        "2024-01-06 00:00:00 +0000 UTC\tshaC",
+        "2024-01-05 00:00:00 +0000 UTC\tshaD",
+        "2024-01-04 00:00:00 +0000 UTC\tshaE",
+        "2024-01-03 00:00:00 +0000 UTC\tshaF",
+        "2024-01-02 00:00:00 +0000 UTC\tshaG",
+        "2024-01-01 12:00:00 +0000 UTC\tshaH",
+    ]
+)
+
+
+def test_prune_govdesi_son_n_disindaki_shalari_budar(tmp_path):
+    """Son IMAGE_KEEP_COUNT(=5) SHA etiketi (A-E) KORUNMALI, daha eski
+    ucu (F, G, H) budanmali -- `prod`/`<none>` hicbir zaman silinmeye
+    calisilmamali (dosyadaki filtre mutasyonu -- orn. 'prod' filtresinin
+    kaldirilmasi -- bu testi kirar)."""
+    res = _run_prune_step(tmp_path, images_tsv=_SEKIZ_IMAJ_TSV)
+    assert res["returncode"] == 0, res
+    assert set(res["silinmeye_calisilanlar"]) == {"ensemble-api:shaF", "ensemble-api:shaG", "ensemble-api:shaH"}, res
+
+
+def test_prune_govdesi_yeterince_imaj_yoksa_hicbir_seyi_silmez(tmp_path):
+    """IMAGE_KEEP_COUNT'tan AZ (ya da esit) sayida SHA etiketi varsa hicbir
+    'docker rmi' cagrilmamali -- adim yine basarili (exit 0) biter."""
+    az_tsv = "\n".join(
+        [
+            "2024-01-01 00:00:00 +0000 UTC\tprod",
+            "2024-01-03 00:00:00 +0000 UTC\tshaA",
+            "2024-01-02 00:00:00 +0000 UTC\tshaB",
+        ]
+    )
+    res = _run_prune_step(tmp_path, images_tsv=az_tsv)
+    assert res["returncode"] == 0, res
+    assert res["silinmeye_calisilanlar"] == [], res
+    assert "Budanacak eski imaj yok" in res["stdout"], res
+
+
+def test_prune_govdesi_hic_imaj_yoksa_hata_vermez(tmp_path):
+    """En kritik uc durum: ilk deploy'da `ensemble-api` diye bir imaj HENUZ
+    yok -- `docker images` bos cikti dondurur. Bos girdide `grep -v` GERCEKTE
+    sifir-disi exit doner (secilen satir yok) -- bu, `set +e` OLMADAN
+    (errexit acikken) betigi erken durdururdu. Bu test govdenin bu ucu
+    GERCEKTEN toleransli karsiladigini (sadece yorumla degil) dogrular."""
+    res = _run_prune_step(tmp_path, images_tsv="")
+    assert res["returncode"] == 0, res
+    assert res["silinmeye_calisilanlar"] == [], res
+
+
+def test_prune_govdesi_bir_rmi_basarisiz_olsa_da_adim_basarili_biter(tmp_path):
+    """Blocker-tarzi bulgu: budama EYLEYICI bir adim DEGIL (deploy'un on
+    kosulu degil) -- bir SHA'nin 'docker rmi'i basarisiz olsa (imaj hala
+    referansli/kullanimda) bile adim basarili (exit 0) bitmeli VE digerlerini
+    silmeye devam etmeli (ilk basarisizlikta durup vazgecmemeli)."""
+    res = _run_prune_step(tmp_path, images_tsv=_SEKIZ_IMAJ_TSV, rmi_fail_tag="ensemble-api:shaG")
+    assert res["returncode"] == 0, (
+        f"Bir 'docker rmi' basarisiz oldugunda adim yine de sifir-disi exit ile bitti: {res}"
+    )
+    assert set(res["silinmeye_calisilanlar"]) == {"ensemble-api:shaF", "ensemble-api:shaG", "ensemble-api:shaH"}, (
+        f"shaG'nin rmi'i basarisiz oldu diye digerleri (shaF/shaH) denenmemis olabilir: {res}"
+    )
+
+
 def test_pull_request_tetikli_hicbir_workflow_self_hosted_kosmaz():
     """Repo-geneli guvenlik: tetikleyicileri arasinda `pull_request` /
     `pull_request_target` / `issue_comment` olan hicbir workflow'un hicbir

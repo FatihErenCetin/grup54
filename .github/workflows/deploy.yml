@@ -321,10 +321,54 @@ jobs:
           IMAGE_TAG: ${{ needs.preflight.outputs.sha }}
         run: docker compose -f deploy/docker-compose.prod.yml --env-file "$ENSEMBLE_ENV_FILE" build api
 
+      # #262 kilidi: `docker-compose.prod.yml`'in `image:` alani artik
+      # `ensemble-api:${IMAGE_TAG:-prod}` (eskiden sabit `ensemble-api:prod` --
+      # yukaridaki `IMAGE_TAG` bu YAML'a HIC ULASMIYORDU, her deploy ayni
+      # etiketi sessizce overwrite ediyordu, SHA-basina imaj gecmisi hic
+      # olusmuyordu). Bir onceki adim imaji GERCEKTEN `ensemble-api:$IMAGE_TAG`
+      # (bu SHA) olarak yaratti -- bu adim AYNI imaji `ensemble-api:prod`a da
+      # isaretler ki (a) IMAGE_TAG'siz elle komutlar (runbook §3.1 adim 3, §5
+      # "acil yol") HER ZAMAN son basarili CD imajini bulsun, sifirdan REBUILD
+      # etmesin, (b) compose'un kendi varsayilani (`prod`) daima taze kalsin.
+      - name: Prod etiketini guncelle (rollback icin SHA gecmisi + varsayilan prod)
+        env:
+          IMAGE_TAG: ${{ needs.preflight.outputs.sha }}
+        run: docker tag "ensemble-api:$IMAGE_TAG" ensemble-api:prod
+
       - name: Prod servisleri ayaga kaldir
         env:
           IMAGE_TAG: ${{ needs.preflight.outputs.sha }}
         run: docker compose -f deploy/docker-compose.prod.yml --env-file "$ENSEMBLE_ENV_FILE" up -d --remove-orphans
+
+      # Kabul kriteri 4 (#262): disk sismesin -- son IMAGE_KEEP_COUNT SHA
+      # etiketi (+ hep en taze imaja isaretli `prod`) tutulur, gerisi budanir.
+      # BU ADIM NE DOGRULAYICI NE EYLEYICI (bkz. dosya basligi ayrimi): deploy
+      # zaten basariyla bittikten SONRA kosan, geriye-donuk bir bakim adimidir
+      # -- deploy'un ON KOSULU degildir. `continue-on-error: true` (job-
+      # seviyesinde YASAKLI, bkz. test_deploy_job_hicbir_adiminda_continue_on_
+      # error_yok) YERINE govde kendi icinde `set +e` ile yumusatilir ve HER
+      # ZAMAN `exit 0` ile biter: tek bir `docker rmi` basarisiz olsa (imaj
+      # hala referansli/kullanimda) bile az once basariyla biten deploy'u
+      # geriye donuk kirmiziya CEVIRMEZ.
+      - name: Eski imajlari budala (disk hijyeni -- son N surum tutulur)
+        env:
+          IMAGE_KEEP_COUNT: "5" # kac SHA-etiketli surum tutulur (VDS: 45G bos, imaj basina ~200-300 MB)
+        run: |
+          set +e
+          eski_etiketler=$(docker images ensemble-api --format '{{.CreatedAt}}\t{{.Tag}}' \
+            | grep -v -e $'\tprod$' -e $'\t<none>$' \
+            | sort -r \
+            | cut -f2 \
+            | tail -n "+$((IMAGE_KEEP_COUNT + 1))")
+          if [ -z "$eski_etiketler" ]; then
+            echo "Budanacak eski imaj yok (tutulan surum: $IMAGE_KEEP_COUNT)."
+            exit 0
+          fi
+          echo "$eski_etiketler" | while read -r etiket; do
+            echo "Budaniyor: ensemble-api:$etiket"
+            docker rmi "ensemble-api:$etiket"
+          done
+          exit 0
 
   smoke:
     # `deploy` disinda hicbir `if:` YOK -- job-level `if:` verilmezse
