@@ -466,6 +466,7 @@ async def lifespan(app: FastAPI):
     app.state.event_service = EventService(
         harness_port=FileHarnessPort(),
         github_port=_build_github_port(settings),
+        session_factory=app.state.session_factory,
     )
     yield
     # TODO: Kapanışta kaynakları temizle

@@ -39,13 +39,13 @@ def _service(events: list[NormalizedEvent]) -> EventService:
 # --- servis katmanı -------------------------------------------------------
 
 def test_get_events_without_cursor_returns_full_feed_sorted():
-    events, latest_ts = _service(_EVENTS).get_events()
+    events, latest_ts, etag = _service(_EVENTS).get_events()
     assert [e.id for e in events] == ["issue:50", "commit:aaa", "pr:99"]  # ts artan
     assert latest_ts == datetime(2026, 7, 10, 10, 0, 0)  # sonraki cursor = en son ts
 
 
 def test_get_events_with_since_narrows_payload():
-    events, latest_ts = _service(_EVENTS).get_events(since=datetime(2026, 7, 10, 9, 0, 0))
+    events, latest_ts, etag = _service(_EVENTS).get_events(since=datetime(2026, 7, 10, 9, 0, 0))
     # since dahil (>=): 09:00 ve sonrası
     assert [e.id for e in events] == ["commit:aaa", "pr:99"]
 
@@ -76,7 +76,7 @@ def test_get_events_with_naive_since_works_with_aware_github_data():
     naive_since = datetime(2026, 7, 10, 9, 0, 0)  # naive
     
     # Bu çağrı TypeError vermemeli
-    events, latest_ts = service.get_events(since=naive_since)
+    events, latest_ts, etag = service.get_events(since=naive_since)
     assert len(events) == 2
     assert events[0].id == "evt1"
     assert events[1].id == "evt2"
@@ -85,7 +85,7 @@ def test_get_events_with_naive_since_works_with_aware_github_data():
 
 def test_get_events_empty_feed_echoes_cursor():
     since = datetime(2026, 7, 11, 0, 0, 0)
-    events, latest_ts = _service(_EVENTS).get_events(since=since)
+    events, latest_ts, etag = _service(_EVENTS).get_events(since=since)
     assert events == []
     assert latest_ts == since  # yeni yok → cursor ilerlemez
 

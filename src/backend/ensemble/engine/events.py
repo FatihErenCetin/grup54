@@ -5,10 +5,14 @@ Bayat (stale) varlık beyanlarını okuma anında (read-time) filtreler (#60).
 """
 
 from datetime import datetime, timezone
+from collections.abc import Callable
+from sqlalchemy.orm import Session
+from sqlalchemy import select
 
 from ensemble.models import ActorRef, NormalizedEvent, PresenceEntry
 from ensemble.ports import GitHubPort
 from ensemble_shared.harness import HarnessPort
+from ensemble.store.models import EventRow
 
 DEFAULT_PRESENCE_TTL_SECONDS = 7200  # 2 saat
 
@@ -40,9 +44,11 @@ class EventService:
         self,
         harness_port: HarnessPort,
         github_port: GitHubPort,
+        session_factory: Callable[[], Session] | None = None,
     ):
         self.harness_port = harness_port
         self.github_port = github_port
+        self.session_factory = session_factory
 
     def get_presence(
         self,
@@ -102,7 +108,7 @@ class EventService:
     def get_events(
         self,
         since: datetime | None = None,
-    ) -> tuple[list[NormalizedEvent], datetime]:
+    ) -> tuple[list[NormalizedEvent], datetime, str]:
         """GitHub event akışını artımlı polling cursor (since) ile okur (#52).
 
         since verilmezse tüm feed döner (ilk poll). Sonraki poll'lerde istemci
@@ -128,7 +134,25 @@ class EventService:
             # Zaten aware, olduğu gibi kullan
             lower_bound = since
         
-        events = self.github_port.fetch_events(lower_bound)
-        ordered = sorted(events, key=lambda e: (_to_naive_utc(e.ts), e.id))
-        latest_ts = _to_naive_utc(ordered[-1].ts) if ordered else _to_naive_utc(lower_bound)
-        return ordered, latest_ts
+        import hashlib
+        # fallback to github if no DB
+        if self.session_factory is None:
+            events = self.github_port.fetch_events(lower_bound)
+            ordered = sorted(events, key=lambda e: (_to_naive_utc(e.ts), e.id))
+            latest_ts = _to_naive_utc(ordered[-1].ts) if ordered else _to_naive_utc(lower_bound)
+            payload = latest_ts.isoformat() + "|" + "|".join(snapshot_boundary_ids(ordered, latest_ts))
+            etag = f'"{hashlib.sha1(payload.encode("utf-8")).hexdigest()}"'
+        else:
+            with self.session_factory() as session:
+                # Semih blocker fix: ETag tum DB snapshot'indan hesaplanmali
+                all_ids = session.scalars(select(EventRow.id).order_by(EventRow.id)).all()
+                payload = "|".join(all_ids)
+                etag = f'"{hashlib.sha1(payload.encode("utf-8")).hexdigest()}"'
+
+                naive_lower_bound = _to_naive_utc(lower_bound)
+                stmt = select(EventRow).where(EventRow.ts >= naive_lower_bound).order_by(EventRow.ts.asc(), EventRow.id.asc())
+                rows = session.scalars(stmt).all()
+                ordered = [row.to_domain() for row in rows]
+                latest_ts = _to_naive_utc(ordered[-1].ts) if ordered else _to_naive_utc(lower_bound)
+
+        return ordered, latest_ts, etag
