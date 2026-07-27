@@ -29,6 +29,7 @@ from ensemble.integrations.github.adapter import GitHubAdapter
 from ensemble.integrations.github.errors import GitHubConfigError
 from ensemble.integrations.github.fake import FakeGitHubAdapter
 from ensemble.engine.fallback import FallbackJudge
+from ensemble.engine.persistence import PersistentJudge
 from ensemble.integrations.groq.client import RETRY_WAIT_CAP_S as GROQ_RETRY_WAIT_CAP_S
 from ensemble.integrations.groq.judge import GroqJudgeAdapter
 from ensemble.integrations.ollama.adapter import OllamaAdapter
@@ -124,7 +125,11 @@ def _build_github_port(settings: Settings) -> GitHubPort:
         return FakeGitHubAdapter()
 
 
-def _build_judge_port(settings: Settings) -> JudgePort:
+def _build_judge_port(
+    settings: Settings,
+    *,
+    session_factory: Callable[[], Session] | None = None,
+) -> JudgePort:
     # `single_flight_budget`, tek bir `judge_conflict()` çağrısının GERÇEK
     # en-kötü-durum süresi. Adapter seçilirken başlar, sarmalayıcılar eklendikçe
     # BÜYÜR (bkz. FallbackJudge dalı) ve DEMO_MODE'da cache'e enjekte edilir.
@@ -171,6 +176,50 @@ def _build_judge_port(settings: Settings) -> JudgePort:
             "(yalnız Gemini birincilde sarılır; yerel-kal modu korunur).",
             type(judge).__name__,
         )
+
+    # #259 (GÖREV 2/2): DB-kalıcı judge katmanı (PersistentJudge) — bellek
+    # cache (aşağıdaki CachedConflictJudge) MISS verince baktığı ikinci
+    # katman. YALNIZCA hosted DI'da devreye girer: `ENSEMBLE_MODE=="hosted"`
+    # VE `session_factory` verilmiş olmalı. local (SQLite gelişim DB'si)
+    # mevcut davranış AYNEN korunur (MUTLAK KURAL 3) — bilerek bir DAHİL
+    # ETME koşuludur (#255'teki isinstance dersiyle aynı disiplin): local'de
+    # de teknik olarak bir session_factory kurulabilir (SQLite), ama bu
+    # katmanın DB'si hosted Postgres için tasarlandı (konteyner-yeniden-
+    # yaratma senaryosu, #236) — SQLite geliştirme DB'sini "judge_verdicts"
+    # ile kirletmek istenmiyor.
+    #
+    # model_identity: DB anahtarına (`cache_key`) katılan kimlik etiketi
+    # (bkz. persistence.py docstring'i — `engine/cache.py::_digest` ile aynı
+    # desen). Zincirin TAMAMININ (birincil + varsa yedek) kimliğini taşır ki
+    # sağlayıcı/model versiyonu değişince eski satırlar sessizce "doğru" gibi
+    # kullanılmasın. Hangi ALT sağlayıcının (birincil mi yedek mi) belirli
+    # bir çağrıyı yanıtladığını AYIRT ETMEZ — tıpkı aşağıdaki
+    # CachedConflictJudge(FallbackJudge(...)) sarmasının da bunu ayırt
+    # etmemesi gibi (bkz. o sarmanın gerekçe yorumu).
+    if isinstance(judge, FallbackJudge):
+        model_identity = f"gemini:{settings.GEMINI_MODEL}+groq:{settings.GROQ_MODEL}"
+    elif settings.LLM_PROVIDER == "ollama":
+        model_identity = f"ollama:{settings.OLLAMA_MODEL}"
+    elif isinstance(judge, GeminiJudgeAdapter):
+        model_identity = f"gemini:{settings.GEMINI_MODEL}"
+    else:
+        model_identity = "fake"
+
+    if settings.ENSEMBLE_MODE == "hosted" and session_factory is not None:
+        # Tekil-uçuş bütçesine (`single_flight_budget`) DB gidiş-dönüşü
+        # BİLEREK eklenmiyor: (1) DB round-trip'i tek, kısa bir sorgu
+        # (PK lookup / upsert) — Gemini/Groq'un N-deneme×timeout formülüyle
+        # karşılaştırılabilir bir büyüklük mertebesinde değil; (2) Gemini/Groq
+        # için bu bütçe GERÇEK, yapılandırılmış bir üst sınırdan (TIMEOUT_S×
+        # MAX_RETRIES) türetiliyor — DB için böyle bir üst sınır yapılandırması
+        # (bir "DATABASE_TIMEOUT_S" ayarı) yok; icat edilecek herhangi bir
+        # sabit, tam da bu dosyanın başka yerlerinde kaçınılan türden keyfi bir
+        # büyüklük olurdu; (3) bütçe eksik kalırsa sonuç bir doğruluk hatası
+        # DEĞİL, `TtlLruCache.get_or_compute`'un zaten belgelenmiş "zarif
+        # düşüşü"dür (kilit zaman aşımına uğrar, bekleyen thread kilitsiz
+        # devam eder — en kötü ihtimalle DB sorgusu/az sayıda hesaplama
+        # tekrarlanır, cache asla yanlış bir şey saklamaz).
+        judge = PersistentJudge(judge, session_factory=session_factory, model=model_identity)
 
     if settings.DEMO_MODE:
         # #63: hosted public demo — Radar'ın 10 sn'lik poll'u aynı çifti
@@ -223,10 +272,14 @@ def _build_embeddings_port(settings: Settings) -> EmbeddingsPort:
     return HashEmbeddings()
 
 
-def _build_radar_service(settings: Settings) -> RadarService:
+def _build_radar_service(
+    settings: Settings,
+    *,
+    session_factory: Callable[[], Session] | None = None,
+) -> RadarService:
     return RadarService(
         github_port=_build_github_port(settings),
-        judge_port=_build_judge_port(settings),
+        judge_port=_build_judge_port(settings, session_factory=session_factory),
         embeddings_port=_build_embeddings_port(settings),
         window_days=settings.RADAR_WINDOW_DAYS,
         min_jaccard=settings.RADAR_MIN_JACCARD,
@@ -362,14 +415,19 @@ def _verify_harness_boot(scope_service: ScopeService) -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     settings = app.state.settings
-    app.state.radar_service = _build_radar_service(settings)
     # #104 review bulgusu (Semih, blocker): stub session_factory=lambda: None
     # override'sız istekte TypeError veriyordu - store/engine.py'deki gercek
     # engine'e baglandi (radar_service ile ayni desen). Tablolar Alembic'le
     # onceden kurulu varsayilir (make migrate) - burasi sema kurmaz.
     # #62 webhook receiver: Projector'un yazacagi gercek DB session factory,
     # graph_service ile aynisi paylasilir.
+    # #259 (GÖREV 2/2): session_factory artık radar_service'TEN ÖNCE kurulur —
+    # judge zincirindeki PersistentJudge (hosted DI) buna ihtiyaç duyar; eskiden
+    # yalnız query/board/graph servisleri için SONRADAN kuruluyordu.
     app.state.session_factory = get_session_factory(get_engine(settings))
+    app.state.radar_service = _build_radar_service(
+        settings, session_factory=app.state.session_factory
+    )
     app.state.graph_service = GraphService(app.state.session_factory)
     app.state.query_service = _build_query_service(
         settings,
