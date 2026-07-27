@@ -6,7 +6,7 @@
 
 - **Ad/slug:** `ensemble-radar` · **App ID:** `4257285` · sahip: FatihErenCetin (kişisel hesap)
 - **İzinler (minimal, D-28):** Contents · Pull requests · Issues · Metadata — **hepsi read-only** + Email addresses (read). ⛔ `members:read` bilinçli YOK (org-owner bariyeri; güven hikâyemizin parçası).
-- **Olaylar:** push · pull_request · issues · **Webhook:** aktif, geçici hedef smee.io kanalı (S3 #62'de Fly URL'iyle değişir — D-35).
+- **Olaylar:** push · pull_request · issues · **Webhook:** aktif, geçici hedef smee.io kanalı (S3 #62'de self-host domain'iyle değişir — D-35, D-46 self-host dönüşümüyle güncellendi).
 - Kurulum: yalnız `FatihErenCetin/grup54` (Only select repositories).
 
 ## Yeni üye `.env` kurulumu
