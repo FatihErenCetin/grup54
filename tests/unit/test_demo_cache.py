@@ -23,7 +23,11 @@ from ensemble.engine.cache import (
     CachedScopeJudge,
     TtlLruCache,
 )
-from ensemble.engine.embeddings import CachedEmbeddings, content_hash
+from ensemble.engine.embeddings import (
+    DEFAULT_EMBEDDING_CACHE_MAX_ENTRIES,
+    CachedEmbeddings,
+    content_hash,
+)
 from ensemble.engine.radar import RadarService
 from ensemble.integrations.github.fake import FakeGitHubAdapter
 from ensemble.ports import JudgeUnavailableError
@@ -410,11 +414,11 @@ def test_radar_ikinci_pollde_judge_cagirmaz():
 #
 # #63 takip (ikinci tur): el yazmasi OrderedDict (`._cache`) kaldirildi, yerine
 # TtlLruCache (`.cache`) geldi - asagidaki testler `.cache` uzerinden okur
-# (`__len__` TtlLruCache'in kendi metodu). Davranis (LRU sinir + sinirsiz
-# varsayilan) AYNEN korunuyor, yalniz erisim yolu degisti.
+# (`__len__` TtlLruCache'in kendi metodu). Davranis, sonlu varsayilan + daha
+# siki demo siniri ve acik sinirsiz kullanim secenegiyle dogrulanir.
 
 
-def test_embeddings_cache_demo_modda_sinirli():
+def test_embeddings_cache_kapasite_politikasi():
     class _CountingEmbeddings:
         def embed(self, texts, task_type):
             return [[float(len(text))] for text in texts]
@@ -425,8 +429,11 @@ def test_embeddings_cache_demo_modda_sinirli():
     limited.embed(["ccc"], "T")
     assert len(limited.cache) == 2
 
-    # varsayilan (max_entries=None) = bugunku sinirsiz davranis, sifir regresyon
-    unlimited = CachedEmbeddings(_CountingEmbeddings())
+    default_limited = CachedEmbeddings(_CountingEmbeddings())
+    assert default_limited.max_entries == DEFAULT_EMBEDDING_CACHE_MAX_ENTRIES
+
+    # Sinirsiz kullanim yalniz acik bir opt-out ile korunur.
+    unlimited = CachedEmbeddings(_CountingEmbeddings(), max_entries=None)
     unlimited.embed(["a"], "T")
     unlimited.embed(["bb"], "T")
     unlimited.embed(["ccc"], "T")

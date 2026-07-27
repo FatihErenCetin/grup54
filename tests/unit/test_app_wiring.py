@@ -21,7 +21,11 @@ from ensemble.app import (
 from ensemble.config import Settings
 from ensemble.engine.fallback import FallbackJudge
 from ensemble.engine.cache import CachedConflictJudge, CachedQueryJudge, CachedScopeJudge
-from ensemble.engine.embeddings import CachedEmbeddings, HashEmbeddings
+from ensemble.engine.embeddings import (
+    DEFAULT_EMBEDDING_CACHE_MAX_ENTRIES,
+    CachedEmbeddings,
+    HashEmbeddings,
+)
 from ensemble.integrations.gemini.client import RETRY_WAIT_CAP_S
 from ensemble.integrations.gemini.embeddings import GeminiEmbeddingsAdapter
 from ensemble.integrations.gemini.fake import FakeJudgeAdapter
@@ -239,7 +243,7 @@ def test_demo_kapali_iken_judge_sarmalanmaz(tmp_path):
 
         embeddings = app.state.radar_service.embeddings_port
         assert isinstance(embeddings, CachedEmbeddings)
-        assert embeddings.max_entries is None  # demo kapali - sinirsiz (mevcut davranis)
+        assert embeddings.max_entries == DEFAULT_EMBEDDING_CACHE_MAX_ENTRIES
 
 
 def test_demo_acikken_judge_ve_embeddings_sarmalanir(tmp_path):

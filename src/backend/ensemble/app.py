@@ -11,9 +11,13 @@ from ensemble.api.errors import ERROR_RESPONSES, ErrorEnvelope, register_excepti
 from ensemble.api.rate_limit import DemoRateLimitMiddleware
 from ensemble.api.routers import board, events, graph, health, query, radar, scope, webhook
 from ensemble.config import Settings, get_settings
-from ensemble.engine.cache import CachedConflictJudge, CachedQueryJudge, CachedScopeJudge
-from ensemble.engine.embeddings import CachedEmbeddings, HashEmbeddings
 from ensemble.engine.board import BoardService
+from ensemble.engine.cache import CachedConflictJudge, CachedQueryJudge, CachedScopeJudge
+from ensemble.engine.embeddings import (
+    DEFAULT_EMBEDDING_CACHE_MAX_ENTRIES,
+    CachedEmbeddings,
+    HashEmbeddings,
+)
 from ensemble.engine.events import EventService
 from ensemble.engine.graph import GraphService
 from ensemble.engine.query import QueryService
@@ -193,10 +197,13 @@ def _build_judge_port(settings: Settings) -> JudgePort:
 
 
 def _build_embeddings_port(settings: Settings) -> EmbeddingsPort:
-    # #63: hosted demo modda cache boyutu sınırlanır (serbest metin `q` sınırsız
-    # büyümesin — 512 MB Fly VM); local/dev'de max_entries=None (mevcut sınırsız
-    # davranış, sıfır regresyon).
-    max_entries = settings.DEMO_CACHE_MAX_ENTRIES if settings.DEMO_MODE else None
+    # #170: local/dev cache'i 2048 girişle sınırlıdır; #63 hosted demo modu
+    # serbest metin `q` yüküne karşı daha sıkı ayar değerini uygular.
+    max_entries = (
+        settings.DEMO_CACHE_MAX_ENTRIES
+        if settings.DEMO_MODE
+        else DEFAULT_EMBEDDING_CACHE_MAX_ENTRIES
+    )
     # Tekil-uçuş bekleme süresi DEMO_MODE'dan BAĞIMSIZ hesaplanır - ama
     # `CachedEmbeddings` sarmalayıcısının KENDİSİ (dolayısıyla `_fill_misses`
     # tekil-uçuşu) LLM_PROVIDER ollama/gemini olduğu sürece HER ZAMAN
