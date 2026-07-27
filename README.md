@@ -8,11 +8,15 @@
 
 **AI çağı yazılım ekipleri için koordinasyon aracı:** kim neye dokunuyor, kimler çakışmak üzere, nerede plandan sapıldı — ve panoya **doğal dille sor**. Hepsi tek canlı ekranda, gerçek GitHub verisinden.
 
-[**▶ İlk prototipi çalıştır**](harness-dashboard/README.md#çalıştırma) · YZTA Bootcamp 2026 · **grup54**
+[**🌐 Canlı demo → recommend2me.com**](https://recommend2me.com) · [API sağlık](https://api.recommend2me.com/health) · YZTA Bootcamp 2026 · **grup54**
 
 ![Ensemble — ilk prototip panosu](harness-dashboard/docs/dashboard.png)
 
-> **İlk prototip:** [`harness-dashboard/`](harness-dashboard/) — vizyonun çalışan bir kesiti. Ensemble'ın tam mimarisi (FastAPI engine · Gemini/Ollama "judge" · MCP · `.harness/`) geliştiriliyor.
+> **Canlı ve çalışıyor.** Demo, **bu reponun kendi gerçek verisiyle** beslenir — kurgu veri yok. GitHub webhook'undan gelen commit/PR/issue akışı, 19 Haziran'dan bugüne **660+ olay** ve 4 takım üyesinin katkısı ekranda. Ensemble kendi geliştirme sürecini izliyor (*dogfood*).
+>
+> **Yığın:** FastAPI engine · Gemini "judge" (Groq yedekli) · Postgres+pgvector · MCP server · React/Vite · self-host VDS + Vercel · her `main` merge'inde otomatik deploy.
+>
+> <sub>İlk prototip [`harness-dashboard/`](harness-dashboard/) altında duruyor — yukarıdaki görsel ona ait; tam ürünün ekran görüntüleri `ProjectManagement/Sprint3/Screenshots/` altında.</sub>
 
 </div>
 
@@ -645,4 +649,13 @@ Kaynak veri: [`burndown-sprint2.csv`](ProjectManagement/Sprint2/Burndown/burndow
 
 ## 🛠️ Teknoloji
 
-Bu sürüm: tek-dosya **HTML + JS** (build yok) · **GitHub REST API** (canlı veri). Çalıştırma, "nasıl çalışıyor", yol haritası ve dürüst bilinen sınırlar → **[`harness-dashboard/README.md`](harness-dashboard/README.md)**. Hedeflenen tam mimari için yukarıdaki *Mimari & Yapay Zeka* bölümüne bakın.
+| Katman | Teknoloji |
+|---|---|
+| **Engine** | Python 3.12 · FastAPI · katmanlı `engine/` (ingest · conflict · scopedrift · board · query · judge) |
+| **Yapay zeka** | Gemini (embedding + "judge") · **Groq yedek judge** (kota tükenince otomatik devreye girer) · tam-yerel gizlilik modu için Ollama |
+| **Veri** | Postgres + **pgvector** (hosted) ↔ FAISS (yerel) · `.harness/` git-senkron ortak bağlam **kanonik**, DB projeksiyon |
+| **Arayüz ×2** | React + Vite + Tailwind (web) · **MCP server** (ajanlar için: `who_is_touching` · `check_scope` · `declare_work`) |
+| **Dağıtım** | self-host VDS (Docker Compose + host'ta Caddy) · Vercel (frontend) · her `main` merge'inde **otomatik deploy** (SHA-etiketli imaj → build'siz rollback) |
+| **Kalite** | 785 test · ruff · OpenAPI↔TS client drift guardrail'i (`make contracts`) · `.harness/` şema doğrulaması · eval/backtest harness'ı |
+
+Çalıştırma ve mimari ayrıntı → yukarıdaki *Mimari & Yapay Zeka* bölümü. İlk prototipin kendi belgesi → [`harness-dashboard/README.md`](harness-dashboard/README.md).
