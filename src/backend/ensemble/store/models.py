@@ -174,5 +174,46 @@ class TaskStatusEventRow(Base):
     resets: Mapped[bool] = mapped_column(Boolean, default=False)
 
 
+class JudgeVerdictRow(Base):
+    """Kalıcı judge yargı önbelleği (#259) — `CachedConflictJudge` (bellek,
+    TTL'li) MISS verince bir sonraki katmanın (`PersistentJudge`) baktığı
+    kalıcı depo. Konteyner yeniden yaratıldığında (CD, #236) bellek katmanı
+    her seferinde sıfırlanır ama bu tablo KALICI kalır — aynı çift için
+    Gemini/Groq'a ikinci kez ödenmez.
+
+    `cache_key`, `engine/cache.py::_digest`'in ÜRETTİĞİ AYNI içerik-adresli
+    anahtardır (a+b+overlap+sim üzerinden sha256) — kaç KATTIR ki `model`de
+    bu anahtara KATILMIŞ olmalıdır (çağıranın sorumluluğu, bkz.
+    `verdict_store.py`): aynı çift farklı bir model tarafından yargılanınca
+    farklı bir `cache_key` üretilir, eski satırın üzerine YAZILMAZ — farklı
+    model farklı yargı verir, model değişince eski yargılar sessizce
+    "doğru" gibi kullanılmaz. `model` kolonu AYRICA (anahtarın parçası olsa
+    bile) düz metin olarak saklanır — yalnızca bayatlık teşhisi/gözlem
+    içindir (örn. "şu modelin ürettiği kaç yargı var" sorgusu), PK'nin
+    KENDİSİ değildir.
+
+    `detection`, `Detection.model_dump(mode="json")` çıktısıdır; okurken
+    `Detection.model_validate(...)` ile geri kurulur (bkz. verdict_store.py
+    `get_verdict`). Bozuk/eski şemalı bir satır okunursa `verdict_store.py`
+    sessizce `None` döner (log'lu) — bu MEŞRU bir geçiş yoludur, yargı
+    yeniden hesaplanır.
+
+    `JudgeUnavailableError` BURAYA HİÇ YAZILMAZ (#252 sözleşmesi): hata bir
+    sonuç değildir, kalıcılaştırılmaz — bu tablo yalnızca GERÇEK yargıları
+    tutar (bkz. `ports.py::JudgeUnavailableError` docstring'i).
+    """
+
+    __tablename__ = "judge_verdicts"
+
+    cache_key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    model: Mapped[str] = mapped_column(String(100), index=True)
+    detection: Mapped[dict] = mapped_column(JSON)
+    # #264 (Semih blocker B): bu sütun ÖNCE yalnızca gözlem içindi, hiçbir
+    # okuma yolu KULLANMIYORDU. Artık `verdict_store.py::get_verdict`'in
+    # (opsiyonel) `ttl_days` karşılaştırmasında OKUNUR — `put_verdict` bu
+    # sütunu HEM ilk INSERT'te HEM de mevcut satırın üzerine her yazışta
+    # `datetime.utcnow()`'a tazeler (kolon varsayılanı yalnızca INSERT'te
+    # devreye girer, UPDATE'te tazelenmez — bkz. o fonksiyonun docstring'i).
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 # Vektör kolonu burada YOK — #15 (Semih) ekleyecek.
 # pgvector extension migration'ı ayrı bir alembic adımında (002_pgvector_extension.py).
