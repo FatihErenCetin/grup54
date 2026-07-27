@@ -32,6 +32,7 @@ from ensemble.integrations.gemini.scope_judge import build_scope_judge
 from ensemble.integrations.github.adapter import GitHubAdapter
 from ensemble.integrations.github.errors import GitHubConfigError
 from ensemble.integrations.github.fake import FakeGitHubAdapter
+from ensemble.engine.devre_kesici import DevreKesiciJudge
 from ensemble.engine.fallback import FallbackJudge
 from ensemble.engine.persistence import PersistentJudge
 from ensemble.integrations.groq.client import RETRY_WAIT_CAP_S as GROQ_RETRY_WAIT_CAP_S
@@ -170,7 +171,14 @@ def _build_judge_port(
     # yargısı ayrı kayıtta yaşamaya devam ederdi. İki sağlayıcı da düşerse
     # JudgeUnavailableError yayılır → #252 gereği cache'e HİÇBİR ŞEY yazılmaz.
     if settings.GROQ_API_KEY and isinstance(judge, GeminiJudgeAdapter):
-        judge = FallbackJudge(primary=judge, secondary=GroqJudgeAdapter(settings))
+        # Devre kesici HER SAĞLAYICIYI AYRI sarar (#288). Tek bir kesici
+        # `FallbackJudge`'ı dıştan sarsaydı, Gemini'nin günlük kotası bitince
+        # ÇALIŞAN Groq'a gitmeyi de keserdi — yedeğin varlık sebebi tam da o an.
+        # Cache'in İÇİNDE kalır: cache isabetleri hiçbir zaman kesilmemeli.
+        judge = FallbackJudge(
+            primary=DevreKesiciJudge(judge),
+            secondary=DevreKesiciJudge(GroqJudgeAdapter(settings)),
+        )
         # Tek çağrının en-kötü süresi TOPLAMSAL: birincil retry'larını tüketir,
         # sonra yedek kendi retry'larını tüketir.
         single_flight_budget += _groq_single_flight_wait_s(settings)
