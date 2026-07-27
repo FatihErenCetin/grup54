@@ -24,6 +24,18 @@ type NormalizedEvent = components["schemas"]["NormalizedEvent"];
    artımlı yükleme (uç destekliyor, UI şimdilik tam feed okuyor) · kart
    detayına gidiş (/actors/:handle, S3-stretch). */
 
+/** Backend naive-UTC ISO üretiyor (`"2026-07-27T22:30:00"` — zone eki YOK).
+ * `new Date(iso)` bunu TARAYICI YEREL saati sanar: Europe/Istanbul'da
+ * 27 Tem 22:30 hesaplanır, doğrusu 28 Tem 01:30'dur (3 saat kayma + yanlış
+ * GÜN başlığı). Zone eki yoksa `Z` ekleyip UTC kabul ediyoruz.
+ *
+ * Gün başlığı, saat ve sıralama HEPSİ bu tek helper'dan geçer — üç yerde üç
+ * farklı parse, üç farklı kayma demek olurdu. */
+function parseUtc(iso: string): Date {
+  const zoneli = /[Zz]$|[+-]\d{2}:?\d{2}$/.test(iso) ? iso : `${iso}Z`;
+  return new Date(zoneli);
+}
+
 const TUR: Record<string, { etiket: string; ikon: string; ton: string }> = {
   commit: { etiket: "commit", ikon: "◆", ton: "bg-primary/15 text-primary" },
   pr: { etiket: "PR", ikon: "⇢", ton: "bg-status-in-review/15 text-status-in-review" },
@@ -31,7 +43,7 @@ const TUR: Record<string, { etiket: string; ikon: string; ton: string }> = {
 };
 
 function gunBasligi(iso: string): string {
-  const d = new Date(iso);
+  const d = parseUtc(iso);
   if (Number.isNaN(d.getTime())) return "Tarihi okunamayan olaylar";
   const bugun = new Date();
   const dun = new Date(bugun);
@@ -46,7 +58,7 @@ function gunBasligi(iso: string): string {
 }
 
 function saat(iso: string): string {
-  const d = new Date(iso);
+  const d = parseUtc(iso);
   // Bozuk ISO'da ekrana "Invalid Date" basma (Scope/Graph ile aynı guard).
   if (Number.isNaN(d.getTime())) return "—";
   return d.toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" });
@@ -56,7 +68,11 @@ function saat(iso: string): string {
 function grupla(events: NormalizedEvent[]) {
   const gunler = new Map<string, Map<string, NormalizedEvent[]>>();
   // En yeni önce: feed'in doğal okuma sırası.
-  const sirali = [...events].sort((a, b) => (a.ts < b.ts ? 1 : a.ts > b.ts ? -1 : 0));
+  // Sıralama da AYNI epoch üzerinden: string karşılaştırması naive/aware
+  // karışımında (biri 'Z'li, biri değil) sessizce yanlış sıralar.
+  const sirali = [...events].sort(
+    (a, b) => parseUtc(b.ts).getTime() - parseUtc(a.ts).getTime(),
+  );
   for (const e of sirali) {
     const g = gunBasligi(e.ts);
     if (!gunler.has(g)) gunler.set(g, new Map());
