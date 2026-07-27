@@ -22,7 +22,7 @@ Gerekçe: `T-<id>` branch + `Closes #<id>` PR ile entegre, kartları PR/issue
 durumundan otomatik oynatır (dogfood).
 ```
 
-## Bu klasörde bugün TEK kayıt var — toplu migrasyon HÂLÂ yapılmadı
+## Bu klasörde iki kayıt var — toplu migrasyon HÂLÂ yapılmadı
 
 `D-56` (27 Temmuz 2026) buraya, **toplu migrasyondan bağımsız** olarak yazıldı:
 amacı Sprint 3 teslim edilirken jüriye görünür hesap verilebilirlik sağlamak ve
@@ -58,3 +58,4 @@ migrasyon notunu bırakıyor.
 | id | tarih | konu |
 |---|---|---|
 | [D-56](D-56-review-beklemeden-merge.md) | 2026-07-27 | Sprint 3 son gününde review beklemeden merge — gerekçe, kapsam, bedel |
+| [D-57](D-57-email-parola-uyeligi.md) | 2026-07-28 | Email + parola üyeliği S3'e alındı — D-23/D-28'in kapsamı değişti |
