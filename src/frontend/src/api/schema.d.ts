@@ -409,6 +409,22 @@ export interface components {
             /** Nearest */
             nearest: components["schemas"]["NearestRef"][];
         };
+        /**
+         * RadarDegraded
+         * @description Bu turda judge'ın DEĞERLENDİREMEDİĞİ çiftler (#252).
+         *
+         *     Varlığı "sonuç eksik" demektir: `detections` listesi o turda gerçekten
+         *     yargılanabilmiş çiftleri taşır, `judge_unavailable` kadarı ise hiç
+         *     yargılanamamıştır — çakışma olmadığı için değil, judge'a ulaşılamadığı için.
+         *     İstemci bunu tespit gibi göstermemeli, "sonuç eksik" uyarısı olarak
+         *     göstermelidir.
+         */
+        RadarDegraded: {
+            /** Judge Unavailable */
+            judge_unavailable: number;
+            /** Evaluated */
+            evaluated: number;
+        };
         /** RadarResponse */
         RadarResponse: {
             /** Detections */
@@ -418,6 +434,7 @@ export interface components {
              * Format: date-time
              */
             updated_at: string;
+            degraded?: components["schemas"]["RadarDegraded"] | null;
         };
         /** ScopeCurrent */
         ScopeCurrent: {
@@ -558,6 +575,17 @@ export interface operations {
                     "application/json": components["schemas"]["HealthResponse"];
                 };
             };
+            /** @description Demo istek limiti aşıldı (yalnız DEMO_MODE) */
+            429: {
+                headers: {
+                    /** @description Saniye — pencere kayınca tekrar denenebilir */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
             /** @description Kalici saglayici hatasi (GitHub/Gemini/Ollama) */
             502: {
                 headers: {
@@ -596,6 +624,17 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RadarResponse"];
+                };
+            };
+            /** @description Demo istek limiti aşıldı (yalnız DEMO_MODE) */
+            429: {
+                headers: {
+                    /** @description Saniye — pencere kayınca tekrar denenebilir */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
             /** @description Kalici saglayici hatasi (GitHub/Gemini/Ollama) */
@@ -658,6 +697,17 @@ export interface operations {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
+            /** @description Demo istek limiti aşıldı (yalnız DEMO_MODE) */
+            429: {
+                headers: {
+                    /** @description Saniye — pencere kayınca tekrar denenebilir */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
             /** @description Kalici saglayici hatasi (GitHub/Gemini/Ollama) */
             502: {
                 headers: {
@@ -696,6 +746,17 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ScopeCurrent"];
+                };
+            };
+            /** @description Demo istek limiti aşıldı (yalnız DEMO_MODE) */
+            429: {
+                headers: {
+                    /** @description Saniye — pencere kayınca tekrar denenebilir */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
             /** @description Kalici saglayici hatasi (GitHub/Gemini/Ollama) */
@@ -738,6 +799,17 @@ export interface operations {
                     "application/json": components["schemas"]["ScopeVerdictsResponse"];
                 };
             };
+            /** @description Demo istek limiti aşıldı (yalnız DEMO_MODE) */
+            429: {
+                headers: {
+                    /** @description Saniye — pencere kayınca tekrar denenebilir */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
             /** @description Kalici saglayici hatasi (GitHub/Gemini/Ollama) */
             502: {
                 headers: {
@@ -776,6 +848,17 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["BoardResponse"];
+                };
+            };
+            /** @description Demo istek limiti aşıldı (yalnız DEMO_MODE) */
+            429: {
+                headers: {
+                    /** @description Saniye — pencere kayınca tekrar denenebilir */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
             /** @description Kalici saglayici hatasi (GitHub/Gemini/Ollama) */
@@ -838,6 +921,17 @@ export interface operations {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
+            /** @description Demo istek limiti aşıldı (yalnız DEMO_MODE) */
+            429: {
+                headers: {
+                    /** @description Saniye — pencere kayınca tekrar denenebilir */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
             /** @description Kalici saglayici hatasi (GitHub/Gemini/Ollama) */
             502: {
                 headers: {
@@ -887,6 +981,68 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Demo istek limiti aşıldı (yalnız DEMO_MODE) */
+            429: {
+                headers: {
+                    /** @description Saniye — pencere kayınca tekrar denenebilir */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Kalici saglayici hatasi (GitHub/Gemini/Ollama) */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Gecici olarak erisilemez */
+            503: {
+                headers: {
+                    /** @description Saniye — yalniz kendiliginden duzelebilir durumlarda */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    get_presence_presence_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PresenceResponse"];
+                };
+            };
+            /** @description Demo istek limiti aşıldı (yalnız DEMO_MODE) */
+            429: {
+                headers: {
+                    /** @description Saniye — pencere kayınca tekrar denenebilir */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
             /** @description Kalici saglayici hatasi (GitHub/Gemini/Ollama) */
@@ -999,6 +1155,17 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Demo istek limiti aşıldı (yalnız DEMO_MODE) */
+            429: {
+                headers: {
+                    /** @description Saniye — pencere kayınca tekrar denenebilir */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
             /** @description Kalici saglayici hatasi (GitHub/Gemini/Ollama) */

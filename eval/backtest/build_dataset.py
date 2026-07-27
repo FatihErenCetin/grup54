@@ -50,6 +50,7 @@ def _git(*args: str) -> subprocess.CompletedProcess[str]:
         ["git", "-C", str(_REPO_ROOT), "-c", "core.quotePath=off", *args],
         capture_output=True,
         text=True,
+        encoding="utf-8",
         check=False,
         # determinizm: git mesajlari makine yereline gore cevriliyor (ör. "ÇAKIŞMA (içerik)");
         # C locale sabitlemezsek ayni komut farkli makinede farkli metin dondurur.

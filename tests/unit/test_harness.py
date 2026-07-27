@@ -7,6 +7,7 @@ import pytest
 from jsonschema import Draft202012Validator
 
 from ensemble_shared.harness import FileHarnessPort, HarnessError, HarnessValidationError
+from scripts.harness_validate import validate_harness
 
 
 def write_md(path: Path, frontmatter: str, body: str = "") -> None:
@@ -232,6 +233,62 @@ def test_utf8_bom_file_is_accepted(tmp_path: Path):
     path.write_bytes(b"\xef\xbb\xbf" + content.encode("utf-8"))
 
     assert FileHarnessPort(tmp_path).read_tasks()[0]["task_id"] == "T-1"
+
+
+# --- NON_DATA_FILENAMES muafiyeti — #242 review bulgusu: bu daha önce AMAÇLI
+# bir teste sahip değildi (yalnız 11 alakasız testin README.md içeriğinin
+# tesadüfen şema-geçerli olması yüzünden yeşil kalıyordu). Aşağıdaki testler
+# şablon dosyalarını KASITLI olarak şema-GEÇERSİZ front-matter'la (hatta
+# front-matter'sız düz metinle) yazıp muafiyetin gerçekten "veri sayılmıyor"
+# davranışını kanıtlar — geçerli içerikle yazılsaydı testler yine yeşil
+# kalır ama hiçbir şey ispatlamazdı.
+
+
+def _write_raw(path: Path, content: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(content, encoding="utf-8")
+
+
+def test_readme_template_files_are_not_treated_as_data(tmp_path: Path):
+    """Her klasördeki `README.md` front-matter'sız düz metin olsa bile
+    `read_tasks`/`read_active` onu okumaya ÇALIŞMAZ (okumaya çalışsaydı
+    `HarnessValidationError` fırlatırdı — front-matter delimiter'ı yok)."""
+    _write_raw(tmp_path / ".harness/tasks/README.md", "Bu klasörün açıklaması — front-matter YOK.\n")
+    _write_raw(tmp_path / ".harness/active/README.md", "Bu klasörün açıklaması — front-matter YOK.\n")
+
+    assert FileHarnessPort(tmp_path).read_tasks() == []
+    assert FileHarnessPort(tmp_path).read_active() == []
+
+
+def test_validate_harness_skips_template_files_in_all_folders_even_with_garbage(tmp_path: Path):
+    """`scripts/harness_validate.py`'nin CI'da koştuğu AYNI fonksiyon — her
+    5 klasördeki şablon adı (README.md + locks/modules.md) front-matter'sız
+    düz metin taşısa bile sıfır hata döner (garbage content = muafiyetin
+    gerçekten çalıştığının kanıtı; şema-geçerli bir README.md yazsaydık test
+    hiçbir şey ispatlamazdı)."""
+    for folder in ("scope", "tasks", "active", "locks", "decisions"):
+        _write_raw(
+            tmp_path / f".harness/{folder}/README.md",
+            "Bu klasörün açıklaması — front-matter YOK, geçersiz düz metin.\n",
+        )
+    _write_raw(
+        tmp_path / ".harness/locks/modules.md",
+        "| modül | sahip |\n|---|---|\n(front-matter yok, geçersiz)\n",
+    )
+
+    assert validate_harness(tmp_path) == []
+
+
+def test_modules_md_exemption_is_scoped_to_locks_only(tmp_path: Path):
+    """`modules.md` YALNIZ `locks/`'ün belgelenmiş şablon adı — başka bir
+    klasörde aynı ada sahip dosya VERİ sayılır ve şema geçersizse hata verir
+    (harness.py::NON_DATA_FILENAMES docstring'indeki asimetrinin kilidi)."""
+    _write_raw(tmp_path / ".harness/tasks/modules.md", "front-matter yok, geçersiz.\n")
+
+    errors = validate_harness(tmp_path)
+
+    assert len(errors) == 1
+    assert ".harness/tasks/modules.md" in errors[0]
 
 
 def test_all_packaged_schemas_are_valid_jsonschema():
