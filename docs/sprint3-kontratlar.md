@@ -105,14 +105,16 @@ GET /board  →  BoardResponse { cards: BoardCard[] }
 ### B2 · `GET /events` + `GET /presence` (#52) — artımlı polling cursor 🔒
 
 ```
-GET /events?since=<ISO>&before=<ISO|id>&limit=<n>&actor=<handle>&branch=<ad>
+GET /events?since=<ISO>&before=<ISO|id>&limit=<n>&actor=<handle>&branch=<ad> [If-None-Match: "<etag>"]
   →  { events: NormalizedEvent[], has_more: bool }              # S2 Ek B5 imzası, AYNEN
+  →  304 (gövdesiz) eğer If-None-Match eşleşirse (cache hit)
+  →  200 (since iptal edilir, full feed döner) eğer ETag uyumsuzsa (geç gelen eski olay durumu)
 
 GET /presence   [If-None-Match: "<etag>"]
   →  200 { entries: PresenceEntry[], updated_at }  +  ETag: "<hash>"      # S2 Ek B1
   →  304 (gövdesiz)  eğer If-None-Match eşleşirse                          # artımlı: boşuna byte çekme
 ```
-- **Cursor sözleşmesi (frozen):** `/events` = `since=` (bu andan sonrası, artımlı) + `before=` sayfalama (aynı-saniye tie-break: `id`). `/presence` = **ETag** (küçük ve tümü döner; değişmediyse `304`). Polling her tick tüm feed'i çekmez.
+- **Cursor sözleşmesi (frozen):** `/events` = `since=` (bu andan sonrası, artımlı) + `before=` sayfalama (aynı-saniye tie-break: `id`) + **ETag**. `/events`'te ETag tüm DB snapshot'ından hesaplanır, böylece `since` öncesine düşen geç gelen olaylar (late-arriving) ETag'i bozar ve sunucu `since`'i yoksayıp **tam feed** döner. `/presence` = **ETag** (küçük ve tümü döner; değişmediyse `304`). Polling her tick tüm feed'i çekmez.
 - `NormalizedEvent` (S2 §1) + `PresenceEntry` (S2 Ek B1) AYNEN. `type=` filtresi v1'de YOK (client-side, Ek B5 notu).
 - **Sahibi:** backend (Esma) · **Tüketicisi:** Activity feed (#33) + MCP `who_is_touching` (Ek D).
 
