@@ -130,6 +130,19 @@ Tam **Yalın Kanvas** (9 blok) — vizyon + rakip araştırmasından damıtıld�
 
 ---
 
+## 🌐 Hosted demo
+
+🟢 **Yayında** (D-46, self-host VDS + Vercel — Fly.io **kullanılmıyor**) — 26 Temmuz'da doğrudan doğrulandı (`curl`).
+
+| | URL |
+|---|---|
+| **Frontend (Vercel)** — bootcamp teslim formuna girilecek link | https://recommend2me.com |
+| **Backend** — kendi sunucumuz (BogaHost VDS), health-check: `/health` | https://api.recommend2me.com |
+
+Deploy adımları + env→platform eşlemesi + rollback: [`docs/deploy-runbook.md`](docs/deploy-runbook.md).
+
+---
+
 # Sprint 1
 
 > **Tarih:** 19 Haziran – 5 Temmuz 2026 · **Takım:** grup54 (PO Fatih Eren Çetin · SM Esma Fazilet Karagülle · Dev Enes Talha Erdem · Dev Semih Marufoğlu) · **Ürün:** Ensemble — AI-çağı yazılım ekipleri için "paylaşılan proje beyni" (proaktif çakışma radarı · canlı scope-drift bekçisi · kendiliğinden dolan board · doğal dille "projeye sor").
