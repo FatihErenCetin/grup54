@@ -75,7 +75,7 @@ export function DetailSheet({
         </div>
         <div className="flex flex-wrap gap-3">
           {detection.actors.map((a) => (
-            <ActorChip key={a} handle={a} />
+            <ActorChip key={a} handle={a} linkli />
           ))}
         </div>
       </div>

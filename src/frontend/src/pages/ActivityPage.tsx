@@ -30,8 +30,11 @@ type NormalizedEvent = components["schemas"]["NormalizedEvent"];
  * GÜN başlığı). Zone eki yoksa `Z` ekleyip UTC kabul ediyoruz.
  *
  * Gün başlığı, saat ve sıralama HEPSİ bu tek helper'dan geçer — üç yerde üç
- * farklı parse, üç farklı kayma demek olurdu. */
-function parseUtc(iso: string): Date {
+ * farklı parse, üç farklı kayma demek olurdu.
+ *
+ * `export`: ActorPage (#129) aynı naive-UTC riskini taşıyan `events[].ts`'i
+ * okuyor — ikinci bir parse kopyası açmak yerine BUNU kullanıyor (ONU KULLAN). */
+export function parseUtc(iso: string): Date {
   const zoneli = /[Zz]$|[+-]\d{2}:?\d{2}$/.test(iso) ? iso : `${iso}Z`;
   return new Date(zoneli);
 }
@@ -166,7 +169,9 @@ export default function ActivityPage() {
                   className="overflow-hidden rounded-lg border border-border bg-card"
                 >
                   <div className="flex items-center justify-between gap-2 border-b border-border px-4 py-2">
-                    <ActorChip handle={aktor} />
+                    {/* linkli: aktör hub'ına git (#129) — bu çip bir button/li
+                        İÇİNDE değil, satır kendi başına tıklanabilir değil. */}
+                    <ActorChip handle={aktor} linkli />
                     <span className="text-[11px] tabular-nums text-muted-foreground">
                       {olaylar.length} olay
                     </span>
