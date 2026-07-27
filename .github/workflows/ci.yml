@@ -27,6 +27,12 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          # tests/unit/test_scope_kanit.py `commit_sha`'nin gecmiste COZULUR
+          # oldugunu dogruluyor. Sig klonda (varsayilan depth=1) o commit
+          # bulunmaz ve test SESSIZCE atlanir -> kilit CI'da hic kosmaz.
+          # Repo kucuk; tam gecmis birkac saniye.
+          fetch-depth: 0
 
       - name: Install uv
         uses: astral-sh/setup-uv@v3

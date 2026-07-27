@@ -124,3 +124,63 @@ def test_env_file_degiskenle_yonlendirilebilir():
         assert ".env.production" in str(girdi), (
             f"{ad}: varsayilan kayboldu ('{girdi}') — elle kurulum bozulur"
         )
+
+
+# ---------------------------------------------------------------------------
+# #257 bulgu 3 — compose'un KENDİ "KRİTİK" dediği değişmezler kilitli değildi
+# ---------------------------------------------------------------------------
+
+
+def test_api_portu_YALNIZ_loopbacke_baglanir():
+    """`127.0.0.1:` öneki silinirse API public IP'den TLS'siz erişilebilir olur.
+
+    Compose dosyası bunu kendi yorumunda büyük harfle işaretliyor (satır ~214):
+        "127.0.0.1:" on eki KRITIK — silinirse Docker portu 0.0.0.0'a acar
+        ve ufw'yi ATLAR.
+
+    Docker'ın DNAT kuralları ufw/iptables INPUT filtresini atlar — yani sunucuda
+    ufw "kapalı" derken port yine de açık olur. Sessiz ve tehlikeli.
+
+    Bu testten önce dosyadaki dört "kritik/bilerek" değişmezden yalnız İKİSİ
+    kilitliydi (`migrate.restart`, `depends_on.condition`). Eşiği dosyanın
+    KENDİSİ koymuş, test o eşiğin yarısını uyguluyordu (#257 bulgu 3).
+
+    MUTASYON KİLİDİ: `- "8001:8000"` yaz → kırmızı.
+    """
+    api = _load_compose()["services"]["api"]
+    portlar = api.get("ports")
+    assert portlar, "api.ports yok — port yayını sessizce kaldırılmış olabilir"
+    for p in portlar:
+        metin = str(p)
+        assert metin.startswith("127.0.0.1:"), (
+            f"api portu '{metin}' loopback'e bağlı DEĞİL — Docker DNAT ufw'yi "
+            "atlar ve API public IP'den TLS'siz erişilebilir olur"
+        )
+
+
+def test_harness_mounti_SALT_OKUNUR_ve_dizin_uydurmaz():
+    """İki değişmez, ikisi de compose'un kendi yorumunda "BİLEREK" işaretli.
+
+    `read_only: true`  — konteyner `.harness/`'i (kanonik ortak bağlam) yazamaz.
+    `create_host_path: false` — host'ta dizin YOKSA Docker onu root'a ait BOŞ
+    bir dizin olarak UYDURMAZ. Uydursaydı: board sessizce boş, `/scope` 503,
+    yani demo "yarıya kadar çalışır" ve sebebi hiçbir yerde görünmez — tam da
+    bu repoda avladığımız fail-open şekli, altyapı katmanında.
+
+    MUTASYON KİLİDİ: kısa sözdizimine çevir (`- "../.harness:/app/.harness:ro"`)
+    → `create_host_path` kaybolur → kırmızı.
+    """
+    api = _load_compose()["services"]["api"]
+    mountlar = [m for m in api.get("volumes", []) if isinstance(m, dict)]
+    harness = [m for m in mountlar if ".harness" in str(m.get("target", ""))]
+    assert harness, (
+        "api'de UZUN sözdizimli `.harness` mount'u yok — kısa sözdizimine "
+        "dönülmüş olabilir; o zaman Docker eksik host dizinini kendisi yaratır"
+    )
+    m = harness[0]
+    assert m.get("read_only") is True, f".harness mount'u salt-okunur değil: {m}"
+    bind = m.get("bind") or {}
+    assert bind.get("create_host_path") is False, (
+        f".harness mount'unda create_host_path=false yok: {m} — Docker eksik "
+        "dizini boş olarak yaratır ve board sessizce boş kalır"
+    )
