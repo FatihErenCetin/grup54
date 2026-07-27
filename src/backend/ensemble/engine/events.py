@@ -5,10 +5,14 @@ Bayat (stale) varlık beyanlarını okuma anında (read-time) filtreler (#60).
 """
 
 from datetime import datetime, timezone
+from collections.abc import Callable
+from sqlalchemy.orm import Session
+from sqlalchemy import select
 
 from ensemble.models import ActorRef, NormalizedEvent, PresenceEntry
 from ensemble.ports import GitHubPort
 from ensemble_shared.harness import HarnessPort
+from ensemble.store.models import EventRow
 
 DEFAULT_PRESENCE_TTL_SECONDS = 7200  # 2 saat
 
@@ -40,9 +44,11 @@ class EventService:
         self,
         harness_port: HarnessPort,
         github_port: GitHubPort,
+        session_factory: Callable[[], Session] | None = None,
     ):
         self.harness_port = harness_port
         self.github_port = github_port
+        self.session_factory = session_factory
 
     def get_presence(
         self,
@@ -128,7 +134,16 @@ class EventService:
             # Zaten aware, olduğu gibi kullan
             lower_bound = since
         
-        events = self.github_port.fetch_events(lower_bound)
+        # fallback to github if no DB
+        if self.session_factory is None:
+            events = self.github_port.fetch_events(lower_bound)
+        else:
+            with self.session_factory() as session:
+                naive_lower_bound = _to_naive_utc(lower_bound)
+                stmt = select(EventRow).where(EventRow.ts >= naive_lower_bound).order_by(EventRow.ts.asc(), EventRow.id.asc())
+                rows = session.scalars(stmt).all()
+                events = [row.to_domain() for row in rows]
+
         ordered = sorted(events, key=lambda e: (_to_naive_utc(e.ts), e.id))
         latest_ts = _to_naive_utc(ordered[-1].ts) if ordered else _to_naive_utc(lower_bound)
         return ordered, latest_ts
