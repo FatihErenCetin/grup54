@@ -395,3 +395,119 @@ def test_adapter_scope_subject_pr_olmayan_refi_harnessa_birakir():
 
     with pytest.raises(ScopeSubjectNotFoundError):
         adapter.resolve_scope_subject("T-59-scope-router")
+
+
+# ---------------------------------------------------------------------------
+# Sayfalama (#280) - `per_page` GitHub'da 100'de TAVANLI
+# ---------------------------------------------------------------------------
+
+
+def _sayfali_handler(toplam_commit: int, *, etagli: bool):
+    """`page`/`per_page`'e saygi duyan sahte GitHub.
+
+    ETag verirken ANAHTARI YOLDAN + SORGUDAN uretmiyoruz; client'in kendi
+    cache_key'i ne ise onu taklit ediyoruz: ayni ETag'i gorunce 304 doneriz.
+    Boylece "sayfa numarasi anahtara girmezse ne olur" gercekten olculur.
+    """
+    istekler: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        istekler.append(str(request.url))
+        path = request.url.path
+        if path.endswith("/commits"):
+            per = int(request.url.params.get("per_page", 30))
+            sayfa = int(request.url.params.get("page", 1))
+            bas = (sayfa - 1) * per
+            govde = [
+                {"sha": f"sha{i:04d}"}
+                for i in range(bas, min(bas + per, toplam_commit))
+            ]
+            headers = {"ETag": '"commits-etag"'} if etagli else {}
+            if etagli and request.headers.get("If-None-Match") == '"commits-etag"':
+                return httpx.Response(304, headers=headers)
+            return httpx.Response(200, json=govde, headers=headers)
+        if "/commits/" in path:
+            sha = path.rsplit("/", 1)[-1]
+            return httpx.Response(
+                200,
+                json={
+                    "sha": sha,
+                    "commit": {
+                        "author": {"name": "enes", "date": "2026-06-19T10:00:00Z"},
+                        "message": "eski commit",
+                    },
+                    "author": {"login": "enes"},
+                    "files": [{"filename": "src/x.py"}],
+                },
+            )
+        return httpx.Response(200, json=[])
+
+    handler.istekler = istekler  # type: ignore[attr-defined]
+    return handler
+
+
+def _sayfali_adapter(toplam_commit: int, *, etagli: bool = False):
+    h = _sayfali_handler(toplam_commit, etagli=etagli)
+    client = GitHubRestClient(
+        token_provider=lambda: "fake-token",
+        http_client=httpx.Client(transport=httpx.MockTransport(h)),
+    )
+    return GitHubAdapter(_settings(), client=client), h
+
+
+def test_backfill_100_ustu_limitte_BIRDEN_FAZLA_sayfa_gezer():
+    """MUTASYON KILIDI: `_sayfali` yerine tek `client.get(per_page=limit)`
+    yazilirsa GitHub 100'de kirpar ve bu test 100 olay gorur, 250 degil.
+
+    Gercek olcum (grup54, 2026-07-27): repo 19 Haziran'dan beri ~250 commit
+    uretmisti ama Activity akisi yalniz 21 Temmuz'a kadar geri gidiyordu --
+    5 haftalik gecmis kayipti ve HICBIR HATA gorunmuyordu.
+    """
+    adapter, h = _sayfali_adapter(toplam_commit=250)
+    olaylar = adapter.fetch_backfill_events(limit_per_type=250)
+    commitler = [e for e in olaylar if e.type == "commit"]
+    assert len(commitler) == 250, f"250 bekleniyordu, {len(commitler)} geldi"
+
+    assert len([u for u in h.istekler if "/commits?" in u]) >= 3, (
+        "250 kayit icin en az 3 sayfa istegi bekleniyordu; "
+        f"gorulen liste istekleri: {[u for u in h.istekler if '/commits?' in u]}"
+    )
+
+
+def test_sayfa_numarasi_ETAG_ANAHTARINA_girer():
+    """MUTASYON KILIDI: cache_key'den `:p{sayfa}` cikarilirsa 2. sayfa 1.
+    sayfanin ETag'ini gonderir, sunucu 304 doner, client 1. SAYFANIN
+    govdesini replay eder -- ayni 100 kayit tekrar gelir, tekilleme sonrasi
+    veri kaybolur ve HATA GORUNMEZ.
+    """
+    adapter, h = _sayfali_adapter(toplam_commit=250, etagli=True)
+    olaylar = adapter.fetch_backfill_events(limit_per_type=250)
+    commitler = [e for e in olaylar if e.type == "commit"]
+
+    # TEKIL id sayiyoruz, TOPLAM degil -- bu ayrim testin canevidir.
+    # Olculdu: `:p{sayfa}` kaldirilinca 2. ve 3. sayfa 304 alip 1. sayfanin
+    # govdesini replay ediyor; sonuc HALA 250 olay oluyor ama yalniz 100'u
+    # tekil. Toplami assert eden bir test bu bozulmayi GORMEZ (ilk yazdigim
+    # hali tam olarak buydu ve mutasyon altinda yesil kaldi).
+    tekil = {e.id for e in commitler}
+    assert len(tekil) == 250, (
+        f"{len(commitler)} olay geldi ama yalniz {len(tekil)} tekil -- sayfa "
+        "numarasi cache_key'e girmiyorsa 2. sayfa 1. sayfayi replay ediyor"
+    )
+
+
+def test_kisa_sayfa_gelince_FAZLADAN_istek_atilmaz():
+    """120 kayit icin 2 sayfa yeter (100 + 20); 3. istek atilmamali."""
+    adapter, h = _sayfali_adapter(toplam_commit=120)
+    adapter.fetch_backfill_events(limit_per_type=250)
+    liste = [u for u in h.istekler if "/commits?" in u]
+    assert len(liste) == 2, f"2 liste istegi bekleniyordu, {len(liste)}: {liste}"
+
+
+def test_limit_100_altinda_TEK_sayfa_kalir():
+    """Sayfalama eskiyi bozmuyor: 50'lik varsayilan hala tek istek."""
+    adapter, h = _sayfali_adapter(toplam_commit=250)
+    adapter.fetch_backfill_events(limit_per_type=50)
+    liste = [u for u in h.istekler if "/commits?" in u]
+    assert len(liste) == 1, f"tek liste istegi bekleniyordu, {len(liste)}"
+    assert "per_page=50" in liste[0]

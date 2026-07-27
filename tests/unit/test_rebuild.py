@@ -255,3 +255,37 @@ def test_gec_gelen_eski_olay_durumu_bozmaz():
     assert status == "done"
     assert last_ts == datetime(2026, 7, 5, 9, 0)
     assert last_event_id == "pr-merge-1"
+
+
+def test_rebuild_RADARIN_degil_GECMISIN_limitini_kullanir():
+    """#280 kilidi: `main()` `GITHUB_HISTORY_LIMIT` okumali, radarin
+    `GITHUB_BACKFILL_LIMIT`'ini DEGIL.
+
+    Neden ayrilar: radar adaylari CIFT olarak uretir (kare buyur, her cift
+    bir judge cagrisi) -- 50'de tutulmasi kota icin sart. Projeksiyon ise
+    duz liste yazar, maliyeti dogrusal. Ikisi ayni sayiyi paylastiginda
+    guvenli-kucuk radar limiti akisin gecmisini kirpiyordu: repo 19
+    Haziran'dan beri ~250 commit uretmisken Activity yalniz 21 Temmuz'a
+    kadar geri gidiyordu (olculdu, 2026-07-27).
+
+    MUTASYON: rebuild'de HISTORY -> BACKFILL yapilirsa bu test kirilir.
+    """
+    import inspect
+
+    from ensemble.store import rebuild as rebuild_modulu
+
+    kaynak = inspect.getsource(rebuild_modulu)
+    assert "settings.GITHUB_HISTORY_LIMIT" in kaynak, (
+        "rebuild `GITHUB_HISTORY_LIMIT` okumali -- radar limitini paylasirsa "
+        "Activity/Graph gecmisi radar guvenligi ugruna kirpilir"
+    )
+    assert "backfill_limit=settings.GITHUB_BACKFILL_LIMIT" not in kaynak, (
+        "rebuild radarin backfill limitine geri dondurulmus"
+    )
+
+    # Iki ayar GERCEKTEN ayri olmali (ayni degere sabitlenirse ayrim sozde kalir).
+    s = Settings()
+    assert s.GITHUB_HISTORY_LIMIT > s.GITHUB_BACKFILL_LIMIT, (
+        f"gecmis limiti ({s.GITHUB_HISTORY_LIMIT}) radar limitinden "
+        f"({s.GITHUB_BACKFILL_LIMIT}) buyuk olmali; degilse ayrim anlamsiz"
+    )

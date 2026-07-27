@@ -145,6 +145,52 @@ class GitHubAdapter:
         self._seen_ids.update(e.id for e in fresh)
         return fresh
 
+    def _sayfali(
+        self, path: str, *, params: dict, cache_key: str, limit: int
+    ) -> list[dict]:
+        """`limit` kayit toplanana kadar GitHub sayfalarini sirayla gezer.
+
+        Neden gerekli (olculdu): `per_page` GitHub'da 100'de TAVANLI. Tek
+        istekle `per_page=250` istemek sessizce 100 kayit dondurur -- hata
+        YOK, yalniz eksik veri. grup54 19 Haziran'dan beri ~250 commit
+        uretti; sayfalama olmadan Activity akisi yalniz son ~6 gunu
+        gosteriyordu ve "kendiliginden daily" vaadi 5 haftalik gecmisi
+        kaybediyordu.
+
+        ETag TUZAGI: `cache_key` sayfa numarasini ICERMELI. Icermezse 2.
+        sayfanin istegi 1. sayfanin ETag'ini gonderir, GitHub 304 doner ve
+        client 1. SAYFANIN GOVDESINI replay eder -- ayni 100 kayit tekrar
+        tekrar gelir, dongu erken biter ve bu HATASIZ gorunur. Anahtara
+        `:p<N>` ekleyerek her sayfaya kendi ETag'ini veriyoruz.
+        """
+        # `per_page` TUM sayfalarda AYNI kalmali. GitHub offset'i
+        # `(page-1) * per_page` ile hesaplar; son sayfada "yalniz kalani
+        # iste" diye kucultursek offset de kayar ve sayfa ONCEKI sayfayla
+        # CAKISAN bir araligi doner. Olculdu (250 kayit, 100/100/50 istenince):
+        # 3. sayfa 200-249 yerine 100-149'u dondurdu -> 250 kayit geldi ama
+        # yalniz 200'u tekildi; 50 kayit sessizce kayboldu. Sabit 100 isteyip
+        # sonda kirpiyoruz -- fazladan gelen kayit ucuz, kayip kayit degil.
+        # Boyutu limit'ten TUReTIYORUZ ama sonra DEGISTIRMIYORUZ: limit<=100
+        # iken tek istek + eski `per_page=limit` davranisi aynen korunur.
+        SAYFA_BOYU = min(100, limit)
+        toplanan: list[dict] = []
+        sayfa = 1
+        while len(toplanan) < limit:
+            govde = self._client.get(
+                path,
+                params={**params, "per_page": SAYFA_BOYU, "page": sayfa},
+                cache_key=f"{cache_key}:p{sayfa}",
+            )
+            if not govde:
+                break
+            toplanan.extend(govde)
+            # Kisa sayfa = son sayfa. Bu kontrol olmadan GitHub bos sayfa
+            # dondurene kadar bir istek FAZLA atardik.
+            if len(govde) < SAYFA_BOYU:
+                break
+            sayfa += 1
+        return toplanan[:limit]
+
     def _fetch_commit_events(self, since: datetime) -> list[NormalizedEvent]:
         since_iso = since.isoformat()
         commits = self._client.get(
@@ -157,10 +203,11 @@ class GitHubAdapter:
         return self._commit_events_from_summaries(commits)
 
     def _fetch_recent_commit_events(self, limit: int) -> list[NormalizedEvent]:
-        commits = self._client.get(
+        commits = self._sayfali(
             f"/repos/{self._owner}/{self._repo}/commits",
-            params={"sha": self._default_branch, "per_page": limit},
-            cache_key=f"commits:recent:{limit}",
+            params={"sha": self._default_branch},
+            cache_key="commits:recent",
+            limit=limit,
         )
         if not commits:
             return []
@@ -190,15 +237,11 @@ class GitHubAdapter:
         return [pr_to_event(pr) for pr in prs if datetime.fromisoformat(pr["updated_at"]) >= since]
 
     def _fetch_recent_pr_events(self, limit: int) -> list[NormalizedEvent]:
-        prs = self._client.get(
+        prs = self._sayfali(
             f"/repos/{self._owner}/{self._repo}/pulls",
-            params={
-                "state": "all",
-                "sort": "updated",
-                "direction": "desc",
-                "per_page": limit,
-            },
-            cache_key=f"pulls:recent:{limit}",
+            params={"state": "all", "sort": "updated", "direction": "desc"},
+            cache_key="pulls:recent",
+            limit=limit,
         )
         if not prs:
             return []
@@ -216,10 +259,11 @@ class GitHubAdapter:
         return [issue_to_event(i) for i in issues if "pull_request" not in i]
 
     def _fetch_recent_issue_events(self, limit: int) -> list[NormalizedEvent]:
-        issues = self._client.get(
+        issues = self._sayfali(
             f"/repos/{self._owner}/{self._repo}/issues",
-            params={"state": "all", "sort": "updated", "direction": "desc", "per_page": limit},
-            cache_key=f"issues:recent:{limit}",
+            params={"state": "all", "sort": "updated", "direction": "desc"},
+            cache_key="issues:recent",
+            limit=limit,
         )
         if not issues:
             return []

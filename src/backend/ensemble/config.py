@@ -98,6 +98,16 @@ class Settings(BaseSettings):
     GITHUB_REPO_NAME: str | None = None
     GITHUB_DEFAULT_BRANCH: str = "main"
     GITHUB_BACKFILL_LIMIT: int = 50
+    # RADAR'in ilk doldurmasi. Kucuk tutulur: radar adaylari cift olarak
+    # uretir (combinations, kare buyur) ve her cift bir judge cagrisi eder --
+    # 50 olay zaten ~90 aday demek. Buyutmek dogrudan kotayi yakar.
+    #
+    # PROJEKSIYONUN (Activity akisi, Graph, board) ihtiyaci BAMBASKA: orada
+    # cift YOK, yalniz olay listesi var; maliyet dogrusal ve tek seferlik.
+    # Ayni sayiyi paylastiklarinda radar guvenli kalsin diye akis 5 haftalik
+    # gecmisi kaybediyordu (olculdu: repo 19 Haziran'dan beri ~250 commit,
+    # akis 21 Temmuz'dan geriye gitmiyordu). Iki farkli ihtiyac, iki ayar.
+    GITHUB_HISTORY_LIMIT: int = 500
     # Judge asamasi I/O-bagimli: canlida 131 aday SIRALI olarak 129 sn surerken
     # konteyner CPU'su %0.7-6 arasindaydi (#254). Ust sinir saglayicinin RPM
     # tavani; 1 yapmak paralelligi tamamen kapatir (sirali yol korunur).
