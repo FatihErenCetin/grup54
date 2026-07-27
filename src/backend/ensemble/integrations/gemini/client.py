@@ -10,7 +10,11 @@ from tenacity import (
 )
 
 from ensemble.config import Settings
-from ensemble.integrations.gemini.errors import GeminiPermanentError, GeminiTransientError
+from ensemble.integrations.gemini.errors import (
+    GeminiPermanentError,
+    GeminiTransientError,
+    sunucunun_bekleme_suresi,
+)
 
 _TRANSIENT_CODES = {408, 429, 500, 502, 503, 504}
 _PERMANENT_CODES = {400, 401, 403, 404}
@@ -31,13 +35,37 @@ _EMBED_BATCH_CAP = 100
 def _classify(exc: Exception) -> GeminiTransientError | GeminiPermanentError:
     """Ham SDK hatasını retry-karar noktası olan iki sınıftan birine çevirir."""
     code = getattr(exc, "code", None)
+    metin = str(exc)
     if code in _PERMANENT_CODES:
-        return GeminiPermanentError(str(exc))
+        return GeminiPermanentError(metin)
+    # 429'da sunucu bekleme süresini SÖYLÜYOR; taşımazsak kendi tahminimizle
+    # erken uyanır ve kotayı tekrar yakarız (üretimde ölçüldü — bkz.
+    # `sunucunun_bekleme_suresi` docstring'i).
     if code in _TRANSIENT_CODES:
-        return GeminiTransientError(str(exc))
+        return GeminiTransientError(metin, retry_after=sunucunun_bekleme_suresi(metin))
     # Sınıflandırılamayan hatalar (bağlantı kopması, timeout vb.) temkinli
-    # olarak geçici sayılır — retry'a bir şans daha verilir.
-    return GeminiTransientError(str(exc))
+    # olarak geçici sayılır — retry'a bir şans daha verilir. Bunlarda gövde
+    # yok, dolayısıyla dayatılmış süre de yok.
+    return GeminiTransientError(metin)
+
+
+def _bekleme(varsayilan_wait):
+    """Sunucunun dayattığı süre varsa ONU, yoksa normal backoff'u kullanır.
+
+    tenacity'nin `wait` parametresi retry_state alan bir callable kabul eder;
+    böylece bekleme kararını hatanın İÇERİĞİNE göre verebiliyoruz.
+    """
+
+    def _wait(retry_state) -> float:
+        exc = retry_state.outcome.exception() if retry_state.outcome else None
+        dayatilan = getattr(exc, "retry_after", None)
+        if dayatilan:
+            # +1 sn pay: kota penceresi tam sınırda açılıyorsa erken uyanıp
+            # aynı duvara toslamayalım.
+            return float(dayatilan) + 1.0
+        return varsayilan_wait(retry_state)
+
+    return _wait
 
 
 class ResilientGeminiClient:
@@ -97,7 +125,7 @@ class ResilientGeminiClient:
         @retry(
             retry=retry_if_exception_type(GeminiTransientError),
             stop=stop_after_attempt(self._settings.GEMINI_MAX_RETRIES),
-            wait=wait_random_exponential(multiplier=0.5, max=RETRY_WAIT_CAP_S),
+            wait=_bekleme(wait_random_exponential(multiplier=0.5, max=RETRY_WAIT_CAP_S)),
             reraise=True,
         )
         def _attempt() -> str:
@@ -124,7 +152,7 @@ class ResilientGeminiClient:
         @retry(
             retry=retry_if_exception_type(GeminiTransientError),
             stop=stop_after_attempt(self._settings.GEMINI_MAX_RETRIES),
-            wait=wait_random_exponential(multiplier=0.5, max=RETRY_WAIT_CAP_S),
+            wait=_bekleme(wait_random_exponential(multiplier=0.5, max=RETRY_WAIT_CAP_S)),
             reraise=True,
         )
         def _attempt() -> list[list[float]]:

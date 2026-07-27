@@ -62,9 +62,11 @@ def test_gemini_embeddings_adapter_clienti_ilk_batchte_bir_kez_kurar(monkeypatch
 
 
 class _FakeApiError(Exception):
-    def __init__(self, code: int):
+    def __init__(self, code: int, mesaj: str | None = None):
         self.code = code
-        super().__init__(f"api error {code}")
+        # Varsayilan mesaj korunuyor (mevcut testler aynen calisir); 429
+        # senaryolarinda gercek govdeyi taklit etmek icin `mesaj` verilir.
+        super().__init__(mesaj or f"api error {code}")
 
 
 class _FakeEmbeddingModels:
@@ -245,3 +247,125 @@ def test_tek_parca_gerektiginde_FAZLADAN_cagri_yok(monkeypatch):
 
     client.embed_content([f"olay-{i}" for i in range(100)], task_type="SEMANTIC_SIMILARITY")
     assert modeller.boyutlar == [100], f"tek cagri bekleniyordu: {modeller.boyutlar}"
+
+
+# ---------------------------------------------------------------------------
+# Sunucunun dayattigi bekleme (429 retryDelay) - uretimde olculdu
+# ---------------------------------------------------------------------------
+
+
+def test_sunucunun_bekleme_suresi_GERCEK_429_govdesini_ayristirir():
+    """Uretimde alinan gercek govde (2026-07-27, ucretsiz katman embed kotasi)."""
+    from ensemble.integrations.gemini.errors import sunucunun_bekleme_suresi
+
+    gercek = (
+        "429 RESOURCE_EXHAUSTED. {'error': {'code': 429, 'message': 'You exceeded "
+        "your current quota... Please retry in 30.192357358s. \\n* Quota exceeded "
+        "for metric: generativelanguage.googleapis.com/embed_content_free_tier_"
+        "requests, limit: 100', 'status': 'RESOURCE_EXHAUSTED', 'details': "
+        "[{'@type': 'type.googleapis.com/google.rpc.RetryInfo', 'retryDelay': '30s'}]}}"
+    )
+    assert sunucunun_bekleme_suresi(gercek) == pytest.approx(30.19, abs=0.01)
+
+
+def test_sunucunun_bekleme_suresi_UYDURMAZ():
+    """Ayristirilamayan/absurt girdide `None` -- varsayilan bir sayi UYDURULMAZ.
+
+    Yanlis bir sure, hic sure olmamasindan beter: erken uyanip kotayi tekrar
+    yakar ve retry butcesini bosa harcar.
+    """
+    from ensemble.integrations.gemini.errors import sunucunun_bekleme_suresi
+
+    assert sunucunun_bekleme_suresi("connection reset by peer") is None
+    assert sunucunun_bekleme_suresi("retryDelay: '99999s'") is None, "absurt deger reddedilmeli"
+    assert sunucunun_bekleme_suresi("retryDelay: '-5s'") is None, "negatif reddedilmeli"
+
+
+def test_429_dayatilan_sureyi_TASIR_ve_backoff_ONA_uyar():
+    """MUTASYON KILIDI: `_bekleme` sarmalayicisi kaldirilirsa bekleme 8 sn
+    tavanina duser ve kota penceresi (60 sn) dolmadan retry'lar tukenir --
+    uretimde `make rebuild` tam olarak boyle dustu.
+    """
+    from ensemble.integrations.gemini.client import _bekleme, _classify
+
+    class _Sahte429(Exception):
+        code = 429
+
+        def __str__(self):
+            return "429 RESOURCE_EXHAUSTED. Please retry in 30.1s."
+
+    hata = _classify(_Sahte429())
+    assert isinstance(hata, GeminiTransientError)
+    assert hata.retry_after == pytest.approx(30.1, abs=0.01), (
+        "429'un dayattigi sure hataya taşınmali"
+    )
+
+    class _SahteSonuc:
+        @staticmethod
+        def exception():
+            return hata
+
+    class _SahteDurum:
+        outcome = _SahteSonuc()
+
+    bekle = _bekleme(lambda _s: 8.0)  # varsayilan backoff tavani
+    assert bekle(_SahteDurum()) == pytest.approx(31.1, abs=0.01), (
+        "sunucunun suresi + 1 sn pay kullanilmali, 8 sn'lik varsayilan DEGIL"
+    )
+
+
+def test_dayatilan_sure_yoksa_NORMAL_backoff_kalir():
+    """Sunucu sure vermediginde eski davranis aynen surer (regresyon yok)."""
+    from ensemble.integrations.gemini.client import _bekleme
+
+    class _SahteSonuc:
+        @staticmethod
+        def exception():
+            return GeminiTransientError("baglanti koptu")  # retry_after yok
+
+    class _SahteDurum:
+        outcome = _SahteSonuc()
+
+    assert _bekleme(lambda _s: 8.0)(_SahteDurum()) == 8.0
+
+
+def test_retry_GERCEKTEN_dayatilan_sure_kadar_bekler(monkeypatch):
+    """UCTAN UCA kilit: dekoratorlerin `_bekleme`'yi KULLANDIGINI kanitlar.
+
+    Onceki test `_bekleme`'yi tek basina cagiriyordu; sarmalayici retry
+    dekoratorlerinden silinse bile YESIL kaliyordu (mutasyonla goruldu).
+    Burada gercek uyku suresini yakaliyoruz.
+    """
+    uykular: list[float] = []
+    import tenacity.nap
+
+    monkeypatch.setattr(tenacity.nap.time, "sleep", lambda s: uykular.append(s))
+
+    class _Kota429Models:
+        def __init__(self):
+            self.calls = 0
+
+        def embed_content(self, model, contents, config=None):
+            self.calls += 1
+            if self.calls == 1:
+                # Gercek govde: sunucu bekleme suresini SOYLUYOR.
+                raise _FakeApiError(
+                    429,
+                    "429 RESOURCE_EXHAUSTED. Please retry in 30.0s. "
+                    "{'details': [{'@type': '...RetryInfo', 'retryDelay': '30s'}]}",
+                )
+            return types.EmbedContentResponse(
+                embeddings=[types.ContentEmbedding(values=[0.0, 0.5]) for _ in contents]
+            )
+
+    modeller = _Kota429Models()
+    _patch_genai_client(monkeypatch, modeller)
+    client = ResilientGeminiClient(_settings(GEMINI_MAX_RETRIES=3))
+
+    client.embed_content(["a"], task_type="SEMANTIC_SIMILARITY")
+
+    assert uykular, "retry hic beklemedi"
+    assert uykular[0] == pytest.approx(31.0, abs=0.01), (
+        f"sunucunun dayattigi 30 sn + 1 sn pay beklenirdi, uyunan: {uykular[0]:.2f} sn "
+        "-- dekoratorlerden `_bekleme` silinmis olabilir (8 sn tavanina duser)"
+    )
