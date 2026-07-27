@@ -1,7 +1,7 @@
 ---
 title: '📖 Deploy runbook: env→platform-secret eşleme + ilk deploy/rollback + canlı
   link → README/teslim'
-status: in_review
+status: in_progress
 assignee: FatihErenCetin
 paths: []
 branch: T-190-deploy-runbook

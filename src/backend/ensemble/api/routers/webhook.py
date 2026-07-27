@@ -11,6 +11,13 @@ mevcut `pr_to_event`/`issue_to_event` (REST şekli) doğrudan yeniden kullanıl�
 `push` şekli REST commits API'den farklı → ayrı `webhook_push_to_events`.
 Tanınmayan event'ler (örn. `ping`) imza doğrulandıktan sonra sessizce "ignored"
 olarak 202 döner — GitHub'ın webhook'u "bozuk" sanmaması için.
+
+D-55 (İş 3, GOREV 3/4): event audit/presence (`parse_events` -> `NormalizedEvent`)
+ile durum geçişi (`transitions_from_webhook` -> `StatusTransition`, İş 1) İKİ
+BAĞIMSIZ sinyaldir — biri boş dönse bile diğeri dolu olabilir (örn. bir PR
+`synchronize` action'ı her zaman bir `NormalizedEvent` üretir ama hiçbir zaman
+bir `StatusTransition` üretmez; tersi de mümkün olsun diye ikisi AYRI AYRI
+kontrol edilir, biri diğerini sessizce yutmaz).
 """
 
 import hashlib
@@ -23,6 +30,7 @@ from fastapi import APIRouter, Header, HTTPException, Request
 from ensemble.api.deps import SettingsDep
 from ensemble.config import Settings
 from ensemble.engine.projector import Projector
+from ensemble.engine.status_rules import transitions_from_webhook
 from ensemble.integrations.github.normalize import (
     issue_to_event,
     pr_to_event,
@@ -97,12 +105,28 @@ async def github_webhook(
             return {"status": "ignored", "reason": "repo_not_pinned", "event": x_github_event}
 
     events = parse_events(x_github_event, payload)
-    if not events:
+    # D-55 (İş 3): durum geçişi artık event audit'inden BAĞIMSIZ, saf bir
+    # türetimden (status_rules.transitions_from_webhook, İş 1) gelir —
+    # `events` boş diye burada erken dönülürse ve `transitions` dolu olursa
+    # geçiş sessizce kaybolur; bu yüzden ikisi AYRI kontrol edilir.
+    transitions = transitions_from_webhook(x_github_event, payload)
+
+    if not events and not transitions:
         logger.info("İşlenmeyen/boş webhook event'i: %s", x_github_event)
         return {"status": "ignored", "event": x_github_event}
 
     session_factory = request.app.state.session_factory
     with session_factory() as session:
-        result = Projector(session, FileHarnessPort()).project_events(events)
+        projector = Projector(session, FileHarnessPort())
+        result = (
+            projector.project_events(events)
+            if events
+            else {"events_processed": 0, "presence_synced": 0}
+        )
+        transition_result = (
+            projector.apply_transitions(transitions)
+            if transitions
+            else {"applied": 0, "unchanged": 0, "unmatched": 0}
+        )
 
-    return {"status": "accepted", "event": x_github_event, **result}
+    return {"status": "accepted", "event": x_github_event, **result, **transition_result}

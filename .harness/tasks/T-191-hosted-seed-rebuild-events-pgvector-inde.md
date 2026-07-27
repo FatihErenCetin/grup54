@@ -1,7 +1,7 @@
 ---
 title: '🌱 Hosted seed/rebuild: events + pgvector index''i de doldur (bugün yalnız
   projection)'
-status: in_review
+status: in_progress
 assignee: EnesErdemT
 paths: []
 branch: T-191-rebuild-seed

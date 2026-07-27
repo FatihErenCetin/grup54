@@ -1043,6 +1043,27 @@
             },
             "type": "array",
             "title": "Cards"
+          },
+          "last_transition_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Transition At"
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "seed",
+              "ingest"
+            ],
+            "title": "Source",
+            "default": "seed"
           }
         },
         "type": "object",

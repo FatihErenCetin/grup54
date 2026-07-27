@@ -3,6 +3,7 @@ title: 'Frontend: Board + Ask + Activity sayfaları'
 status: todo
 assignee: FatihErenCetin
 paths: []
+branch: T-33-sayfalari-canli-veriye-bagla
 type: task
 task_id: T-33
 ---
