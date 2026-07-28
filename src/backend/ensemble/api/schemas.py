@@ -12,7 +12,7 @@ from typing import Literal
 
 from pydantic import BaseModel
 
-from ensemble.models import BoardCard, Detection, QueryResult, ScopeVerdict
+from ensemble.models import BoardCard, Detection, QueryResult, QueryScanResult, ScopeVerdict
 
 
 class HealthResponse(BaseModel):
@@ -62,6 +62,10 @@ class BoardResponse(BaseModel):
 
 class QueryResponse(QueryResult):
     pass
+
+
+class QueryScanResponse(QueryScanResult):
+    """`GET /query/scan` (#319) — bkz. `QueryScanResult` docstring'i."""
 
 
 class ScopeVerdictCounts(BaseModel):

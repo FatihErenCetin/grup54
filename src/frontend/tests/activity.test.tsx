@@ -5,7 +5,8 @@
  * Europe/Istanbul'da 3 saat kayma ve yanlış GÜN başlığı.
  */
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -64,6 +65,22 @@ function ev(
     ref: id,
     ...(actorVerified === undefined ? {} : { actor_verified: actorVerified }),
   };
+}
+
+/** #319 testleri "Bugün"/"Dün" başlığına bağlı — `gunBasligi` GERÇEK sistem
+ * saatine (`new Date()`) göre karşılaştırır, bu yüzden sabit bir takvim
+ * tarihi ("2026-07-27" gibi) zamanla "bugün" olmaktan çıkar. Yerel öğlene
+ * yakın bir saat (gece yarısı/DST sınırından uzak) kullanılır. */
+function isoBugun(saat = 9): string {
+  const d = new Date();
+  d.setHours(saat, 0, 0, 0);
+  return d.toISOString();
+}
+function isoDun(saat = 9): string {
+  const d = new Date();
+  d.setDate(d.getDate() - 1);
+  d.setHours(saat, 0, 0, 0);
+  return d.toISOString();
 }
 
 afterEach(() => {
@@ -239,5 +256,215 @@ describe("ActivityPage — aktör doğrulama göstergesi (#296)", () => {
     const simGrubu = screen.getByLabelText("Merge Simulation olayları").closest("div.overflow-hidden");
     expect(esmaGrubu?.querySelector('[data-testid="actor-unverified-badge"]')).toBeNull();
     expect(simGrubu?.querySelector('[data-testid="actor-unverified-badge"]')).not.toBeNull();
+  });
+});
+
+describe("ActivityPage — aktör türü filtresi: İnsan | Hepsi | Yalnız ajan (#319)", () => {
+  it("varsayılan 'Hepsi': hem insan hem ajan olayları görünür", () => {
+    ayarla({
+      data: {
+        events: [ev("e1", "esma", isoBugun(9)), ev("e2", "fatih-claude", isoBugun(10))],
+      },
+    });
+    render(<ActivityPage />, { wrapper });
+    expect(screen.getByLabelText("esma olayları")).toBeInTheDocument();
+    expect(screen.getByLabelText("fatih-claude olayları")).toBeInTheDocument();
+  });
+
+  it("'Yalnız ajan' filtresi insan olaylarını GİZLER", async () => {
+    ayarla({
+      data: {
+        events: [ev("e1", "esma", isoBugun(9)), ev("e2", "fatih-claude", isoBugun(10))],
+      },
+    });
+    const kullanici = userEvent.setup();
+    render(<ActivityPage />, { wrapper });
+
+    await kullanici.click(screen.getByRole("button", { name: "Yalnız ajan" }));
+
+    // MUTASYON KİLİDİ: `aktorTipiSezgisi` filtrede kullanılmazsa (ör. hep
+    // "hepsi" davranışına düşerse) esma burada hâlâ görünür kalırdı.
+    expect(screen.queryByLabelText("esma olayları")).toBeNull();
+    expect(screen.getByLabelText("fatih-claude olayları")).toBeInTheDocument();
+  });
+
+  it("'İnsan' filtresi ajan olaylarını GİZLER", async () => {
+    ayarla({
+      data: {
+        events: [ev("e1", "esma", isoBugun(9)), ev("e2", "fatih-claude", isoBugun(10))],
+      },
+    });
+    const kullanici = userEvent.setup();
+    render(<ActivityPage />, { wrapper });
+
+    await kullanici.click(screen.getByRole("button", { name: "İnsan" }));
+
+    expect(screen.getByLabelText("esma olayları")).toBeInTheDocument();
+    expect(screen.queryByLabelText("fatih-claude olayları")).toBeNull();
+  });
+
+  it("filtrede sonuç yokken dürüst boş satır gösterir (toplam sayıyı da söyler)", async () => {
+    ayarla({ data: { events: [ev("e1", "fatih-claude", isoBugun(9))] } });
+    const kullanici = userEvent.setup();
+    render(<ActivityPage />, { wrapper });
+
+    await kullanici.click(screen.getByRole("button", { name: "İnsan" }));
+
+    expect(screen.getByText(/Bu filtrede olay yok/)).toBeInTheDocument();
+    expect(screen.queryByLabelText("fatih-claude olayları")).toBeNull();
+  });
+});
+
+describe("ActivityPage — görünüm anahtarı: Düz | Aktöre göre (#319)", () => {
+  it("varsayılan 'Aktöre göre': aktör grup başlıkları görünür", () => {
+    ayarla({ data: { events: [ev("e1", "esma", isoBugun(9))] } });
+    render(<ActivityPage />, { wrapper });
+    expect(screen.getByLabelText("esma olayları")).toBeInTheDocument();
+  });
+
+  it("'Düz' seçilince aktör alt-gruplaması KALKAR — gün ayraçlı düz akış", async () => {
+    ayarla({
+      data: {
+        events: [ev("e1", "esma", isoBugun(9)), ev("e2", "enes", isoBugun(10))],
+      },
+    });
+    const kullanici = userEvent.setup();
+    render(<ActivityPage />, { wrapper });
+
+    await kullanici.click(screen.getByRole("button", { name: "Düz" }));
+
+    // MUTASYON KİLİDİ: `gorunum === "duz"` dalı kaldırılırsa (her zaman
+    // gruplu render edilirse) bu aria-label hiç bulunamaz.
+    const duzListe = screen.getByLabelText("Bugün olayları (düz)");
+    expect(duzListe).toBeInTheDocument();
+    expect(duzListe.children.length).toBe(2); // iki olay da AYNI düz listede, alt-grup YOK
+    expect(screen.queryByLabelText("esma olayları")).toBeNull();
+  });
+
+  it("Düz görünümde her satırda aktör çipi görünür (grup başlığı olmadan)", async () => {
+    ayarla({ data: { events: [ev("e1", "esma", isoBugun(9))] } });
+    const kullanici = userEvent.setup();
+    render(<ActivityPage />, { wrapper });
+
+    await kullanici.click(screen.getByRole("button", { name: "Düz" }));
+
+    expect(within(screen.getByLabelText("Bugün olayları (düz)")).getByText("esma")).toBeInTheDocument();
+  });
+});
+
+describe("ActivityPage — '↑ N yeni' rozeti (#319, istemci tarafı)", () => {
+  it("ilk yüklemede rozet YOK (taban ilk veriyle dondurulur)", () => {
+    ayarla({ data: { events: [ev("e1", "esma", isoBugun(9))] } });
+    render(<ActivityPage />, { wrapper });
+    expect(screen.queryByRole("button", { name: /yeni/ })).toBeNull();
+  });
+
+  it("sonraki pollde gelen YENİ olayları sayar", async () => {
+    ayarla({ data: { events: [ev("e1", "esma", isoBugun(9))] } });
+    const { rerender } = render(<ActivityPage />, { wrapper });
+
+    ayarla({
+      data: {
+        events: [
+          ev("e1", "esma", isoBugun(9)),
+          ev("e2", "enes", isoBugun(10)),
+          ev("e3", "enes", isoBugun(11)),
+        ],
+      },
+    });
+    rerender(<ActivityPage />);
+
+    // MUTASYON KİLİDİ: taban hiç dondurulmazsa (ya da her render'da events'e
+    // eşitlenirse) bu rozet hiç görünmez / hep 0 kalır.
+    expect(screen.getByRole("button", { name: /2 yeni/ })).toBeInTheDocument();
+  });
+
+  it("rozete tıklamak tabanı günceller — rozet KAYBOLUR", async () => {
+    ayarla({ data: { events: [ev("e1", "esma", isoBugun(9))] } });
+    const kullanici = userEvent.setup();
+    const { rerender } = render(<ActivityPage />, { wrapper });
+
+    ayarla({
+      data: { events: [ev("e1", "esma", isoBugun(9)), ev("e2", "enes", isoBugun(10))] },
+    });
+    rerender(<ActivityPage />);
+
+    await kullanici.click(screen.getByRole("button", { name: /1 yeni/ }));
+
+    expect(screen.queryByRole("button", { name: /yeni/ })).toBeNull();
+  });
+
+  it("'yeni' sayısı aktör filtresinden BAĞIMSIZDIR (filtre değişince kaymaz)", async () => {
+    ayarla({ data: { events: [ev("e1", "esma", isoBugun(9))] } });
+    const kullanici = userEvent.setup();
+    const { rerender } = render(<ActivityPage />, { wrapper });
+
+    ayarla({
+      data: {
+        events: [ev("e1", "esma", isoBugun(9)), ev("e2", "fatih-claude", isoBugun(10))],
+      },
+    });
+    rerender(<ActivityPage />);
+    expect(screen.getByRole("button", { name: /1 yeni/ })).toBeInTheDocument();
+
+    // MUTASYON KİLİDİ: `yeniSayisi` `filtrelenmis`ten hesaplanırsa (tam
+    // `events` yerine) filtre değişince bu sayı YANLIŞLIKLA kayardı.
+    await kullanici.click(screen.getByRole("button", { name: "Yalnız ajan" }));
+    expect(screen.getByRole("button", { name: /1 yeni/ })).toBeInTheDocument();
+  });
+});
+
+describe("ActivityPage — Kendiliğinden Daily kartı (#319)", () => {
+  it("Bugün/Dün satırlarını GERÇEK aktör+tür sayımından üretir", () => {
+    ayarla({
+      data: {
+        events: [
+          ev("e1", "esma", isoBugun(9), "commit"),
+          ev("e2", "esma", isoBugun(10), "commit"),
+          ev("e3", "semih", isoBugun(11), "pr"),
+          ev("e4", "enes", isoDun(9), "issue"),
+        ],
+      },
+    });
+    render(<ActivityPage />, { wrapper });
+
+    const kart = screen.getByTestId("daily-karti");
+    // MUTASYON KİLİDİ: `aktorRollupSatirlari`'nin sayaç mantığı bozulursa
+    // (ör. toplam yerine son elemanı sayarsa) bu tam metinler bulunamaz.
+    expect(within(kart).getByText("esma: 2 commit")).toBeInTheDocument();
+    expect(within(kart).getByText("semih: 1 PR")).toBeInTheDocument();
+    expect(within(kart).getByText("enes: 1 issue")).toBeInTheDocument();
+  });
+
+  it("olay yokken bölümü DÜRÜSTÇE boş gösterir (uydurma satır yok)", () => {
+    ayarla({ data: { events: [ev("e1", "esma", isoBugun(9))] } });
+    render(<ActivityPage />, { wrapper });
+
+    const kart = screen.getByTestId("daily-karti");
+    expect(within(kart).getByText("olay yok")).toBeInTheDocument(); // Dün boş
+  });
+
+  it("blocker satırı HİÇ basılmaz — NormalizedEvent/PresenceEntry taşımıyor (gate'li)", () => {
+    ayarla({ data: { events: [ev("e1", "esma", isoBugun(9))] } });
+    render(<ActivityPage />, { wrapper });
+    expect(screen.queryByText(/blocker/i)).toBeNull();
+  });
+
+  it("'Panoya kopyala' GERÇEK rollup metnini panoya yazar", async () => {
+    // DİKKAT (ayarlar.test.tsx ile aynı bulgu): userEvent.setup() jsdom'un
+    // KENDİ Clipboard stub'ını kurar — Object.defineProperty bundan SONRA.
+    const kullanici = userEvent.setup();
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      value: { writeText },
+      configurable: true,
+    });
+    ayarla({ data: { events: [ev("e1", "esma", isoBugun(9), "commit")] } });
+    render(<ActivityPage />, { wrapper });
+
+    await kullanici.click(screen.getByRole("button", { name: "Panoya kopyala" }));
+
+    expect(writeText).toHaveBeenCalledWith(expect.stringContaining("esma: 1 commit"));
+    expect(await screen.findByText("Kopyalandı ✓")).toBeInTheDocument();
   });
 });

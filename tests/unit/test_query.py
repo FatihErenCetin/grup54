@@ -263,6 +263,106 @@ def test_embeddings_saglamken_query_dusus_beyani_YOK():
 
     assert result.degraded is None
 
+# ── #319 — QueryService.scan() (AskPage "Tarandı" şeridi, sıfır LLM) ────────
+
+
+def test_scan_tum_tipleri_sifir_dahil_sayar():
+    service, judge, embeddings = _service(
+        [
+            _document(),
+            _document(id="task:T-1", type="task", ref="T-1", quote="t", text="t"),
+            _document(id="task:T-2", type="task", ref="T-2", quote="t2", text="t2"),
+        ]
+    )
+
+    result = service.scan()
+
+    counts = {item.type: item.count for item in result.searched}
+    assert counts == {"scope": 1, "task": 2, "decision": 0, "event": 0, "pr": 0}
+    assert result.last_commit == "abc1234"
+    # decision HER ZAMAN 0 çıkar (HarnessEventQuerySource decision okumuyor,
+    # bkz. QueryScanResult docstring'i) — bu satır o olgunun regresyon kilidi:
+    # biri corpus'a decision belgesi eklerse bu sayı artar ve test kırılır,
+    # o zaman UI tarafındaki gate de gözden geçirilmeli.
+    assert judge.calls == []
+    assert embeddings.calls == []
+
+
+def test_scan_embeddings_ve_judge_cagirmaz():
+    # MUTASYON KİLİDİ: scan() içine yanlışlıkla self._retrieve(...)/judge_port
+    # çağrısı eklenirse (örn. ask()'tan kopyala-yapıştır hatası) bu test kırılır
+    # — scan LLM/embedding kotası YAKMAMALI (sayfa her açılışta çağrılabilir).
+    service, judge, embeddings = _service([_document()])
+
+    service.scan()
+
+    assert judge.calls == []
+    assert embeddings.calls == []
+
+
+def test_scan_recent_events_yalniz_pencere_icindeki_event_pr_sayar():
+    now = datetime.now(timezone.utc)
+    recent_event = _document(
+        id="event:recent",
+        type="event",
+        ref="recent",
+        quote="recent",
+        text="deploy tamamlandı",
+        occurred_at=now - timedelta(hours=2),
+    )
+    old_event = _document(
+        id="event:old",
+        type="event",
+        ref="old",
+        quote="old",
+        text="deploy başladı",
+        occurred_at=now - timedelta(hours=72),
+    )
+    recent_pr = _document(
+        id="pr:42",
+        type="pr",
+        ref="42",
+        quote="PR",
+        text="PR açıldı",
+        occurred_at=now - timedelta(hours=10),
+    )
+    # MUTASYON KİLİDİ: tip filtresi (`document.type in ("event", "pr")`)
+    # kaldırılırsa bu scope belgesi de (occurred_at YOK ama yine de) sayıma
+    # girmeye ÇALIŞIR — occurred_at None olduğu için zaten elenir, ama tip
+    # filtresi kaldırılıp occurred_at eklenseydi yanlış sayardı; bu yüzden
+    # ayrı bir task belgesiyle de (occurred_at VERİLMİŞ) doğruluyoruz.
+    scope_belgesi = _document()  # occurred_at yok → zaten elenir
+    task_ile_occurred_at = _document(
+        id="task:T-9",
+        type="task",
+        ref="T-9",
+        quote="t",
+        text="t",
+        occurred_at=now - timedelta(hours=1),
+    )
+    service, judge, embeddings = _service(
+        [recent_event, old_event, recent_pr, scope_belgesi, task_ile_occurred_at]
+    )
+
+    result = service.scan()
+
+    assert result.recent_events == 2  # recent_event + recent_pr; old_event ve task DIŞARIDA
+    assert result.recent_event_window_hours == 48
+    assert judge.calls == []
+    assert embeddings.calls == []
+
+
+def test_scan_corpus_okuma_hatasi_gizlenmez():
+    service = QueryService(
+        _BrokenSource(),
+        _TokenEmbeddings(),
+        InMemoryVectorIndex(),
+        _Judge(),
+    )
+
+    with pytest.raises(QueryRetrievalError, match="corpus'u okunamadı"):
+        service.scan()
+
 
 # ── #355: parmak izi kalıcılığı — "her restart tüm korpusu yeniden gömme" ────
 

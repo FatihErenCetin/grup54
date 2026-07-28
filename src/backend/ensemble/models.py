@@ -262,6 +262,34 @@ class QueryResult(BaseModel):
     degraded: str | None = None
 
 
+class QueryScanResult(BaseModel):
+    """`/query/scan` — soru sorulmadan ÖNCE "ne aranabilir" ön-izlemesi (#319).
+
+    `QueryResult.searched` ile AYNI `SearchReceipt` şeklini taşır ama sıfır
+    LLM çağrısıyla üretilir (yalnız `source_port.load_query_corpus()` +
+    sayım — `QueryService.scan()`). Tasarım paketindeki "Tarandı: kapsam ✓ ·
+    14 görev ✓ · ..." şeridinin GERÇEK veri kaynağı budur.
+
+    ÖLÇÜLMÜŞ SINIR (2026-07-29, `HarnessEventQuerySource.load_query_corpus`):
+    corpus hiçbir zaman `type="decision"` belgesi ÜRETMEZ (`.harness/decisions/`
+    okunmuyor) — yani `searched` içindeki decision sayısı HER ZAMAN 0'dır,
+    "gerçekten 0 karar var" demek DEĞİL. Bu yüzden istemci (AskPage) bu
+    alanı şeritte GÖSTERMEZ (uydurma sayı yerine gate — issue #319 "en önemli
+    kural"); scope/task/event/pr sayıları gerçek ve gösterilebilir.
+    """
+
+    as_of: datetime
+    last_commit: str
+    searched: list[SearchReceipt]
+    # Son `recent_event_window_hours` saatteki event+pr belge sayısı (tasarım
+    # paketi "son 48 saat olayları" şeridi) — corpus'un TAMAMI değil, yalnız
+    # bu pencere: event_limit=200 corpus'u zaten sona yakın olaylarla sınırlı
+    # tutuyor (query_source.py), ama şeridin iddiası "yakın zaman" olduğu için
+    # burada da AYNI 48 saatlik kesme uygulanır (iddia ile sayım eşleşsin).
+    recent_events: int = Field(ge=0)
+    recent_event_window_hours: int = Field(ge=1)
+
+
 class QueryDocument(BaseModel):
     id: str
     type: CitationType
