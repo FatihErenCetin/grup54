@@ -2,6 +2,7 @@ import { Link, NavLink, Outlet } from "react-router-dom";
 import { config } from "../lib/config";
 import { gorunenAd, useAuth, useCikisYap } from "../lib/useAuth";
 import { useRepolar } from "../lib/useRepoSecici";
+import { useSaglayiciAyarlari } from "../lib/useSettings";
 import { ActorChip } from "./ui";
 
 /* Bugünkü sabit demo etiketi (D-23) — anonim ziyaretçi/giriş yapılandırılmamış/
@@ -51,6 +52,18 @@ const NAV = [
   { to: "/ask", label: "Ask" },
 ];
 
+/** Ayarlar (/ayarlar, T-309) nav'da YALNIZ backend GERÇEKTEN 200 dönerse
+    görünür — görev brifi §3: "Hosted'da bu sayfa GÖRÜNMESİN", bu dosyanın
+    kendi ilkesi olan "çalışmayan sekme basmıyoruz"un aynısı. `config.mode`
+    (Vite BUILD modu) DEĞİL, `GET /settings/saglayici`nin CANLI yanıtı kaynak
+    (useSettings.ts dosya-başı yorumu — ikisi teorik olarak AYRIŞABİLİR).
+    Yükleniyor/hata durumunda da GÖSTERİLMEZ (fail-closed: emin olmadan ölü
+    link basma riski, emin olduktan sonra göstermekten daha ucuz). */
+function useAyarlarGorunurMu(): boolean {
+  const ayarlar = useSaglayiciAyarlari();
+  return ayarlar.data?.tur === "basarili";
+}
+
 /* Başlıktaki KÜÇÜK auth göstergesi (#79, T-294 ile GitHub+email ikisini de
    kapsar) — demo giriş İSTEMEZ, bu yüzden bilinçli sessiz: yükleniyor / gerçek
    hata / hiçbir giriş yöntemi yapılandırılmamış (`enabled=false` VE
@@ -89,6 +102,9 @@ function AuthGostergesi() {
 }
 
 export default function AppLayout() {
+  const ayarlarGorunur = useAyarlarGorunurMu();
+  const nav = ayarlarGorunur ? [...NAV, { to: "/ayarlar", label: "Ayarlar" }] : NAV;
+
   return (
     <div className="flex h-screen">
       <aside className="flex w-44 flex-col border-r border-border">
@@ -98,7 +114,7 @@ export default function AppLayout() {
           <span className="text-sm font-semibold tracking-tight">Ensemble</span>
         </div>
         <nav className="flex-1 space-y-0.5 px-2">
-          {NAV.map((n) => (
+          {nav.map((n) => (
             <NavLink
               key={n.to}
               to={n.to}
