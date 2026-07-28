@@ -300,6 +300,23 @@ DEMO_CACHE_MAX_ENTRIES: int = 1024
 
 ---
 
+## Ek G (28 Tem) — Aktör doğrulama (#296, T-296): `NormalizedEvent.actor_verified`
+
+> **Yalnız EKLEME** — S2 §1'in donmuş `NormalizedEvent` imzasına dokunulmadı (aynı "Ek D"/"Ek F" desenindeki additive genişletme). Teşhis: ingest, commit yazarını GitHub hesabıyla (`author.login` / webhook `author.username`) eşleştiremediğinde ham git commit adına DÜŞER (`commit.author.name`); bu düşüş bugüne kadar arayüzde görünmezdi ("Merge Simulation" vakası — dogfood bulgusu, #296).
+
+```python
+class NormalizedEvent(BaseModel):
+    ...                          # S2 §1 AYNEN — hiçbir alan değişmedi/silinmedi
+    actor_verified: bool = True  # 🆕 YALNIZ EKLEME, varsayılan True ("doğrulanmış")
+```
+
+- **Üretici:** `integrations/github/normalize.py::commit_to_event` (REST) + `webhook_push_to_events` (webhook `push`). Tercih sırası KİLİTLİ: `login`/`username` VARSA ham ad ASLA kullanılmaz; düşüldüğünde `logger.warning` ile (hangi commit/sha, hangi ham ad) GÖRÜNÜR kılınır.
+- **Projeksiyon:** `store/models.py::EventRow.actor_verified` (`server_default=true`) — migration `3a2ba7afdced`. Mevcut satırlar (PO kararı: olası eşleşmeyen eski satırlar dahil, #296 "kısa vadeli temizlik" notu) güvenli varsayılana düşer, geçmiş yeniden yorumlanmaz.
+- **Tüketici (bugün):** yalnız Activity sayfası (`GET /events` → `NormalizedEvent[]`, Ek B5 AYNEN) — aktör grubunun ÇİPİ `ActorChip`'in `verified` prop'unu alır. `GraphNode`/`GraphEdge` (Ek A, #106 ile donmuş) ve `BoardCard` (Ek B2) BU EKİN KAPSAMINDA DEĞİL — ikisi de aktör kimliğini birden çok event üzerinden AGGREGATE ettiği için (ya da `BoardCard.assignee` gibi `.harness/`'ten gelen insan-editable bir alan olduğu için) per-event sinyali bugün taşımıyor; Graph/Radar/Board'daki `ActorChip` çağrıları bilerek `verified` GEÇMİYOR (varsayılan `true` — sessizce "eşleşmedi" göstermez). Bu yüzeylere taşımak AYRI bir kontrat genişletmesi ister (yeni issue, karar İSTEMEZ değil — Ek A/B2 alan eklemesi).
+- **`ActorChip` (`components/ui.tsx`):** yeni opsiyonel `verified?: boolean` prop'u (varsayılan `true`). `false` iken renk TEK BAŞINA değil (D-34) — avatar kesikli çerçeve + köşe rozeti (ikinci kanal) + `title`'da açık metin ("... eşleşmedi") eklenir. "Sahte kişi" DENMEZ.
+
+---
+
 ## Pratik: S3 paralel çalışma reçetesi
 
 - **Sprint başı (bugün):** bu dosya (Ek A–E) donar → herkes kendi diliminde mock/fixture ile başlar.

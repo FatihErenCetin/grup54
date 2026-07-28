@@ -47,8 +47,23 @@ function ayarla(yeni: Partial<typeof durum>) {
   });
 }
 
-function ev(id: string, actor: string, ts: string, type = "commit") {
-  return { id, type, actor, branch: `T-${id}`, files: ["src/x.py"], ts, ref: id };
+function ev(
+  id: string,
+  actor: string,
+  ts: string,
+  type = "commit",
+  actorVerified?: boolean,
+) {
+  return {
+    id,
+    type,
+    actor,
+    branch: `T-${id}`,
+    files: ["src/x.py"],
+    ts,
+    ref: id,
+    ...(actorVerified === undefined ? {} : { actor_verified: actorVerified }),
+  };
 }
 
 afterEach(() => {
@@ -162,5 +177,60 @@ describe("ActivityPage — naive-UTC parse (review blocker'ı)", () => {
     const liste = screen.getByLabelText("esma olayları");
     // En yeni önce: 10:00 satırı ilk sırada olmalı.
     expect(liste.children[0].textContent).toContain("T-yeni");
+  });
+});
+
+describe("ActivityPage — aktör doğrulama göstergesi (#296)", () => {
+  it("tüm olaylar doğrulanmış: aktör çipinde rozet YOK", () => {
+    ayarla({
+      data: {
+        events: [
+          ev("e1", "esma6", "2026-07-27T09:00:00", "commit", true),
+          ev("e2", "esma6", "2026-07-27T10:00:00", "commit", true),
+        ],
+      },
+    });
+    render(<ActivityPage />, { wrapper });
+    expect(screen.queryByTestId("actor-unverified-badge")).toBeNull();
+  });
+
+  it("bir grup içindeki TEK bir olay bile eşleşmemişse çip bunu gösterir", () => {
+    // MUTASYON KİLİDİ: `grupDogrulanmisMi`'in `.some(...)` mantığı
+    // `.every(...)`'e çevrilirse (yalnız HEPSİ eşleşmediğinde işaretle) bu
+    // test kırılır — tek kötü örnek bile gizlenmemeli.
+    ayarla({
+      data: {
+        events: [
+          ev("e1", "Merge Simulation", "2026-07-27T09:00:00", "commit", false),
+          ev("e2", "Merge Simulation", "2026-07-27T10:00:00", "commit", true),
+        ],
+      },
+    });
+    render(<ActivityPage />, { wrapper });
+    expect(screen.getByTestId("actor-unverified-badge")).toBeInTheDocument();
+  });
+
+  it("actor_verified alanı hiç yoksa (eski/mock veri): DOĞRULANMIŞ sayılır", () => {
+    // additive+varsayılanlı model (ensemble.models.NormalizedEvent) — alanı
+    // taşımayan veri sessizce "eşleşmedi" görünmemeli.
+    ayarla({ data: { events: [ev("e1", "esma", "2026-07-27T09:00:00")] } });
+    render(<ActivityPage />, { wrapper });
+    expect(screen.queryByTestId("actor-unverified-badge")).toBeNull();
+  });
+
+  it("iki ayrı aktör grubu: yalnız eşleşmeyen olan rozet taşır", () => {
+    ayarla({
+      data: {
+        events: [
+          ev("e1", "esma6", "2026-07-27T09:00:00", "commit", true),
+          ev("e2", "Merge Simulation", "2026-07-27T09:30:00", "commit", false),
+        ],
+      },
+    });
+    render(<ActivityPage />, { wrapper });
+    const esmaGrubu = screen.getByLabelText("esma6 olayları").closest("div.overflow-hidden");
+    const simGrubu = screen.getByLabelText("Merge Simulation olayları").closest("div.overflow-hidden");
+    expect(esmaGrubu?.querySelector('[data-testid="actor-unverified-badge"]')).toBeNull();
+    expect(simGrubu?.querySelector('[data-testid="actor-unverified-badge"]')).not.toBeNull();
   });
 });

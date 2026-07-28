@@ -642,7 +642,18 @@ export interface components {
             /** Ref */
             ref: string;
         };
-        /** NormalizedEvent */
+        /**
+         * NormalizedEvent
+         * @description Ingest çıktısı (S2 §1, GATE 2 #14 ile dondu) — `actor_verified` (#296,
+         *     T-296) TEK katkı: additive + varsayılanlı, donuk modele dokunmaz (bkz.
+         *     docs/sprint3-kontratlar.md Ek G).
+         *
+         *     Varsayılan `True` ("doğrulanmış") BİLİNÇLİ seçim: bu alanı hiç set
+         *     etmeyen eski/başka üretim yolları (fixtures, `fake.py`, henüz
+         *     güncellenmemiş bir adapter) sessizce "şüpheli" görünmesin — yalnızca
+         *     GERÇEKTEN eşleşmediği bilinen yollar (bkz. integrations/github/normalize.py)
+         *     `False` yazar.
+         */
         NormalizedEvent: {
             /** Id */
             id: string;
@@ -664,6 +675,12 @@ export interface components {
             ts: string;
             /** Ref */
             ref: string;
+            /**
+             * Actor Verified
+             * @description actor alanı GERÇEK bir GitHub hesabıyla (commit author.login / webhook author.username) eşleşti mi? False => GitHub eşleştiremedi, ham git commit yazar adına (commit.author.name) düşüldü — bu kötü niyet değil, genelde yanlış/eksik git config anlamına gelir.
+             * @default true
+             */
+            actor_verified: boolean;
         };
         /**
          * PresenceEntry

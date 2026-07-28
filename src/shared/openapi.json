@@ -2898,6 +2898,12 @@
           "ref": {
             "type": "string",
             "title": "Ref"
+          },
+          "actor_verified": {
+            "type": "boolean",
+            "title": "Actor Verified",
+            "description": "actor alanı GERÇEK bir GitHub hesabıyla (commit author.login / webhook author.username) eşleşti mi? False => GitHub eşleştiremedi, ham git commit yazar adına (commit.author.name) düşüldü — bu kötü niyet değil, genelde yanlış/eksik git config anlamına gelir.",
+            "default": true
           }
         },
         "type": "object",
@@ -2910,7 +2916,8 @@
           "ts",
           "ref"
         ],
-        "title": "NormalizedEvent"
+        "title": "NormalizedEvent",
+        "description": "Ingest çıktısı (S2 §1, GATE 2 #14 ile dondu) — `actor_verified` (#296,\nT-296) TEK katkı: additive + varsayılanlı, donuk modele dokunmaz (bkz.\ndocs/sprint3-kontratlar.md Ek G).\n\nVarsayılan `True` (\"doğrulanmış\") BİLİNÇLİ seçim: bu alanı hiç set\netmeyen eski/başka üretim yolları (fixtures, `fake.py`, henüz\ngüncellenmemiş bir adapter) sessizce \"şüpheli\" görünmesin — yalnızca\nGERÇEKTEN eşleşmediği bilinen yollar (bkz. integrations/github/normalize.py)\n`False` yazar."
       },
       "PresenceEntry": {
         "properties": {

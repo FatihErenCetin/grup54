@@ -34,6 +34,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    true as sa_true,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
@@ -62,6 +63,13 @@ class EventRow(Base):
     başlar (bkz. integrations/github/normalize.py). `repo_full_name`'i PK'ye
     KATMAMAK, iki farklı kiracının PR #1'inin aynı satırı paylaşmasına
     (sessiz üzerine-yazma) yol açardı.
+
+    `actor_verified` (#296, T-296): `NormalizedEvent.actor_verified`'in DB
+    kolonu. `server_default=true` BİLİNÇLİ — hem yeni satırların Python
+    tarafında alanı unutarak INSERT etmesi hem de bu migration'ın backfill
+    ettiği ESKİ satırlar (PO kararı: mevcut olası eşleşmeyen satırlara
+    dokunulmaz, bkz. #296 "kısa vadeli temizlik" notu) aynı güvenli
+    varsayılana (`True`, "doğrulanmış") düşer — geçmiş yeniden yorumlanmaz.
     """
 
     __tablename__ = "events"
@@ -74,6 +82,7 @@ class EventRow(Base):
     files: Mapped[list] = mapped_column(JSON, default=list)
     ts: Mapped[datetime] = mapped_column(DateTime, index=True)
     ref: Mapped[str] = mapped_column(String(255))
+    actor_verified: Mapped[bool] = mapped_column(Boolean, default=True, server_default=sa_true())
 
     def to_domain(self) -> NormalizedEvent:
         """DB satırından Pydantic modeline dönüştür.
@@ -90,6 +99,7 @@ class EventRow(Base):
             files=self.files,
             ts=self.ts,
             ref=self.ref,
+            actor_verified=self.actor_verified,
         )
 
     @classmethod
@@ -105,6 +115,7 @@ class EventRow(Base):
             files=event.files,
             ts=event.ts,
             ref=event.ref,
+            actor_verified=event.actor_verified,
         )
 
 
