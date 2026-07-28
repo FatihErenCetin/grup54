@@ -25,7 +25,27 @@ type ScopeVerdict = components["schemas"]["ScopeVerdict"];
    Gate'li (eksik DEĞİL): `GET /scope/check?ref=` nokta-sorgusu hook'lanmadı
    (liste ucu zaten hepsini taşıyor) · kapsam düzenleme/dondurma yazma ucu
    MVP'de yok (.harness/scope PO'nun git'teki dosyası — D-34 "iş yapmayan
-   buton basmıyoruz"). */
+   buton basmıyoruz").
+
+   #318 — tasarımdaki `IS-1…IS-5` / `NG-1…NG-4` madde kodları ve madde başı
+   "N PR" rozeti de GATE'li, aynı sebepten: ölçüldü, `GET /scope/current`
+   `in_scope`/`non_goals` DÜZ STRING dizisi döndürüyor (`ScopeCurrent` şeması,
+   models.py) — kod YOK. Backend'te `item_id` çıkarımı VAR ama (`ScopeItemRef`,
+   `engine/scope_context.py::_ITEM_ID_RE`) yalnız metni `G-N:`/`IS-N:`/`NG-N:`
+   ÖNEKİYLE başlayan maddeler için çalışıyor — bugünkü donmuş
+   `.harness/scope/sprint-3.md` (PO'nun git'teki dosyası, #317 ile başka bir
+   ajan tarafından SADECE Türkçe karakter düzeltmesi için düzenleniyor, DOKUNMA)
+   hiçbir maddeye bu öneki taşımıyor. Sırayla "IS-1, IS-2, …" UYDURMAK (dizi
+   indeksinden) yanlış olurdu: PO'nun kod atamadığı bir maddeye istemci tarafında
+   kimlik icat etmek, gelecekte PO gerçekten kod eklerse (farklı sırada/sayıda
+   olabilir) sessizce YANLIŞ eşleşen bir kimlikle çakışabilir. PR-sayısı rozeti
+   de aynı nedenle yok: `/scope/verdicts` madde eşleşmesini `evidence.item_id`
+   üzerinden yapıyor — o alan bugün TÜM kararlarda `null` (kaynak metinde önek
+   yok), sayılacak gerçek bir eşleşme yok (uydurmak yerine 0 bile yazılmıyor —
+   0 "ölçüldü, eşleşme yok" ile "hiç ölçülemiyor" arasındaki farkı gizlerdi).
+   Önek PO tarafından eklenirse (kapsam belgesi kararı, D-34 ile aynı ilke:
+   biz uydurmayız) `item_id` kendiliğinden dolar; o zaman kod + rozet ucuz bir
+   ekleme olur. */
 export default function ScopePage() {
   const { data, error, isLoading, isFetching, dataUpdatedAt } = useScope();
 
@@ -109,24 +129,37 @@ export default function ScopePage() {
 /* ── Sol sütun ────────────────────────────────────────────────────────── */
 
 /** Kapsamın kimliği: hangi sürüm, hangi commit, ne zaman donduruldu.
-    Sahte-canlılık yasak (D-34): frozen_at GERÇEK zaman damgası, yerele çevrilir. */
+    Sahte-canlılık yasak (D-34): frozen_at GERÇEK zaman damgası, yerele çevrilir.
+
+    #318 — tasarımdaki kompakt "🔒 DONMUŞ · v1 · 6 Tem" künyesiyle hizalandı.
+    Asıl fark `inline-flex` (`flex` tek başına DA içerik kadar dar durabilirdi,
+    ama üstteki `div` blok bağlamda ebeveynin TÜM genişliğine yayılıyordu —
+    canlıda ölçülen "tam genişlik commit çubuğu" şikayeti buradan geliyordu,
+    içerik kısaydı ama kutu değildi). `ref`/tam `commit_sha`/tam zaman damgası
+    SİLİNMEDİ (bunlar test_scope_kanit.py'nin doğruladığı kanıt bağlantısı) —
+    yalnız rozetten SONRA, soluk ikincil bilgi olarak duruyor; kısa tarih
+    rozette `title`'da tam haliyle erişilebilir (commit_sha'nın kendi kısaltma
+    deseniyle AYNI ilke). */
 function KunyeSeridi({ scope }: { scope: components["schemas"]["ScopeCurrent"] }) {
   return (
-    <div className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-lg border border-border bg-card px-4 py-2.5 text-xs">
+    <div className="inline-flex w-fit flex-wrap items-center gap-x-4 gap-y-2 rounded-lg border border-border bg-card px-4 py-2.5 text-xs">
       <span className="inline-flex items-center gap-1.5 rounded bg-status-done/15 px-1.5 py-0.5 font-medium text-status-done">
-        <span aria-hidden>✓</span>
-        Dondurulmuş
+        <span aria-hidden>🔒</span>
+        DONMUŞ
+        <span className="font-mono font-normal text-status-done/80">v{scope.version}</span>
+        <span
+          className="font-normal text-status-done/80"
+          title={`Donduruldu: ${zaman(scope.frozen_at)}`}
+        >
+          {tarihKisa(scope.frozen_at)}
+        </span>
       </span>
-      <Kunye etiket="sürüm" deger={scope.version} />
       <Kunye etiket="ref" deger={scope.ref} />
       <Kunye
         etiket="commit"
         deger={scope.commit_sha.slice(0, 7)}
         baslik={scope.commit_sha}
       />
-      <span className="text-muted-foreground">
-        Donduruldu: <span className="tabular-nums">{zaman(scope.frozen_at)}</span>
-      </span>
     </div>
   );
 }
@@ -450,4 +483,14 @@ function Metin({ children }: { children: string }) {
 function zaman(iso: string): string {
   const d = new Date(iso);
   return Number.isNaN(d.getTime()) ? iso : d.toLocaleString("tr-TR");
+}
+
+/** #318 — künye rozetindeki KISA tarih ("6 Tem"): gün + kısaltılmış ay, yıl/saat
+    yok (tasarımdaki kompakt biçim). Tam damga rozetin `title`'ında durur —
+    bozuk ISO'da aynı guard (`zaman()` ile aynı davranış, ham metin döner). */
+function tarihKisa(iso: string): string {
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime())
+    ? iso
+    : d.toLocaleDateString("tr-TR", { day: "numeric", month: "short" });
 }

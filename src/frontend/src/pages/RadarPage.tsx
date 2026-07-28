@@ -68,7 +68,17 @@ function EksikSonucSeridi({ degraded }: { degraded: RadarDegraded }) {
    backend bağlıyken doğru boş durum "radar temiz"dir; checklist onboarding'e
    (S3 sihirbaz) ait.
    Sonradan eklenenler: #252 eksik-sonuç şeridi (yukarıda) · #158 düşük-güven
-   tespitlerin katlanmış bölümü (varsayılan kapalı). */
+   tespitlerin katlanmış bölümü (varsayılan kapalı).
+
+   #318 — tasarımdaki "Öncelik ⌄" sıralama açılırı KASITLI OLARAK YOK: ölçüldü
+   (`engine/radar.py::collect()`), `/radar` HER ZAMAN `(severity_rank,
+   -confidence, id)` sırasıyla döner — yani "öncelik" zaten TEK ve daima
+   uygulanan sıra, backend'te ikinci bir eksen (ör. yaş/first_seen_at) yok ki
+   dropdown'a ikinci seçenek olsun. Tek-seçenekli bir açılır menü kurmak "iş
+   yapmayan buton basmıyoruz" ilkesini (D-34) ihlal ederdi — seçilebilir gibi
+   görünüp hiçbir şeyi değiştirmezdi. Aynı ölçüm #105 ısı matrisinin neden
+   Radar'da kaldığını da açıklıyor: aşağıda kasıtlı, kaldırılmadı (bkz. o
+   bileşenin kendi başlık yorumu + D-33/#105). */
 export default function RadarPage() {
   const { data, isLoading, isFetching, dataUpdatedAt, error } = useRadar();
   const [filter, setFilter] = useState<SeverityFilter>("hepsi");
