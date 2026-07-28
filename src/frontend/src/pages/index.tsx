@@ -9,3 +9,4 @@ export { default as GraphPage } from "./GraphPage";
 export { default as ActivityPage } from "./ActivityPage";
 export { default as AskPage } from "./AskPage";
 export { default as ActorPage } from "./ActorPage";
+export { default as RepoSeciciPage } from "./RepoSeciciPage";

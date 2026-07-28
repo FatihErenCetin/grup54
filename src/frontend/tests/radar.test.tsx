@@ -1,5 +1,6 @@
 /** #21 testleri — FeedItem anatomisi, filtre, empty/loading/error, presence dürüstlüğü,
     mock zinciri + global rozet. */
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
@@ -246,14 +247,20 @@ describe("mock zinciri (PR manşet kararı — commit'li testte)", () => {
 
 describe("global dürüstlük rozeti", () => {
   it("mock modunda AppLayout 'Örnek veri' basar (D-34: ALL-CAPS değil)", () => {
+    // #79/T-79'dan beri AppLayout'un aktif-repo göstergesi de bir react-query
+    // hook'u (useRepolar) kullanıyor → RadarPage'in shell.test.tsx'teki gerekçesiyle
+    // AYNI: provider şart (gerçek istek atılmaz, anonimken enabled=false kalır).
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(
-      <MemoryRouter>
-        <Routes>
-          <Route element={<AppLayout />}>
-            <Route index element={<div />} />
-          </Route>
-        </Routes>
-      </MemoryRouter>,
+      <QueryClientProvider client={client}>
+        <MemoryRouter>
+          <Routes>
+            <Route element={<AppLayout />}>
+              <Route index element={<div />} />
+            </Route>
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>,
     );
     expect(screen.getByText("Örnek veri")).toBeInTheDocument();
   });
