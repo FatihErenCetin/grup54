@@ -201,7 +201,12 @@ class TenantRegistry:
         # `.harness/` yalnız demo reponun git ağacında yaşar (yerel disk) —
         # gerçek kiracılar için dürüst-boş port (bkz. integrations/null_harness.py).
         harness_port: HarnessPort = NullHarnessPort()
-        subject_port = github_port if isinstance(github_port, GitHubAdapter) else None
+        # `hasattr` (isinstance DEĞİL) BİLEREK: `FakeGitHubAdapter`
+        # `resolve_scope_subject` taşımaz; gerçek `GitHubAdapter` taşır. Duck-
+        # typing burada isinstance'tan daha sağlam — testler bu fabrikayı
+        # (bkz. tests/unit/test_tenant_isolation.py) monkeypatch'leyip AYNI
+        # arayüzü sağlayan başka bir sınıf verebilir.
+        subject_port = github_port if hasattr(github_port, "resolve_scope_subject") else None
         scope_service = ScopeService(
             harness_port=harness_port,
             judge_port=self._scope_judge_port,
