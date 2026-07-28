@@ -36,8 +36,9 @@ from ensemble.integrations.github.normalize import (
     pr_to_event,
     webhook_push_to_events,
 )
+from ensemble.integrations.null_harness import NullHarnessPort
 from ensemble.models import NormalizedEvent
-from ensemble_shared.harness import FileHarnessPort
+from ensemble_shared.harness import FileHarnessPort, HarnessPort
 
 logger = logging.getLogger("ensemble.webhook")
 
@@ -115,9 +116,34 @@ async def github_webhook(
         logger.info("İşlenmeyen/boş webhook event'i: %s", x_github_event)
         return {"status": "ignored", "event": x_github_event}
 
+    # T-79 (çok-kiracılık): projeksiyon satırları artık repo_full_name'e göre
+    # scoped (bkz. store/models.py) — webhook payload'ının KENDİ
+    # `repository.full_name`'i kullanılır (payload zaten HMAC ile doğrulandı,
+    # ayrıca bir "bilinen kiracı" kontrolüne gerek yok). Payload'da repo
+    # bağlamı yoksa (ör. bazı `ping` gövdeleri) demo repo'ya düşülür; o da
+    # yapılandırılmamışsa satır NOT NULL kısıtını ihlal etmeden dürüstçe
+    # yok sayılır (uydurma kiracı YOK).
+    repo_full_name = str((payload.get("repository") or {}).get("full_name") or "") or (
+        settings.demo_repo_full_name or ""
+    )
+    if not repo_full_name:
+        logger.warning(
+            "webhook payload'ında repo bağlamı yok ve demo repo yapılandırılmamış — yok sayıldı: %s",
+            x_github_event,
+        )
+        return {"status": "ignored", "reason": "no_repo_context", "event": x_github_event}
+
+    # `.harness/` yalnız demo reponun git ağacında yaşar (yerel disk) — başka
+    # bir kiracının presence senkronu için FileHarnessPort kullanmak GRUP54'ÜN
+    # KENDİ `.harness/active/`'ını o kiracıya sızdırırdı. NullHarnessPort
+    # dürüst-boş presence döner (bkz. integrations/null_harness.py).
+    harness_port: HarnessPort = (
+        FileHarnessPort() if repo_full_name == settings.demo_repo_full_name else NullHarnessPort()
+    )
+
     session_factory = request.app.state.session_factory
     with session_factory() as session:
-        projector = Projector(session, FileHarnessPort())
+        projector = Projector(session, harness_port, repo_full_name=repo_full_name)
         result = (
             projector.project_events(events)
             if events

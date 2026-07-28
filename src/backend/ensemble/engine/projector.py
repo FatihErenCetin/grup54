@@ -26,7 +26,13 @@ from sqlalchemy.orm import Session
 
 from ensemble.engine.status_rules import StatusTransition, next_status
 from ensemble.models import NormalizedEvent
-from ensemble.store.models import EventRow, PresenceRow, TaskProjectionRow, TaskStatusEventRow
+from ensemble.store.models import (
+    DEFAULT_REPO_FULL_NAME,
+    EventRow,
+    PresenceRow,
+    TaskProjectionRow,
+    TaskStatusEventRow,
+)
 from ensemble.store.rebuild import append_status_events
 from ensemble_shared.harness import HarnessPort
 
@@ -34,11 +40,21 @@ logger = logging.getLogger("ensemble.projector")
 
 
 class Projector:
-    """GitHub eventleri ve .harness verisini okuyarak DB projeksiyonunu günceller."""
+    """GitHub eventleri ve .harness verisini okuyarak DB projeksiyonunu günceller.
 
-    def __init__(self, session: Session, harness: HarnessPort) -> None:
+    `repo_full_name` (T-79, çok-kiracılık): yazdığı 4 projeksiyon tablosu da
+    artık bu kiracıya göre PK'nin parçası (bkz. store/models.py). Varsayılan
+    (`DEFAULT_REPO_FULL_NAME`) yalnız tek-kiracılı/test çağrılarını geriye
+    dönük çalışır tutar — webhook.py HER ZAMAN payload'daki gerçek
+    `repository.full_name`'i açıkça geçer.
+    """
+
+    def __init__(
+        self, session: Session, harness: HarnessPort, repo_full_name: str = DEFAULT_REPO_FULL_NAME
+    ) -> None:
         self.session = session
         self.harness = harness
+        self.repo_full_name = repo_full_name
 
     def project_events(self, events: list[NormalizedEvent]) -> dict[str, int]:
         """Yeni gelen NormalizedEvent listesini audit log'a yazar + presence'ı senkronlar.
@@ -57,14 +73,16 @@ class Projector:
         for event in events:
             # Idempotency: DB'de varsa üzerine yaz (merge) — aynı event'in
             # tekrar işlenmesi satırı çoğaltmaz.
-            row = EventRow.from_domain(event)
+            row = EventRow.from_domain(event, repo_full_name=self.repo_full_name)
             self.session.merge(row)
             event_rows.append(row)
 
-        # Presence (active) tablosunu senkronize et
-        self.session.query(PresenceRow).delete()
+        # Presence (active) tablosunu senkronize et — T-79: yalnız BU
+        # kiracının presence satırları silinir (global .delete() diğer
+        # kiracıların presence'ını da silerdi).
+        self.session.query(PresenceRow).filter_by(repo_full_name=self.repo_full_name).delete()
         actives = self.harness.read_active()
-        presence_rows = [PresenceRow.from_harness(a) for a in actives]
+        presence_rows = [PresenceRow.from_harness(a, repo_full_name=self.repo_full_name) for a in actives]
         self.session.add_all(presence_rows)
 
         self.session.commit()
@@ -118,6 +136,7 @@ class Projector:
             TaskStatusEventRow(
                 source_event_id=t.source_event_id,
                 task_id=t.task_id,
+                repo_full_name=self.repo_full_name,
                 status=t.status,
                 ts=t.ts,
                 reason=t.reason,
@@ -140,7 +159,7 @@ class Projector:
         ordered = sorted(transitions, key=lambda t: (t.ts, t.source_event_id))
 
         for t in ordered:
-            task_row = self.session.get(TaskProjectionRow, t.task_id)
+            task_row = self.session.get(TaskProjectionRow, (t.task_id, self.repo_full_name))
             if task_row is None:
                 logger.warning(
                     "apply_transitions: eşleşmeyen task_id (.harness'te karşılığı yok): %s",

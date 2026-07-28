@@ -29,6 +29,21 @@ def get_user_by_email(session: Session, normalized_email: str) -> UserRow | None
     return session.scalar(select(UserRow).where(UserRow.email == normalized_email))
 
 
+def get_user_by_id(session: Session, user_id: str) -> UserRow | None:
+    """T-79 (çok-kiracılık): `TenantDep` oturumdaki `sub` (users.id) üzerinden
+    aktif repoyu/kurulumları çözerken kullanır."""
+    return session.get(UserRow, user_id)
+
+
+def set_active_repo(session: Session, user: UserRow, repo_full_name: str | None) -> None:
+    """`PUT /auth/repos`'un `active` alanını yazar (T-79). Çağıran ÖNCE
+    `repo_full_name`'in bu kullanıcının `watched_repos` kümesinde olduğunu
+    doğrulamalı — bu fonksiyon doğrulama YAPMAZ, yalnızca yazar (verdict_store.py
+    ile aynı disiplin: DB IO burada, iş kuralı router'da)."""
+    user.active_repo_full_name = repo_full_name
+    session.flush()
+
+
 def create_user(session: Session, *, normalized_email: str, password_hash: str) -> UserRow:
     """Yeni email+parola hesabı ekler (id üretimi burada — uuid4).
 

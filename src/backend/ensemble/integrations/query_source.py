@@ -10,7 +10,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from ensemble.models import QueryCorpus, QueryDocument
-from ensemble.store.models import EventRow
+from ensemble.store.models import DEFAULT_REPO_FULL_NAME, EventRow
 from ensemble_shared.harness import HarnessError, HarnessPort
 
 _ITEM_ID_RE = re.compile(r"^\s*((?:G|IS|NG)-\d+)\s*:", re.IGNORECASE)
@@ -18,7 +18,13 @@ _TASK_ID_RE = re.compile(r"^T-(\d+)$", re.IGNORECASE)
 
 
 class HarnessEventQuerySource:
-    """Kanonik `.harness` ile event projeksiyonunu Ask corpus'una dönüştürür."""
+    """Kanonik `.harness` ile event projeksiyonunu Ask corpus'una dönüştürür.
+
+    `repo_full_name` (T-79, çok-kiracılık): event sorgusu bu kiracıya filtrelenir.
+    `.harness`-türevi belgeler (scope/task) yalnız demo kiracı için anlamlıdır —
+    non-demo kiracılara TenantRegistry `HarnessError` fırlatan dürüst-boş bir
+    port verir (`_scope_documents`/`_task_documents` bunu zaten YAKALAR ve boş
+    liste döner, bu sınıf ayrım YAPMAZ)."""
 
     def __init__(
         self,
@@ -30,6 +36,7 @@ class HarnessEventQuerySource:
         repo_root: Path | str = ".",
         github_owner: str | None = None,
         github_repo: str | None = None,
+        repo_full_name: str = DEFAULT_REPO_FULL_NAME,
     ) -> None:
         if not sprint:
             raise ValueError("sprint must not be empty")
@@ -42,6 +49,7 @@ class HarnessEventQuerySource:
         self.repo_root = Path(repo_root)
         self.github_owner = github_owner
         self.github_repo = github_repo
+        self.repo_full_name = repo_full_name
 
     def load_query_corpus(self) -> QueryCorpus:
         documents = [*self._scope_documents(), *self._task_documents()]
@@ -142,6 +150,7 @@ class HarnessEventQuerySource:
             with self.session_factory() as session:
                 rows = (
                     session.query(EventRow)
+                    .filter_by(repo_full_name=self.repo_full_name)
                     .order_by(EventRow.ts.desc(), EventRow.id.desc())
                     .limit(self.event_limit)
                     .all()
