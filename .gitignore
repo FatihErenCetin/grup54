@@ -53,6 +53,11 @@ packaging/build-macos/
 # Ajanların geçici çalışma kopyaları; .claude/skills/ ve .claude/agents/ TAKİP EDİLMEYE
 # devam eder (yalnızca worktrees/ ignore edilir, üst .claude/ dizini değil).
 .claude/worktrees/
+# Kişisel izin allowlist'i (#257 bulgu 10 / #313) — eskiden yalnızca yazarın
+# KİŞİSEL global git ignore'unda (~/.config/git/ignore) filtreleniyordu; "git
+# status temiz" kabul kriteri makine-bağımsız DEĞİLDİ (temiz klonda/takım
+# arkadaşında görünür kalıyordu). Repo kuralına taşındı.
+.claude/settings.local.json
 # Vercel CLI (`vercel link`) — proje bağlantısı yerel, git'e girmez
 .vercel
 # NOT: `vercel link` buraya `.env*` de eklemişti — KALDIRILDI.
