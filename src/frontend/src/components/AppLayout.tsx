@@ -1,5 +1,6 @@
 import { Link, NavLink, Outlet } from "react-router-dom";
 import { config } from "../lib/config";
+import { useSaglik } from "../lib/useSaglik";
 import { gorunenAd, useAuth, useCikisYap } from "../lib/useAuth";
 import { useRepolar } from "../lib/useRepoSecici";
 import { useSaglayiciAyarlari } from "../lib/useSettings";
@@ -103,6 +104,7 @@ function AuthGostergesi() {
 
 export default function AppLayout() {
   const ayarlarGorunur = useAyarlarGorunurMu();
+  const saglik = useSaglik();
   const nav = ayarlarGorunur ? [...NAV, { to: "/ayarlar", label: "Ayarlar" }] : NAV;
 
   return (
@@ -144,8 +146,17 @@ export default function AppLayout() {
                 Örnek veri
               </span>
             )}
-            <span className="rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">
-              {config.mode}
+            {/* Mod rozeti CANLI `/health`'ten okunur — `config.mode` (Vite
+                BUILD modu) DEĞİL. Masaüstü paketi de üretim derlemesi taşır
+                ama YERELDE çalışır; build modundan türetilen rozet orada
+                "hosted" derdi (bkz. lib/useSaglik.ts). Cevap gelene kadar
+                derleme varsayılanı gösterilir — uydurma yok, yalnız
+                elimizdeki en iyi bilgi. */}
+            <span
+              className="rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground"
+              title={saglik.data?.mode ? "Sunucunun bildirdiği çalışma modu" : "Sunucudan mod bilgisi bekleniyor"}
+            >
+              {saglik.data?.mode ?? config.mode}
             </span>
             {/* health noktası — #20 canlandıracak (GET /health) */}
             <span
