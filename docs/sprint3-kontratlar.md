@@ -105,19 +105,20 @@ GET /board  →  BoardResponse { cards: BoardCard[], last_transition_at: datetim
 
 ### B2 · `GET /events` + `GET /presence` (#52) — artımlı polling cursor 🔒
 
-```
-GET /events?since=<ISO>&before=<ISO|id>&limit=<n>&actor=<handle>&branch=<ad> [If-None-Match: "<etag>"]
-  →  { events: NormalizedEvent[], has_more: bool }              # S2 Ek B5 imzası, AYNEN
-  →  304 (gövdesiz) eğer If-None-Match eşleşirse (cache hit)
-  →  200 (since iptal edilir, full feed döner) eğer ETag uyumsuzsa (geç gelen eski olay durumu)
+> **🆕 Kontrat sapması kayıt altına alındı (#265 madde 3 → D-59, 28 Tem):** aşağıdaki imza S2 Ek B5'in orijinal donuşundan **BİLEREK** sapıyor — `has_more` + `before/limit/actor/branch` sayfalaması **uygulanmadı**, `/presence` **ETag/304 uygulamadı**. Gerekçe + kabul edilen açık: `.harness/decisions/D-59-events-presence-kontrat-sapmasi.md`. Bu blok artık **gerçek davranışı** anlatır (kontrat kodun peşinden sessizce sürüklenmedi — doküman koda uyduruldu, karar kaydıyla).
 
-GET /presence   [If-None-Match: "<etag>"]
-  →  200 { entries: PresenceEntry[], updated_at }  +  ETag: "<hash>"      # S2 Ek B1
-  →  304 (gövdesiz)  eğer If-None-Match eşleşirse                          # artımlı: boşuna byte çekme
 ```
-- **Cursor sözleşmesi (frozen):** `/events` = `since=` (bu andan sonrası, artımlı) + `before=` sayfalama (aynı-saniye tie-break: `id`) + **ETag**. `/events`'te ETag tüm DB snapshot'ından hesaplanır, böylece `since` öncesine düşen geç gelen olaylar (late-arriving) ETag'i bozar ve sunucu `since`'i yoksayıp **tam feed** döner. `/presence` = **ETag** (küçük ve tümü döner; değişmediyse `304`). Polling her tick tüm feed'i çekmez.
+GET /events?since=<ISO> [If-None-Match: "<etag>"]
+  →  200 { events: NormalizedEvent[], latest_ts: datetime }  +  ETag: "<hash>"
+  →  304 (gövdesiz) eğer If-None-Match eşleşirse (cache hit)
+  →  200 (since'ten BAĞIMSIZ, tam feed döner) eğer ETag uyumsuzsa (geç gelen eski olay durumu)
+
+GET /presence
+  →  200 { entries: PresenceEntry[], latest_ts: datetime }        # ETag/304 YOK — her poll tam gövde
+```
+- **Cursor sözleşmesi (uygulanan hâl):** `/events` = `since=` (bu andan sonrası, artımlı, `>=` DAHİL) + **ETag** (tüm DB snapshot'ından — `since` yalnız DÖNEN GÖVDEYİ daraltır, ETag'i değil). `before=`/`limit=`/`actor=`/`branch=` filtreleri ve `has_more` sayfalama **YOK**; bugünkü olay hacminde (~763) tam feed + `since` daraltması yeterli (`/events` madde 2 kod yorumunda ölçüm var). `/presence` küçük ve TTL'li (`get_presence`, #60) olduğu için ETag'siz her poll'de tam gövde döner — sözleşmenin önerdiği "büyürse pahalanır" riski `/presence`'ta henüz gerçekleşmedi.
 - `NormalizedEvent` (S2 §1) + `PresenceEntry` (S2 Ek B1) AYNEN. `type=` filtresi v1'de YOK (client-side, Ek B5 notu).
-- **Sahibi:** backend (Esma) · **Tüketicisi:** Activity feed (#33) + MCP `who_is_touching` (Ek D).
+- **Sahibi:** backend (Esma) · **Tüketicisi:** Activity feed (#33) + MCP `who_is_touching` (Ek D) — ikisi de bugün yalnız `since` kullanıyor, `If-None-Match` GÖNDERMİYOR (bkz. `src/frontend/src/lib/useEvents.ts`, `usePresence.ts`); ETag mekanizması bugün istemcisiz ama sözleşmede kalıyor (gelecekte istemci eklenirse davranışı doğru — #265 madde 2).
 
 ### B3 · `GET /query` (#58, Ask) — RAG + gerekçeli cevap 🔒
 
