@@ -55,9 +55,10 @@ function RepoSeciciGovde() {
         <h1 className="text-base font-semibold">Repo seçici</h1>
         <p className="text-sm">{kurulumlar.data.mesaj}</p>
         <p className="text-xs text-muted-foreground">
-          Bu bir hata değil — bu kurulumda GitHub App entegrasyonu (GITHUB_APP_ID
-          ve ilişkili anahtar) henüz eklenmemiş. Demo reposunu görüntülemeye devam
-          edebilirsin.
+          Bu bir hata değil — bu kurulumda GitHub App entegrasyonu henüz
+          yapılandırılmamış. Kendi repolarını bağlamak için sunucuyu kuran kişinin
+          App kimlik bilgilerini tanımlaması gerekiyor. Demo reposunu görüntülemeye
+          devam edebilirsin.
         </p>
         <p className="text-xs">
           <Link to="/radar" className="underline hover:text-foreground">
