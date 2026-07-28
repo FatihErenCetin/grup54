@@ -217,29 +217,56 @@ export function ActorChip({
       true yalnız çip kendi başına duran bir konumdaysa güvenli (FeedItem'ın
       aktör satırı bilinçle butonun DIŞINA taşındı, bkz. FeedItem.tsx). */
   linkli = false,
+  /** false ise bu handle GERÇEK bir GitHub hesabıyla eşleşmedi (#296) —
+      ingest, commit yazarını `author.login`/webhook `author.username` ile
+      eşleştiremediğinde ham git commit adına düşer (bkz.
+      integrations/github/normalize.py). "Bu kişi sahte" DEMEZ — "bu commit'in
+      e-postası bir GitHub hesabıyla eşleşmedi" der (genelde yanlış/eksik git
+      config, kötü niyet değil). Renk TEK BAŞINA yeterli sinyal değildir
+      (D-34, bkz. #293 AA kontrast dersi) — bu yüzden İKİNCİ bir kanal olarak
+      avatar KESİKLİ çerçeve alır + köşesine "?" rozeti eklenir, `title` de
+      açıkça anlatır. Varsayılan true (undefined dahil) — bu alanı taşımayan
+      eski/başka çağıranlar sessizce "eşleşmedi" görünmesin. */
+  verified = true,
 }: {
   handle: string;
   type?: "human" | "agent";
   linkli?: boolean;
+  verified?: boolean;
 }) {
   // Tasarım dili: insan = daire, AI ajanı = kare (D-34). Kesin tip (Ek B1 ActorRef)
   // artık /presence'ta GELİYOR → varsa sezgiyi değil onu kullan (tahmin ≠ veri).
   const isAgent = type !== undefined ? type === "agent" : aktorTipiSezgisi(handle) === "agent";
   const initials = handle.slice(0, 2).toUpperCase();
+  const eslesmedi = verified === false;
   const icerik = (
     <>
-      <span
-        aria-hidden
-        className={`inline-flex size-5 items-center justify-center bg-muted text-[10px] font-medium ${
-          isAgent ? "rounded-sm" : "rounded-full"
-        }`}
-      >
-        {initials}
+      <span className="relative inline-flex shrink-0">
+        <span
+          aria-hidden
+          className={`inline-flex size-5 items-center justify-center bg-muted text-[10px] font-medium ${
+            isAgent ? "rounded-sm" : "rounded-full"
+          } ${eslesmedi ? "border border-dashed border-border" : ""}`}
+        >
+          {initials}
+        </span>
+        {eslesmedi && (
+          <span
+            aria-hidden
+            data-testid="actor-unverified-badge"
+            className="absolute -bottom-1 -right-1 inline-flex size-3 items-center justify-center rounded-full border border-border bg-card text-[8px] font-bold leading-none text-foreground"
+          >
+            ?
+          </span>
+        )}
       </span>
       <span className="text-xs text-muted-foreground">{handle}</span>
     </>
   );
-  const baslik = isAgent ? `${handle} (AI ajanı)` : handle;
+  const baseBaslik = isAgent ? `${handle} (AI ajanı)` : handle;
+  const baslik = eslesmedi
+    ? `${baseBaslik} — GitHub hesabıyla eşleşmedi (git config yanlış/eksik olabilir)`
+    : baseBaslik;
   if (linkli) {
     // title AYNEN korunur (linksiz varyantla): mevcut testler bu metni arıyor
     // (getByTitle) — link olmak tooltip'in ANLAMINI değiştirmez.

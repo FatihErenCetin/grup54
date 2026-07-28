@@ -134,6 +134,7 @@ export default function GraphPage() {
     const sutunToplam = new Map<string, number>();
     const hucre = new Map<string, Map<string, GraphEdge>>();
     const modulAktorleri = new Map<string, Set<string>>();
+    const aktorDogrulandi = new Map<string, boolean>();
     let enYogun = 0;
     let aktifSayisi = 0;
 
@@ -141,6 +142,10 @@ export default function GraphPage() {
     for (const n of nodes) {
       const hedef = n.type === "actor" ? satirToplam : sutunToplam;
       if (!hedef.has(n.id)) hedef.set(n.id, 0);
+      // #296: yalnız aktör düğümleri anlamlı taşır (modül düğümünde alan var
+      // ama karşılığı yok — backend `actor_verified` varsayılanı `true`
+      // gönderir, burada AYRICA `?? true` ile savunmacı).
+      if (n.type === "actor") aktorDogrulandi.set(n.id, n.actor_verified ?? true);
     }
     for (const e of edges) {
       // Savunma: `nodes`'ta geçmeyen bir kenar ucu SESSİZCE düşmesin — gerçek
@@ -180,6 +185,7 @@ export default function GraphPage() {
       aktifSayisi,
       kenarSayisi: edges.length,
       paylasilan,
+      aktorDogrulandi,
     };
   }, [data]);
 
@@ -264,6 +270,7 @@ export default function GraphPage() {
               .filter((x): x is { aktor: string; kenar: GraphEdge } => x.kenar !== undefined)
               .sort((a, b) => b.kenar.count - a.kenar.count)}
             simdi={simdi}
+            aktorDogrulandi={veri.aktorDogrulandi}
             onClose={() => setSeciliModul(null)}
           />
         )}
@@ -297,6 +304,7 @@ export default function GraphPage() {
             digerAktorler={[...(veri.modulAktorleri.get(secili.module) ?? [])].filter(
               (a) => a !== secili.actor,
             )}
+            aktorDogrulandi={veri.aktorDogrulandi}
             onClose={() => setSecili(null)}
           />
         )}
@@ -380,6 +388,11 @@ type Veri = {
   aktifSayisi: number;
   kenarSayisi: number;
   paylasilan: Set<string>;
+  /** aktör -> GitHub hesabıyla eşleşti mi? (#296) — `GraphNode.actor_verified`'ten
+      (additive+varsayılanlı, bkz. docs/sprint3-kontratlar.md Ek G). Haritada
+      YOKSA (kenarsız/düğümsüz bir aktör asla olmaz ama savunmacı) `true` say —
+      ActorChip'in kendi varsayılanıyla AYNI ilke. */
+  aktorDogrulandi: Map<string, boolean>;
 };
 
 /** Matrisin cevapladığı soruyu tek cümlede söyler — grid'i kullanıcının
@@ -472,7 +485,7 @@ function Matris({
                 className="sticky left-0 z-10 bg-card px-2 text-left font-normal"
               >
                 <div className="flex items-center gap-2 whitespace-nowrap">
-                  <ActorChip handle={aktor} />
+                  <ActorChip handle={aktor} verified={veri.aktorDogrulandi.get(aktor) ?? true} />
                   <span className="text-[10px] tabular-nums text-muted-foreground">
                     {toplam}
                   </span>
@@ -750,7 +763,7 @@ function TreemapGorunumu({
               {!kompakt && aktorler.length > 0 && (
                 <span className="flex max-w-full flex-wrap items-center justify-center gap-1">
                   {aktorler.slice(0, 3).map((a) => (
-                    <ActorChip key={a} handle={a} />
+                    <ActorChip key={a} handle={a} verified={veri.aktorDogrulandi.get(a) ?? true} />
                   ))}
                   {aktorler.length > 3 && (
                     <span className="text-[10px] tabular-nums">
@@ -814,6 +827,7 @@ function KenarPaneli({
   aktorToplam,
   modulToplam,
   digerAktorler,
+  aktorDogrulandi,
   onClose,
 }: {
   kenar: GraphEdge;
@@ -821,6 +835,9 @@ function KenarPaneli({
   aktorToplam: number;
   modulToplam: number;
   digerAktorler: string[];
+  /** #296 — bkz. Veri.aktorDogrulandi (aynı harita, panel `veri`'nin
+      tamamını almadığı için tek alan olarak taşınır). */
+  aktorDogrulandi: Map<string, boolean>;
   onClose: () => void;
 }) {
   const yas = gunYasi(kenar.last_ts, simdi);
@@ -833,7 +850,7 @@ function KenarPaneli({
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 space-y-1.5">
-          <ActorChip handle={kenar.actor} />
+          <ActorChip handle={kenar.actor} verified={aktorDogrulandi.get(kenar.actor) ?? true} />
           <p className="font-mono text-xs">
             <span aria-hidden>↳ </span>
             {kenar.module}
@@ -890,7 +907,7 @@ function KenarPaneli({
             </p>
             <div className="flex flex-wrap gap-2">
               {digerAktorler.map((a) => (
-                <ActorChip key={a} handle={a} />
+                <ActorChip key={a} handle={a} verified={aktorDogrulandi.get(a) ?? true} />
               ))}
             </div>
           </div>
@@ -921,12 +938,15 @@ function ModulPaneli({
   modulToplam,
   aktorler,
   simdi,
+  aktorDogrulandi,
   onClose,
 }: {
   modul: string;
   modulToplam: number;
   aktorler: { aktor: string; kenar: GraphEdge }[];
   simdi: number;
+  /** #296 — bkz. Veri.aktorDogrulandi. */
+  aktorDogrulandi: Map<string, boolean>;
   onClose: () => void;
 }) {
   return (
@@ -963,7 +983,7 @@ function ModulPaneli({
                 key={aktor}
                 className="flex items-center justify-between gap-2 rounded border border-border px-2 py-1.5"
               >
-                <ActorChip handle={aktor} />
+                <ActorChip handle={aktor} verified={aktorDogrulandi.get(aktor) ?? true} />
                 <span className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
                   {kenar.is_active_declared && (
                     <span title="Şu an .harness/active'da beyanlı" aria-hidden>

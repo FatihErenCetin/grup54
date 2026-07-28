@@ -558,7 +558,14 @@ export interface components {
         };
         /**
          * GraphNode
-         * @description GET /graph düğümü (#104) — kontrat: docs/sprint2-kontratlar.md Ek A.
+         * @description GET /graph düğümü (#104) — kontrat: docs/sprint2-kontratlar.md Ek A
+         *     (S2 Ek A, #106 ile donmuş).
+         *
+         *     `actor_verified` (#296, T-296) TEK katkı: additive + varsayılanlı, aynı
+         *     desenle donmuş `NormalizedEvent`e eklenen alan gibi (bkz.
+         *     docs/sprint3-kontratlar.md Ek G). Yalnız `type="actor"` düğümlerinde
+         *     ANLAMLIDIR — `type="module"` düğümlerinde varsayılan değerde kalır
+         *     (kontrol edilmez, UI de bakmaz).
          */
         GraphNode: {
             /** Id */
@@ -570,6 +577,12 @@ export interface components {
             type: "actor" | "module";
             /** Weight */
             weight: number;
+            /**
+             * Actor Verified
+             * @description Yalnız type='actor' için anlamlı. Bu aktörün bu penceredeki olaylarından EN AZ BİRİ GERÇEK bir GitHub hesabıyla eşleşti mi? (bkz. engine/graph.py build_touch_graph - toplama kuralı ve gerekçesi orada.) False yalnızca aktörün TÜM olayları eşleşmediğinde.
+             * @default true
+             */
+            actor_verified: boolean;
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -642,7 +655,18 @@ export interface components {
             /** Ref */
             ref: string;
         };
-        /** NormalizedEvent */
+        /**
+         * NormalizedEvent
+         * @description Ingest çıktısı (S2 §1, GATE 2 #14 ile dondu) — `actor_verified` (#296,
+         *     T-296) TEK katkı: additive + varsayılanlı, donuk modele dokunmaz (bkz.
+         *     docs/sprint3-kontratlar.md Ek G).
+         *
+         *     Varsayılan `True` ("doğrulanmış") BİLİNÇLİ seçim: bu alanı hiç set
+         *     etmeyen eski/başka üretim yolları (fixtures, `fake.py`, henüz
+         *     güncellenmemiş bir adapter) sessizce "şüpheli" görünmesin — yalnızca
+         *     GERÇEKTEN eşleşmediği bilinen yollar (bkz. integrations/github/normalize.py)
+         *     `False` yazar.
+         */
         NormalizedEvent: {
             /** Id */
             id: string;
@@ -664,6 +688,12 @@ export interface components {
             ts: string;
             /** Ref */
             ref: string;
+            /**
+             * Actor Verified
+             * @description actor alanı GERÇEK bir GitHub hesabıyla (commit author.login / webhook author.username) eşleşti mi? False => GitHub eşleştiremedi, ham git commit yazar adına (commit.author.name) düşüldü — bu kötü niyet değil, genelde yanlış/eksik git config anlamına gelir.
+             * @default true
+             */
+            actor_verified: boolean;
         };
         /**
          * PresenceEntry

@@ -31,6 +31,33 @@ def test_event_row_roundtrip():
 
     restored = row.to_domain()
     assert restored == event
+    # actor_verified varsayılanı (True) - hem satırda hem geri dönüşte.
+    assert row.actor_verified is True
+    assert restored.actor_verified is True
+
+
+def test_event_row_roundtrip_actor_verified_false_korunur():
+    """#296 (T-296): `actor_verified=False` (GitHub hesabıyla eşleşmeyen bir
+    aktör) DB'ye yazılıp geri okunduğunda True'ya SESSİZCE dönüşmemeli -
+    MUTASYON KİLİDİ: `from_domain`/`to_domain`'den `actor_verified` satırı
+    SİLİNİRSE (ya da hardcode `True` yazılırsa) bu test kırmızı olur."""
+    event = NormalizedEvent(
+        id="e2",
+        type="commit",
+        actor="Merge Simulation",
+        branch=None,
+        files=[],
+        ts=datetime(2026, 7, 20, 9, 0),
+        ref="d35e739",
+        actor_verified=False,
+    )
+
+    row = EventRow.from_domain(event, repo_full_name=_REPO)
+    assert row.actor_verified is False
+
+    restored = row.to_domain()
+    assert restored.actor_verified is False
+    assert restored == event
 
 
 def test_task_projection_from_harness():

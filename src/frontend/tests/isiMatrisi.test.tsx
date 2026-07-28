@@ -43,6 +43,10 @@ function kenar(actor: string, module: string, count: number, opts: Partial<{ is_
   };
 }
 
+function dugum(id: string, type: "actor" | "module", weight: number, actorVerified = true) {
+  return { id, type, weight, actor_verified: actorVerified };
+}
+
 function ev(id: string, actor: string, files: string[], ts = "2026-07-27T09:00:00", type = "commit") {
   return { id, type, actor, branch: `T-${id}`, files, ts, ref: id };
 }
@@ -212,5 +216,59 @@ describe("IsiMatrisi — derin inceleme linki (#104 /graph, ölü link değil)",
     await user.click(screen.getByRole("button", { name: /Aktör × modül ısı matrisi/ }));
     const link = screen.getByRole("link", { name: "Dokunma grafı" });
     expect(link).toHaveAttribute("href", "/graph");
+  });
+});
+
+describe("IsiMatrisi — GraphNode.actor_verified göstergesi (#296)", () => {
+  async function acVeMatrisiKur() {
+    ayarlaGraph({
+      data: {
+        window_days: 14,
+        nodes: [
+          dugum("esma6", "actor", 2, true),
+          dugum("Merge Simulation", "actor", 1, false),
+          dugum("backend", "module", 3, true),
+        ],
+        edges: [
+          kenar("esma6", "backend", 2),
+          kenar("Merge Simulation", "backend", 1),
+        ],
+      },
+    });
+    const user = userEvent.setup();
+    renderPanel();
+    await user.click(screen.getByRole("button", { name: /Aktör × modül ısı matrisi/ }));
+    return user;
+  }
+
+  it("satır başlığı: yalnız eşleşmeyen aktörde rozet var", async () => {
+    await acVeMatrisiKur();
+    const grup = screen.getByRole("group", { name: /dokunma matrisi/ });
+    const merge = within(grup).getByText("Merge Simulation").closest("div");
+    const esma = within(grup).getByText("esma6").closest("div");
+    expect(merge?.querySelector('[data-testid="actor-unverified-badge"]')).not.toBeNull();
+    expect(esma?.querySelector('[data-testid="actor-unverified-badge"]')).toBeNull();
+  });
+
+  it("olay listesi paneli açılınca (hücre tıklama) eşleşmeyen aktörde rozet görünür", async () => {
+    ayarlaEvents({ data: { events: [ev("e1", "Merge Simulation", ["src/backend/x.py"])] } });
+    const user = await acVeMatrisiKur();
+    await user.click(screen.getByRole("button", { name: /Merge Simulation, backend: 1 dokunuş/ }));
+    const panel = screen.getByLabelText("Merge Simulation → backend olayları").closest("div");
+    expect(panel?.querySelector('[data-testid="actor-unverified-badge"]')).not.toBeNull();
+  });
+
+  it("actor_verified alanı hiç yoksa (eski/mock veri): doğrulanmış sayılır", async () => {
+    ayarlaGraph({
+      data: {
+        window_days: 14,
+        nodes: [],
+        edges: [kenar("esma", "backend", 1)],
+      },
+    });
+    const user = userEvent.setup();
+    renderPanel();
+    await user.click(screen.getByRole("button", { name: /Aktör × modül ısı matrisi/ }));
+    expect(screen.queryByTestId("actor-unverified-badge")).toBeNull();
   });
 });

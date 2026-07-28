@@ -300,6 +300,29 @@ DEMO_CACHE_MAX_ENTRIES: int = 1024
 
 ---
 
+## Ek G (28 Tem) — Aktör doğrulama (#296, T-296): `NormalizedEvent.actor_verified`
+
+> **Yalnız EKLEME** — S2 §1'in donmuş `NormalizedEvent` imzasına dokunulmadı (aynı "Ek D"/"Ek F" desenindeki additive genişletme). Teşhis: ingest, commit yazarını GitHub hesabıyla (`author.login` / webhook `author.username`) eşleştiremediğinde ham git commit adına DÜŞER (`commit.author.name`); bu düşüş bugüne kadar arayüzde görünmezdi ("Merge Simulation" vakası — dogfood bulgusu, #296).
+
+```python
+class NormalizedEvent(BaseModel):
+    ...                          # S2 §1 AYNEN — hiçbir alan değişmedi/silinmedi
+    actor_verified: bool = True  # 🆕 YALNIZ EKLEME, varsayılan True ("doğrulanmış")
+
+class GraphNode(BaseModel):      # S2 Ek A (#106 ile donmuş)
+    ...                          # id/type/weight AYNEN — hiçbir alan değişmedi/silinmedi
+    actor_verified: bool = True  # 🆕 YALNIZ EKLEME (28 Tem, PO talebi) — yalnız type="actor" anlamlı
+```
+
+- **Üretici:** `integrations/github/normalize.py::commit_to_event` (REST) + `webhook_push_to_events` (webhook `push`). Tercih sırası KİLİTLİ: `login`/`username` VARSA ham ad ASLA kullanılmaz; düşüldüğünde `logger.warning` ile (hangi commit/sha, hangi ham ad) GÖRÜNÜR kılınır.
+- **Projeksiyon:** `store/models.py::EventRow.actor_verified` (`server_default=true`) — migration `3a2ba7afdced`. Mevcut satırlar (PO kararı: olası eşleşmeyen eski satırlar dahil, #296 "kısa vadeli temizlik" notu) güvenli varsayılana düşer, geçmiş yeniden yorumlanmaz.
+- **Tüketici 1 — Activity sayfası** (`GET /events` → `NormalizedEvent[]`, Ek B5 AYNEN): aktör grubunun ÇİPİ `ActorChip`'in `verified` prop'unu doğrudan `NormalizedEvent.actor_verified`'ten alır (bir grupta HERHANGİ BİR olay eşleşmediyse grup işaretlenir).
+- **Tüketici 2 — `GET /graph`** (`TouchGraph` → `GraphNode`, S2 Ek A): PO bu hatayı İLK burada gördü ("Merge Simulation" grafta 5. takım üyesi gibi göründü, issue buradan çıktı) — o yüzden işaretleme yalnız Activity'de bırakılmadı. `engine/graph.py::build_touch_graph` her aktör düğümü için pencheredeki TÜM olaylarını tarar; **toplama kuralı BİLEREK "en az bir olay doğrulandıysa aktör doğrulanmış sayılır"** (OR) — tersi (tek eşleşmeyen olay komple işaretlesin, AND) DEĞİL, çünkü aynı kişi bazı commit'lerini doğru `git config` ile bazılarını yanlışla atmış olabilir; login/username eşleşen TEK bir olay bile o kişinin gerçek bir GitHub kullanıcısı olduğunun güçlü kanıtıdır, komple "eşleşmedi" göstermek yanlış alarm üretir. Yalnız aktörün TÜM olayları eşleşmediyse ("Merge Simulation" vakası — ham ad hiçbir zaman login/username OLAMAZ) düğüm işaretlenir. Gerekçe kod yorumunda da var (`engine/graph.py` ilgili satır). `GraphPage.tsx` (Isı matrisi + Treemap, her ikisi de aynı `TouchGraph`'tan türer) ve `IsiMatrisi.tsx` (Radar'a gömülü panel, AYNI grafiği çizer) hepsi `nodes`'tan bir `aktör -> doğrulandı mı` haritası kurup `ActorChip`'e geçirir.
+- **KAPSAM DIŞI (bilinçli, "neden" kaydı):** `Detection.actors` (Radar, `GET /radar`) ve `BoardCard.assignee` (Board, `GET /board`) BU EKİN KAPSAMINDA DEĞİL. `BoardCard.assignee` `.harness/tasks/*.md`'den gelen insan-editable bir alan — bir GitHub commit/PR/issue event'i DEĞİL, dolayısıyla `actor_verified` sinyali kavramsal olarak orada YOK (kim atandığını insan yazar, ingest türetmez). `Detection.actors` ise judge'ın çakışma bulduğu çift — event'lerin kendisi zaten `GET /events`/`GET /graph` üzerinden işaretli, aynı bilgiyi üçüncü bir yüzeyde tekrar taşımak (ve üç yerin birbirinden kayması riski) bu görevin kapsamına alınmadı. İkisine de taşımak AYRI bir kontrat genişletmesi ister (yeni issue) — "graf işaretliyor, board/radar neden işaretlemiyor" sorusunun cevabı burada kayıtlı.
+- **`ActorChip` (`components/ui.tsx`):** yeni opsiyonel `verified?: boolean` prop'u (varsayılan `true`). `false` iken renk TEK BAŞINA değil (D-34) — avatar kesikli çerçeve + köşe rozeti (ikinci kanal) + `title`'da açık metin ("... eşleşmedi") eklenir. "Sahte kişi" DENMEZ.
+
+---
+
 ## Pratik: S3 paralel çalışma reçetesi
 
 - **Sprint başı (bugün):** bu dosya (Ek A–E) donar → herkes kendi diliminde mock/fixture ile başlar.

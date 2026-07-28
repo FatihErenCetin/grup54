@@ -68,6 +68,18 @@ function saat(iso: string): string {
   return d.toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" });
 }
 
+/** Bir aktör grubunun ÇİPİ doğrulanmış mı? (#296) — gruptaki HERHANGİ BİR
+ * olay `actor_verified: false` taşıyorsa grup "eşleşmedi" sayılır (aynı
+ * `actor` string'i normal şartlarda ya HEP login/username'den ya HEP ham
+ * git adından gelir — ama tek bir kötü örnek bile varsa gizlenmemeli).
+ * `actor_verified` alanı yoksa (eski/mock veri, additive+varsayılanlı model,
+ * bkz. ensemble.models.NormalizedEvent) `undefined !== false` → doğrulanmış
+ * sayılır, ActorChip'in kendi varsayılanıyla AYNI ilke.
+ */
+function grupDogrulanmisMi(olaylar: NormalizedEvent[]): boolean {
+  return !olaylar.some((e) => e.actor_verified === false);
+}
+
 /** Olayları güne, gün içinde aktöre göre grupla — "kendiliğinden daily" şekli. */
 function grupla(events: NormalizedEvent[]) {
   const gunler = new Map<string, Map<string, NormalizedEvent[]>>();
@@ -171,8 +183,10 @@ export default function ActivityPage() {
                 >
                   <div className="flex items-center justify-between gap-2 border-b border-border px-4 py-2">
                     {/* linkli: aktör hub'ına git (#129) — bu çip bir button/li
-                        İÇİNDE değil, satır kendi başına tıklanabilir değil. */}
-                    <ActorChip handle={aktor} linkli />
+                        İÇİNDE değil, satır kendi başına tıklanabilir değil.
+                        verified (#296): bu gruptaki herhangi bir olay GitHub
+                        hesabıyla eşleşmediyse çip bunu görünür kılar. */}
+                    <ActorChip handle={aktor} linkli verified={grupDogrulanmisMi(olaylar)} />
                     <span className="text-[11px] tabular-nums text-muted-foreground">
                       {olaylar.length} olay
                     </span>

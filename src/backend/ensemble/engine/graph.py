@@ -47,6 +47,22 @@ def build_touch_graph(
     edge_last_ts: dict[tuple[str, str], datetime] = {}
     actor_weight: dict[str, int] = defaultdict(int)
     module_weight: dict[str, int] = defaultdict(int)
+    # #296 (T-296, PO talebi): aktör düğümüne doğrulama sinyali. Toplama
+    # kuralı BİLEREK "en az bir olay doğrulandıysa aktör doğrulanmış sayılır"
+    # (OR, "hiçbiri değilse eşleşmedi" — AND'in tersi değil, çünkü tek bir
+    # eşleşmeyen olayı komple işaretlemek yanlış alarm üretir): aynı kişi bazı
+    # commit'lerini doğru `git config` ile, bazılarını yanlışla atmış olabilir
+    # (login/username eşleşen bir olay GÜÇLÜ bir kimlik kanıtıdır — o kişi
+    # gerçek bir GitHub kullanıcısıdır, öyle gösterilmeli). Yalnız aktörün
+    # TÜM olayları eşleşmediyse ("Merge Simulation" vakası - login/username
+    # asla eşleşmez, çünkü ham ad login/username OLAMAZ) düğüm "eşleşmedi"
+    # işaretlenir. Ters kural (tek eşleşmeyen olay -> komple işaretle) MUTASYON
+    # olarak denendi: tests/unit/test_graph.py'de karışık-durum testi kırmızı
+    # oldu (bkz. PR gövdesi tablosu).
+    # Düz dict (defaultdict DEĞİL, BİLİNÇLİ): yalnız `.get`/`.setdefault` ile
+    # dokunulur - auto-vivify semantiği burada kullanılmıyor, defaultdict
+    # yazsaydık okuyucuyu yanıltırdı.
+    actor_any_verified: dict[str, bool] = {}
 
     for event in events:
         modules = {_module_of(f) for f in event.files if f}
@@ -57,9 +73,22 @@ def build_touch_graph(
                 edge_last_ts[key] = event.ts
             actor_weight[event.actor] += 1
             module_weight[module] += 1
+        # Modülsüz (dosyasız) bir olay da kimlik sinyali taşır - modül
+        # döngüsünden BAĞIMSIZ, aktör bu turda hiç düğüm kazanmasa bile
+        # ileride aynı aktör için başka bir olay düğüm üretirse doğru
+        # sinyali bulsun.
+        if event.actor_verified:
+            actor_any_verified[event.actor] = True
+        else:
+            actor_any_verified.setdefault(event.actor, False)
 
     nodes = [
-        GraphNode(id=actor, type="actor", weight=weight)
+        GraphNode(
+            id=actor,
+            type="actor",
+            weight=weight,
+            actor_verified=actor_any_verified.get(actor, True),
+        )
         for actor, weight in sorted(actor_weight.items())
     ] + [
         GraphNode(id=module, type="module", weight=weight)

@@ -18,6 +18,25 @@ def test_normalized_event_valid():
     )
     assert event.type == "commit"
     assert "src/main.py" in event.files
+    # additive+varsayılanlı alan (#296, T-296) - alanı hiç vermeyen ÇOK sayıda
+    # mevcut çağıran (fixtures, fake adapter, eski testler) sessizce
+    # "eşleşmedi" görünmesin. MUTASYON KİLİDİ: varsayılan `False` olursa
+    # bu satır kırmızı olur.
+    assert event.actor_verified is True
+
+
+def test_normalized_event_actor_verified_acikca_false_verilebilir():
+    event = NormalizedEvent(
+        id="123",
+        type="commit",
+        actor="Merge Simulation",
+        branch=None,
+        files=[],
+        ts=datetime.now(),
+        ref="abc1234",
+        actor_verified=False,
+    )
+    assert event.actor_verified is False
 
 
 def test_normalized_event_invalid_type():
