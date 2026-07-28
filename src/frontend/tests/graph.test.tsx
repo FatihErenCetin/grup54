@@ -223,6 +223,76 @@ describe("GraphPage — görünüm modu seçici (#130)", () => {
   });
 });
 
+describe("GraphPage — başlık + legend yazımı (#316/A5, H1)", () => {
+  it("başlık Title Case: 'Dokunma Grafı', 'Dokunma grafı' DEĞİL", () => {
+    // MUTASYON KİLİDİ: h1'i eski "Dokunma grafı"ya geri çevir -> bu test kırılır.
+    render(<GraphPage />);
+    expect(screen.getByRole("heading", { name: "Dokunma Grafı" })).toBeInTheDocument();
+  });
+
+  it("ısı matrisi legend'i 'soluk' yazar, yazım hatası 'solar' YOK", () => {
+    // MUTASYON KİLİDİ: "(soluk)"i "(solar)"a geri çevir -> ikinci expect kırılır.
+    render(<GraphPage />);
+    expect(screen.getByText(/7\+ gün önce \(soluk\)/)).toBeInTheDocument();
+    expect(screen.queryByText(/solar/)).not.toBeInTheDocument();
+  });
+
+  it("treemap legend'i de 'soluk' yazar, 'solar' YOK", async () => {
+    const user = userEvent.setup();
+    render(<GraphPage />);
+    await user.click(screen.getByRole("tab", { name: "Treemap" }));
+    expect(screen.getByText(/7\+ gün önce \(soluk\)/)).toBeInTheDocument();
+    expect(screen.queryByText(/solar/)).not.toBeInTheDocument();
+  });
+});
+
+describe("GraphPage — ısı matrisi yatay kaydırma (#316/H3)", () => {
+  it("26 modülde konteyner overflow-x-auto taşır, aktör sütunu sticky kalır", () => {
+    // Canlıda doğrulanan bulgu (2026-07-28): 26 modülde matris sağdan
+    // taşıyor/kırpılıyordu. MUTASYON KİLİDİ: Matris'in `overflow-x-auto`
+    // sınıfını sil -> ilk expect kırılır; sticky satır başlığının
+    // `sticky left-0` sınıfını sil -> ikinci expect kırılır.
+    const cokModulluVeri: TouchGraph = {
+      window_days: 14,
+      nodes: [
+        { id: "fatih", type: "actor", weight: 26, actor_verified: true },
+        ...Array.from({ length: 26 }, (_, i) => ({
+          id: `modul-${i}`,
+          type: "module" as const,
+          weight: 1,
+          actor_verified: true,
+        })),
+      ],
+      edges: Array.from({ length: 26 }, (_, i) => ({
+        actor: "fatih",
+        module: `modul-${i}`,
+        count: i + 1,
+        last_ts: "2026-07-20T09:00:00Z",
+        is_active_declared: false,
+      })),
+    };
+    mockUseGraph.mockReturnValue({ ...dolu, data: cokModulluVeri });
+    render(<GraphPage />);
+
+    const table = screen.getByRole("table");
+    const kap = table.parentElement as HTMLElement;
+    expect(kap.className).toMatch(/overflow-x-auto/);
+
+    // Sütun başlığındaki "Aktör \ Modül" hücresi + her satırın aktör hücresi
+    // sticky olmalı (yatay kayarken sabit kalan sütun).
+    const koseBasligi = screen.getByText("Aktör \\ Modül");
+    expect(koseBasligi.className).toMatch(/sticky/);
+    const aktorHucresi = screen.getByText("fatih").closest("th");
+    expect(aktorHucresi?.className).toMatch(/sticky/);
+
+    // 26 sütun da gerçekten render oldu (kırpılıp kaybolmadı, DOM'da var —
+    // görünürlüğü sağlayan `overflow-x-auto`, kırpma değil).
+    for (let i = 0; i < 26; i++) {
+      expect(screen.getByTitle(new RegExp(`^fatih → modul-${i}:`))).toBeInTheDocument();
+    }
+  });
+});
+
 describe("GraphPage — treemap modül detay paneli", () => {
   async function treemapeGec() {
     const user = userEvent.setup();
