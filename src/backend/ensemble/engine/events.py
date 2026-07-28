@@ -4,6 +4,7 @@
 Bayat (stale) varlık beyanlarını okuma anında (read-time) filtreler (#60).
 """
 
+import hashlib
 from datetime import datetime, timezone
 from collections.abc import Callable
 from sqlalchemy.orm import Session
@@ -144,8 +145,16 @@ class EventService:
             # Zaten aware, olduğu gibi kullan
             lower_bound = since
         
-        import hashlib
-        # fallback to github if no DB
+        # #265 madde 1 — tek-tüketimlik port: `session_factory` verilmemiş
+        # (DB'siz) kurulumlarda GEÇMİŞTEN kalan tek yol. app.py + tenancy.py
+        # HER zaman bir session_factory geçtiği için üretimde bu dal HİÇ
+        # çalışmaz — HTTP okuma yolu her koşulda DB projeksiyonundan (aşağıdaki
+        # `else`) beslenir. `GitHubAdapter._seen_ids` (bkz. integrations/
+        # github/adapter.py) "aynı process'te bir kez" filtreler; bu, İNGEST
+        # için doğru ama HTTP okuma için yanlıştır (ikinci istemci boş feed
+        # görür) — bu yüzden bu dal yalnızca geriye-dönük-uyum/test amaçlı
+        # kalıyor, gerçek `/events` yanıtı buradan üretilmiyor
+        # (bkz. tests/unit/test_events_db_okuma.py, HTTP-seviyesi kanıt).
         if self.session_factory is None:
             events = self.github_port.fetch_events(lower_bound)
             ordered = sorted(events, key=lambda e: (_to_naive_utc(e.ts), e.id))
@@ -154,9 +163,33 @@ class EventService:
             etag = f'"{hashlib.sha1(payload.encode("utf-8")).hexdigest()}"'
         else:
             with self.session_factory() as session:
-                # T-79: her sorgu bu kiracıya (repo_full_name) filtrelenir —
-                # filtresiz sorgu diğer kiracıların event'lerini de sızdırırdı.
-                # Semih blocker fix: ETag tum DB snapshot'indan hesaplanmali
+                # #265 madde 2 — ETag NEDEN "tüm DB'deki id kümesi"nden
+                # hesaplanıyor (latest_ts + sınır-id'lerinden DEĞİL):
+                #
+                # Eski hesap `latest_ts + o sınırdaki id kümesi` idi. Bir event'in
+                # `ts`'i `commit.author.date` — geliştiricinin makinesinde
+                # damgalanır (integrations/github/normalize.py:34) — push anı
+                # DEĞİL. Bu yüzden 09:00'da yazılıp 09:30'da push'lanan bir commit,
+                # aradaki 09:10 damgalı bir olaydan SONRA gelirse `latest_ts`'in
+                # GERİSİNE düşer: `latest_ts` ve sınır-id kümesi değişmez → ETag
+                # aynı kalır → istemci 304 alır → geç gelen olay HİÇ görünmez
+                # (bkz. tests/unit/test_events_db_okuma.py::
+                # test_etag_tum_db_uzerinden_hesaplanir — mutasyon: bu hesaba
+                # geri dönünce kırmızı olur).
+                #
+                # Tüm id kümesinin hash'i bu sınıfa duyarlı DEĞİL: geç gelen
+                # olay `latest_ts`'in neresine düşerse düşsün id kümesine YENİ
+                # bir üye ekler → hash her koşulda değişir.
+                #
+                # Maliyet ölçümü (2026-07-28, uv run python -m timeit ile,
+                # üretimdeki ~763 olaya yakın 763 sentetik id ile): sort+join+
+                # sha1 ~14.5 µs/çağrı — DB round-trip'inin yanında ölçülemeyecek
+                # kadar ucuz (`/board` zaten aynı "tüm projeksiyonu oku" deseni,
+                # bkz. BoardService). `since` yalnız DÖNEN GÖVDEYİ daraltır
+                # (#273 perf), ETag'i DEĞİL — ikisi kasıtlı olarak ayrık.
+                #
+                # T-79: her iki sorgu da bu kiracıya (repo_full_name) filtrelenir
+                # — filtresiz sorgu diğer kiracıların event'lerini sızdırırdı.
                 all_ids = session.scalars(
                     select(EventRow.id)
                     .where(EventRow.repo_full_name == self.repo_full_name)

@@ -1,9 +1,13 @@
 """#265: /events tek-tüketimlik porta bağlı DEĞİL — her istemci dolu feed görür."""
 from datetime import datetime, timedelta, timezone
 
+from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
+from ensemble.api.deps import get_tenant_event_service
+from ensemble.app import create_app
+from ensemble.config import Settings
 from ensemble.engine.events import EventService
 from ensemble.models import NormalizedEvent
 from ensemble.store.models import DEFAULT_REPO_FULL_NAME, Base, EventRow
@@ -110,3 +114,56 @@ def test_etag_tum_db_uzerinden_hesaplanir():
     
     # ETag degismis OLMALI! (Cunku DB state degisti)
     assert etag1 != etag2
+
+
+def test_http_ardisik_iki_istemci_de_dolu_feed_gorur(tmp_path):
+    """Kabul kriteri 2 — HTTP SEVİYESİNDE ölçüm: "tahmin etme, ölç".
+
+    Servis metodunu doğrudan çağırmak yerine gerçek `/events` router'ını,
+    gerçek `create_app()` + dosya tabanlı SQLite DB üzerinden, aynı sunucuya
+    ART ARDA gelen İKİ istemcinin (tarayıcı A, tarayıcı B) HER İKİSİNİN de
+    dolu feed aldığını kanıtlar. `_TekTuketimlikGitHub` yine de olay
+    listesine takılı (`session_factory` olmadığı senaryoyu ayırt etmek için)
+    — DB yolu kullanılıyorsa port'un `calls` sayacı hiç artmamalı.
+
+    MUTASYON KİLİDİ: `EventService.get_events`'teki `if self.session_factory
+    is None` dalını kaldırıp HER ZAMAN `github_port.fetch_events` çağrılacak
+    şekilde değiştirirsen ikinci istemci boş `events=[]` görür, bu test kırılır.
+    """
+    db_path = tmp_path / "test_events_http.db"
+    settings = Settings(DATABASE_URL=f"sqlite:///{db_path}")
+    app = create_app(settings)
+
+    with TestClient(app) as client:
+        engine = app.state.session_factory.kw["bind"]
+        Base.metadata.create_all(engine)
+
+        olaylar = [_ev(3, "esma"), _ev(2, "fatih"), _ev(1, "enes")]
+        with app.state.session_factory() as session:
+            for e in olaylar:
+                session.add(
+                    EventRow(
+                        id=e.id, repo_full_name=_REPO, type=e.type, actor=e.actor,
+                        branch=e.branch, files=e.files, ts=e.ts.replace(tzinfo=None), ref=e.ref,
+                    )
+                )
+            session.commit()
+
+        gh = _TekTuketimlikGitHub(olaylar)
+        app.dependency_overrides[get_tenant_event_service] = lambda: EventService(
+            harness_port=FileHarnessPort(),
+            github_port=gh,
+            session_factory=app.state.session_factory,
+            repo_full_name=_REPO,
+        )
+
+        # Tarayıcı A — ilk GET /events
+        tarayici_a = client.get("/events")
+        # Tarayıcı B — AYNI sunucuya, hemen ardından ikinci (ayrı) GET /events
+        tarayici_b = client.get("/events")
+
+        assert tarayici_a.status_code == 200
+        assert tarayici_b.status_code == 200
+        assert len(tarayici_a.json()["events"]) == 3
+        assert len(tarayici_b.json()["events"]) == 3  # boş DEĞİL — #265 madde 1
+        assert gh.calls == 0  # DB varken GitHub portuna HİÇ gidilmedi
