@@ -22,7 +22,7 @@ Gerekçe: `T-<id>` branch + `Closes #<id>` PR ile entegre, kartları PR/issue
 durumundan otomatik oynatır (dogfood).
 ```
 
-## Bu klasörde iki kayıt var — toplu migrasyon HÂLÂ yapılmadı
+## Bu klasörde birkaç kayıt var — toplu migrasyon HÂLÂ yapılmadı
 
 `D-56` (27 Temmuz 2026) buraya, **toplu migrasyondan bağımsız** olarak yazıldı:
 amacı Sprint 3 teslim edilirken jüriye görünür hesap verilebilirlik sağlamak ve
@@ -59,3 +59,4 @@ migrasyon notunu bırakıyor.
 |---|---|---|
 | [D-56](D-56-review-beklemeden-merge.md) | 2026-07-27 | Sprint 3 son gününde review beklemeden merge — gerekçe, kapsam, bedel |
 | [D-57](D-57-email-parola-uyeligi.md) | 2026-07-28 | Email + parola üyeliği S3'e alındı — D-23/D-28'in kapsamı değişti |
+| [D-58](D-58-cok-kiracili-repo-secimi.md) | 2026-07-28 | Çok-kiracılı repo seçimi — TenantRegistry + kiracıya göre PK genişletmesi, GitHub OAuth artık users'a yazıyor |
