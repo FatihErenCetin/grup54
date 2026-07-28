@@ -23,6 +23,8 @@ from pathlib import Path
 
 import pytest
 
+from ensemble_shared.harness import FileHarnessPort
+
 _KOK = Path(__file__).resolve().parents[2]
 _SCOPE_DIZIN = _KOK / ".harness" / "scope"
 
@@ -132,4 +134,29 @@ def test_frozen_scope_status_gecerli(yol: Path):
     assert durum == "frozen", (
         f"status='{durum}' — `frozen` değilse GET /scope/current 503 döner "
         "ve scope-drift kontrolü sessizce kapanır"
+    )
+
+
+def test_sprint_3_madde_sayilari_sabit():
+    """#317 — tipografik düzeltme (ASCII → Türkçe karakter) `goals`/`non_goals`
+    madde SAYISINI kırmamalı: hiçbir madde eklenmedi/silinmedi/birleştirilmedi.
+
+    `ScopePage` bu iki diziyi `GET /scope/current` üzerinden birebir "Kapsam
+    içi"/"Kapsam dışı" listesi olarak basıyor (`engine/scope.py::get_current_scope`
+    → `in_scope`/`non_goals`). Sayı burada **önce sayılıyor** (6/6 iddiasına
+    güvenilmiyor) — üretim okuyucusu `FileHarnessPort.read_scope` ile, testin
+    kendi regex'iyle değil.
+
+    MUTASYON KİLİDİ (denendi → kırmızı görüldü → geri alındı): `goals`
+    dizisinden son madde ("Hosted demo sertleştirme: tek-repo pin + IP/rate
+    cap + cached verdict (Ek F, #63)") geçici olarak silindi; test
+    `6 == 6 assertion`ında `5 == 6` ile FAIL etti. Madde geri eklenince yeşile
+    döndü.
+    """
+    scope = FileHarnessPort(_KOK).read_scope("3")
+    goals = scope.get("goals") or []
+    non_goals = scope.get("non_goals") or []
+    assert len(goals) == 6, f"kapsam içi (goals) madde sayısı değişti: {len(goals)} (beklenen 6)"
+    assert len(non_goals) == 6, (
+        f"kapsam dışı (non_goals) madde sayısı değişti: {len(non_goals)} (beklenen 6)"
     )
