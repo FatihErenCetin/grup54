@@ -9,14 +9,44 @@ rebuild_projection() ile yeniden kurulabilir (rebuildable cache).
 PO kararı (D-57) `internal/grup54_dizin_yapisi.md` §5'teki eski "users/
 accounts/profiles tablosu YOK" iddiasını bu tabloya özel olarak geçersiz
 kıldı — bkz. `.harness/decisions/D-57-email-parola-uyeligi.md`.
+
+Çok-kiracılık (#79 kalan dilim, T-79): `IdentityRow`/`InstallationRow`/
+`WatchedRepoRow` de kanonik veridir (`.harness/`'ten türetilemez — bir GitHub
+App kurulumunun kim tarafından/hangi repo için yapıldığı yalnızca GitHub'ın
+kendisinde ve burada yaşar). Beş projeksiyon tablosu (`EventRow`,
+`TaskProjectionRow`, `PresenceRow`, `TaskStatusEventRow`) artık `repo_full_name`
+taşır ve BİLEREK bunu birincil anahtarın PARÇASI yapar — `id`/`task_id`/
+`handle`/`(source_event_id, task_id)` tek başına GLOBAL benzersiz DEĞİLDİR
+(örn. PR numarası her repoda 1'den başlar; `T-51` her repoda ayrı bir görev
+olabilir). Yalnızca `repo_full_name` eklemek ama PK'yi GENİŞLETMEMEK iki farklı
+kiracının aynı `id`'yi paylaştığı an sessiz bir üzerine-yazmaya (isolation
+ihlali) yol açardı — bkz. `.harness/decisions/D-58-cok-kiracili-repo-secimi.md`.
 """
 
 from datetime import datetime
 
-from sqlalchemy import JSON, Boolean, CheckConstraint, DateTime, String, Text
+from sqlalchemy import (
+    JSON,
+    Boolean,
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 from ensemble.models import BoardCard, NormalizedEvent
+
+# Tek-kiracılı/çok-kiracılık-DIŞI çağıranların (mevcut testlerin çoğu, tek
+# repo varsayan yardımcı script'ler) `repo_full_name` hiç geçmediğinde
+# düştüğü SABİT kiracı — "filtre yok" (fail-open) DEĞİL, "filtre HER ZAMAN
+# var, verilmezse bu sabit değere düşer" (bkz. store/rebuild.py,
+# engine/projector.py, engine/board.py, engine/events.py, engine/graph.py).
+# Üretim DI'sı (ensemble/tenancy.py) HİÇBİR ZAMAN bu varsayılana güvenmez,
+# her zaman gerçek `repo_full_name`'i açıkça geçer.
+DEFAULT_REPO_FULL_NAME = "default/repo"
 
 
 class Base(DeclarativeBase):
@@ -24,11 +54,20 @@ class Base(DeclarativeBase):
 
 
 class EventRow(Base):
-    """NormalizedEvent'in DB projeksiyonu — ingest çıktısı (#16)."""
+    """NormalizedEvent'in DB projeksiyonu — ingest çıktısı (#16).
+
+    PK `(id, repo_full_name)` (T-79) — `id` TEK BAŞINA global benzersiz
+    DEĞİLDİR: `pr:{number}:{updated_at}`/`issue:{number}:{updated_at}` gibi
+    kimlikler PR/issue NUMARASINDAN türer ve numaralar her repoda 1'den
+    başlar (bkz. integrations/github/normalize.py). `repo_full_name`'i PK'ye
+    KATMAMAK, iki farklı kiracının PR #1'inin aynı satırı paylaşmasına
+    (sessiz üzerine-yazma) yol açardı.
+    """
 
     __tablename__ = "events"
 
     id: Mapped[str] = mapped_column(String(255), primary_key=True)
+    repo_full_name: Mapped[str] = mapped_column(String(255), primary_key=True, index=True)
     type: Mapped[str] = mapped_column(String(20))
     actor: Mapped[str] = mapped_column(String(255), index=True)
     branch: Mapped[str | None] = mapped_column(String(255))
@@ -37,7 +76,12 @@ class EventRow(Base):
     ref: Mapped[str] = mapped_column(String(255))
 
     def to_domain(self) -> NormalizedEvent:
-        """DB satırından Pydantic modeline dönüştür."""
+        """DB satırından Pydantic modeline dönüştür.
+
+        `repo_full_name` BİLEREK taşınmaz — `NormalizedEvent` (domain/engine
+        sözleşmesi, docs/sprint2-kontratlar.md) kiracıdan HABERSİZDİR; tenant
+        scoping yalnızca bu DB-satırı katmanında yaşar (engine sıfır dokunuş).
+        """
         return NormalizedEvent(
             id=self.id,
             type=self.type,
@@ -49,10 +93,12 @@ class EventRow(Base):
         )
 
     @classmethod
-    def from_domain(cls, event: NormalizedEvent) -> "EventRow":
-        """Pydantic modelinden DB satırına dönüştür."""
+    def from_domain(cls, event: NormalizedEvent, *, repo_full_name: str) -> "EventRow":
+        """Pydantic modelinden DB satırına dönüştür — `repo_full_name` çağıranın
+        (Projector/rebuild) sorumluluğudur, `NormalizedEvent`'te YOKTUR."""
         return cls(
             id=event.id,
+            repo_full_name=repo_full_name,
             type=event.type,
             actor=event.actor,
             branch=event.branch,
@@ -76,6 +122,9 @@ class TaskProjectionRow(Base):
     __tablename__ = "task_projection"
 
     task_id: Mapped[str] = mapped_column(String(50), primary_key=True)
+    # PK'nin parçası (T-79) — `T-51` gibi bir task_id her repoda ayrı bir
+    # göreve karşılık gelebilir (issue numaraları repo başına sıfırlanır).
+    repo_full_name: Mapped[str] = mapped_column(String(255), primary_key=True, index=True)
     title: Mapped[str] = mapped_column(Text)
     status: Mapped[str] = mapped_column(String(20), index=True, default="backlog")
     seed_status: Mapped[str] = mapped_column(String(20), default="backlog")
@@ -86,7 +135,8 @@ class TaskProjectionRow(Base):
     last_event_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
     def to_board_card(self) -> BoardCard:
-        """DB satırından BoardCard Pydantic modeline dönüştür."""
+        """DB satırından BoardCard Pydantic modeline dönüştür (kiracıdan
+        habersiz — `BoardCard` #33 B1 kontratı, `repo_full_name` taşımaz)."""
         return BoardCard(
             task_id=self.task_id,
             title=self.title,
@@ -96,7 +146,7 @@ class TaskProjectionRow(Base):
         )
 
     @classmethod
-    def from_harness(cls, data: dict) -> "TaskProjectionRow":
+    def from_harness(cls, data: dict, *, repo_full_name: str) -> "TaskProjectionRow":
         """Harness task dict'inden DB satırına dönüştür (tohum satırı).
 
         data: HarnessPort.read_tasks() çıktısındaki tek bir task dict'i.
@@ -109,6 +159,7 @@ class TaskProjectionRow(Base):
         seed = data.get("status", "backlog")
         return cls(
             task_id=data.get("task_id") or data.get("id", ""),
+            repo_full_name=repo_full_name,
             title=data.get("title", ""),
             status=seed,
             seed_status=seed,
@@ -123,6 +174,9 @@ class PresenceRow(Base):
     __tablename__ = "presence"
 
     handle: Mapped[str] = mapped_column(String(255), primary_key=True)
+    # PK'nin parçası (T-79) — aynı kişi (handle) birden çok kiracıda eş
+    # zamanlı aktif olabilir; her kiracının kendi presence satırı olmalı.
+    repo_full_name: Mapped[str] = mapped_column(String(255), primary_key=True, index=True)
     task: Mapped[str | None] = mapped_column(String(50))
     module: Mapped[str | None] = mapped_column(String(255))
     intent: Mapped[str | None] = mapped_column(Text)
@@ -130,7 +184,7 @@ class PresenceRow(Base):
     since: Mapped[datetime | None] = mapped_column(DateTime)
 
     @classmethod
-    def from_harness(cls, data: dict) -> "PresenceRow":
+    def from_harness(cls, data: dict, *, repo_full_name: str) -> "PresenceRow":
         """Harness active dict'inden DB satırına dönüştür.
 
         data: HarnessPort.read_active() çıktısındaki tek bir active dict'i
@@ -141,6 +195,7 @@ class PresenceRow(Base):
         updated_at = data.get("updated_at")
         return cls(
             handle=data.get("handle", ""),
+            repo_full_name=repo_full_name,
             task=data.get("task_id"),
             module=data.get("module"),
             intent=data.get("intent"),
@@ -172,6 +227,12 @@ class TaskStatusEventRow(Base):
 
     source_event_id: Mapped[str] = mapped_column(String(255), primary_key=True)
     task_id: Mapped[str] = mapped_column(String(50), primary_key=True, index=True)
+    # PK'nin parçası (T-79) — `source_event_id` ("pr:{n}:...", "issue:{n}:...")
+    # PR/issue NUMARASINDAN türer, `task_id` de ("T-{n}") aynı şekilde; ikisi
+    # de repo başına sıfırlanan sayaçlardır — repo_full_name olmadan iki
+    # kiracının aynı numaralı PR'ı AYNI satırı paylaşır (redelivery koruması
+    # yanlışlıkla başka bir kiracının geçişini "zaten işlendi" sayar).
+    repo_full_name: Mapped[str] = mapped_column(String(255), primary_key=True, index=True)
     status: Mapped[str] = mapped_column(String(20))
     ts: Mapped[datetime] = mapped_column(DateTime, index=True)
     reason: Mapped[str | None] = mapped_column(String(255))
@@ -225,15 +286,20 @@ class JudgeVerdictRow(Base):
 
 class UserRow(Base):
     """Email + parola ile gerçek üyelik (T-294/D-57) — "GitHub ile gir"
-    akışının YANINDA, onun yerine değil. GitHub OAuth oturumları (bkz.
-    `api/routers/auth.py::github_oauth_callback`) BU TABLOYA YAZMAZ — iki
-    kimlik yolu bilerek PARALEL yaşıyor, hesap birleştirme bu dilimin kapsamı
-    DIŞINDA (bkz. D-57 "reddedilen seçenekler").
+    akışının YANINDA, onun yerine değil.
 
-    `password_hash` NULL => yalnız-GitHub hesabı (bu satır hiçbir zaman
-    `/auth/register`/`/auth/login`'den oluşmadı — ileride bir birleştirme
-    akışı olursa diye şema hazır, ama bugün YAZAN tek yol email register).
-    `github_handle` NULL => yalnız-email hesabı (bugünkü TEK üretim yolu).
+    GÜNCELLEME (T-79, çok-kiracılı repo seçimi): D-57 döneminde "GitHub OAuth
+    oturumları BU TABLOYA YAZMAZ" diyen eski kural artık DOĞRU DEĞİL —
+    installation picker (`installations`/`watched_repos`) bir `user_id`'ye
+    ihtiyaç duyar, bu yüzden `api/routers/auth.py::github_oauth_callback`
+    artık `identities` üzerinden get-or-create bir `UserRow` açar (bkz.
+    `IdentityRow`). Bu, D-57'nin "hesap BİRLEŞTİRME kapsam dışı" kararını
+    İHLAL ETMEZ — burada birleştirme YOK, yalnızca GitHub kimliğinin KENDİ
+    (yeni) satırı açılıyor; email ile GitHub hesabı hâlâ ayrı satırlardır.
+
+    `password_hash` NULL => yalnız-GitHub hesabı (`/auth/register`'dan
+    GEÇMEDİ — GitHub OAuth callback'inden get-or-create ile açıldı).
+    `github_handle` NULL => yalnız-email hesabı (`/auth/register`'dan geçti).
 
     CHECK kısıtı (`ck_users_auth_method_present`) ikisinin BİRDEN NULL olduğu
     bir satırı REDDEDER — kimlik doğrulama yolu olmayan "hayalet" bir hesap
@@ -245,6 +311,12 @@ class UserRow(Base):
     BEKLER. İki farklı normalize noktası aynı kişiye iki satır açardı (#294
     brifingi madde 2) — normalize tek fonksiyonda, çağıran (router) bir kez
     uygular.
+
+    `active_repo_full_name` (T-79): kullanıcının o an "izlediği" tek repo —
+    `TenantDep` (api/deps.py) bunu okuyup engine servislerini buna göre
+    kiracılar. `watched_repos`'taki bir satırı işaret ETMELİDİR (`PUT
+    /auth/repos` bunu doğrular); tutarsız/silinmiş bir repoyu işaret ederse
+    `TenantDep` sessizce demo repo'ya düşer (fail-closed, uydurma veri YOK).
     """
 
     __tablename__ = "users"
@@ -264,3 +336,66 @@ class UserRow(Base):
     avatar_url: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    active_repo_full_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
+
+class IdentityRow(Base):
+    """Sağlayıcı kimliği -> `users.id` eşlemesi (T-79).
+
+    Bugün TEK sağlayıcı: `provider="github"`, `provider_user_id`=GitHub'ın
+    SAYISAL kullanıcı id'si (handle DEĞİL — handle değişebilir, sayısal id
+    değişmez; bkz. `integrations/github/oauth.py::fetch_github_user`).
+    `unique(provider, provider_user_id)` aynı GitHub hesabının iki kez
+    `UserRow` açmasını engeller (get-or-create bu tabloyu ÖNCE kontrol eder).
+
+    Bu tablo D-57'nin "hesap birleştirme kapsam dışı" kararını GENİŞLETMEZ —
+    yalnızca "bu GitHub kimliği hangi `users` satırına karşılık geliyor"
+    sorusuna cevap verir; email hesabıyla otomatik birleştirme YAPMAZ.
+    """
+
+    __tablename__ = "identities"
+    __table_args__ = (
+        UniqueConstraint("provider", "provider_user_id", name="uq_identities_provider_user"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    provider: Mapped[str] = mapped_column(String(32), nullable=False)
+    provider_user_id: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), nullable=False, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+
+
+class InstallationRow(Base):
+    """Bir kullanıcının kurduğu GitHub App kurulumu (T-79 — Installation
+    picker). Kalıcı token SAKLANMAZ — yalnızca GitHub'ın verdiği
+    `installation_id` (App JWT + bu id ile installation-token HER İSTEKTE
+    anlık üretilir, bkz. `ensemble/tenancy.py`). `account_login` yalnız
+    GÖRÜNÜM amaçlı (UI'da "hangi hesap/organizasyon" göstermek için); yetki
+    kararı asla buna dayanmaz, `installation_id`'ye dayanır.
+    """
+
+    __tablename__ = "installations"
+
+    installation_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    account_login: Mapped[str] = mapped_column(String(255), nullable=False)
+    user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), nullable=False, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+
+
+class WatchedRepoRow(Base):
+    """Kullanıcının seçtiği izlenecek repo seti (T-79 — `PUT /auth/repos`).
+
+    PK `(user_id, repo_full_name)` — bir kullanıcı aynı repoyu iki kez
+    izleyemez (upsert semantiği). `installation_id`, bu (user, repo) çiftinin
+    HANGİ kurulum üzerinden erişildiğini taşır — `TenantDep` bunu okuyup
+    o kurulumun anlık token'ıyla GitHub'a gider (kalıcı token YOK).
+    """
+
+    __tablename__ = "watched_repos"
+
+    user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), primary_key=True)
+    repo_full_name: Mapped[str] = mapped_column(String(255), primary_key=True)
+    installation_id: Mapped[str] = mapped_column(
+        String(64), ForeignKey("installations.installation_id"), nullable=False
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
