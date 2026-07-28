@@ -1,0 +1,19 @@
+# Vercel CLI deploy paketine GİRMEYECEKLER.
+#
+# NEDEN VAR (ölçüldü, 2026-07-28): CLI 58'e geçtikten sonra `vercel --prod`
+# 1.7 GB yüklemeye başladı ve deploy 10 dakikada bitmedi. Sebep, repo
+# kökündeki `.claude/worktrees/` altında biriken 47 ajan worktree'siydi
+# (7.3 GB). CLI yalnız `dist/` + kaynak yüklemeli; geri kalanı Vercel
+# zaten kendi derlemesinde üretiyor.
+#
+# `.gitignore` BU İŞİ GÖRMEZ: CLI deploy'unda Vercel `.vercelignore`a bakar.
+
+node_modules
+.claude
+.git
+coverage
+*.log
+
+# Yerel doğrulama artefaktları (üretim paketinde işi yok)
+playwright-report
+test-results
