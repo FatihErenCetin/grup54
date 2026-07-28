@@ -1,7 +1,43 @@
 import { Link, NavLink, Outlet } from "react-router-dom";
 import { config } from "../lib/config";
 import { gorunenAd, useAuth, useCikisYap } from "../lib/useAuth";
+import { useRepolar } from "../lib/useRepoSecici";
 import { ActorChip } from "./ui";
+
+/* Bugünkü sabit demo etiketi (D-23) — anonim ziyaretçi/giriş yapılandırılmamış/
+   girişli-ama-repo-verisi-henüz-yok durumlarının HEPSİNDE AYNEN korunur ("public
+   demo BİREBİR aynı çalışmaya devam etmeli"). #79/T-79 öncesi tek değerdi,
+   şimdi de öntanımlı/yedek değer. */
+const DEMO_REPO_ETIKETI = "grup54/ensemble";
+
+/** "Hangi repoya bakıyorum" göstergesi (#79/T-79) — AuthGostergesi'nin hemen
+    yanında, AYNI sessizlik ilkesiyle: girişli değilse (ya da repo bilgisi
+    henüz gelmediyse/hata verdiyse) sabit demo etiketine düşer, gürültü
+    YAPMAZ. Girişliyse `/repolar`'a (repo seçici) giden bir link — kabul
+    kriteri "seçiciye giden bir yol olmalı". */
+function AktifRepoGostergesi() {
+  const { kullanici } = useAuth();
+  // Anonim ziyaretçi için BOŞUNA istek atma (useAuth.ts ilkesi) — /auth/repos
+  // zaten oturumsuzken 401 döner, `enabled=false` bunu hiç denemez.
+  const repolar = useRepolar(kullanici !== null);
+
+  if (!kullanici) {
+    return <span className="text-sm text-muted-foreground">{DEMO_REPO_ETIKETI}</span>;
+  }
+
+  const aktif =
+    repolar.data?.tur === "basarili" ? (repolar.data.active ?? repolar.data.demo) : null;
+
+  return (
+    <Link
+      to="/repolar"
+      title="Repo seç / değiştir"
+      className="text-sm text-muted-foreground hover:text-foreground hover:underline"
+    >
+      {aktif ?? DEMO_REPO_ETIKETI}
+    </Link>
+  );
+}
 
 /* Ters-L kabuk (Linear deseni): sol dar sidebar + üst ince bar.
    Sıra = demo anlatım sırası; Radar her zaman açılış sayfası. */
@@ -83,7 +119,7 @@ export default function AppLayout() {
 
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="flex items-center justify-between border-b border-border px-4 py-2">
-          <span className="text-sm text-muted-foreground">grup54/ensemble</span>
+          <AktifRepoGostergesi />
           <div className="flex items-center gap-3">
             {config.mock && (
               // Sahte-canlılık yasak (D-34): mock modunda TÜM veriler örnektir —

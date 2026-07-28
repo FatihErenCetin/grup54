@@ -238,8 +238,12 @@ function retryAfterSaniye(response: Response): number | null {
     durumlarda (409/422/429 register — şemada `content?: never` beyanlı, ama
     runtime'da backend HER ZAMAN bu zarfı döner, bkz. api/routers/auth.py +
     api/errors.py::http_exception) `error` alanının statik tipini yakalayamaz
-    — bu yüzden burada `unknown` üzerinden GÜVENLİ biçimde okunur. */
-function backendMesaji(hata: unknown, yedek: string): string {
+    — bu yüzden burada `unknown` üzerinden GÜVENLİ biçimde okunur.
+
+    `export`: T-79 repo seçici (`useRepoSecici.ts`) install-url/installations/
+    repos uçlarının 403/503 zarfları için AYNI çıkarımı kullanır — iki ayrı
+    kopya iki farklı "uydurma yedek metin" riski taşırdı (TDK ilkesi). */
+export function backendMesaji(hata: unknown, yedek: string): string {
   if (hata !== null && typeof hata === "object") {
     const m = (hata as { message?: unknown }).message;
     if (typeof m === "string" && m !== "") return m;
