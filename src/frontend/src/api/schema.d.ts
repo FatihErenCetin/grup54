@@ -303,6 +303,108 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/auth/install-url": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Install Url
+         * @description GitHub App kurulum sayfasının adresi — kullanıcı buraya yönlendirilir.
+         *
+         *     Oturum ZORUNLU (`_require_session_user_id`): GitHub kuruluş sonrası
+         *     `/auth/install-callback`'e dönerken bu oturumu kullanıp `installation_id`'yi
+         *     HANGİ kullanıcıya bağlayacağını bilecek — oturumsuz başlatılan bir kurulum
+         *     kimseye bağlanamaz (yetim installation_id, sessizce kaybolur).
+         */
+        get: operations["install_url_auth_install_url_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/install-callback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Install Callback
+         * @description GitHub'ın App kurulumu SONRASI yönlendirdiği uç (App ayarlarında
+         *     "Setup URL" olarak bu adres kayıtlı olmalı — operasyonel bir GitHub App
+         *     yapılandırma adımı, bu koddan YÖNETİLEMEZ; bkz. PR gövdesi "bilinen
+         *     sınırlar").
+         *
+         *     CSRF notu (bilinçli, dar kapsamlı kabul): bu uç bir TOKEN DEĞİŞTİRMEZ
+         *     (OAuth `/callback`'in aksine `code`→`access_token` yok) — yalnızca
+         *     GitHub'ın verdiği `installation_id`'yi oturumdaki kullanıcıya bağlar. En
+         *     kötü senaryo bir saldırganın KENDİ (zaten kendisine ait) installation_id'sini
+         *     kurbanın oturumuna bağlatması — kurbanın verisi SIZMAZ, yalnızca saldırganın
+         *     reposu kurbanın "izlenebilir" setine girer (kurban `PUT /auth/repos`'a
+         *     kadar hiçbir şey görmez). Bu düşük-önem sınır PR gövdesinde açıkça notlanır.
+         */
+        get: operations["install_callback_auth_install_callback_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/installations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Installations
+         * @description Kullanıcının App kurulumları + her birinin erişebildiği repolar.
+         *     Token ANLIK üretilir (integrations/github/app_api.py), hiçbir yerde
+         *     saklanmaz.
+         */
+        get: operations["list_installations_auth_installations_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/repos": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Repos */
+        get: operations["get_repos_auth_repos_get"];
+        /**
+         * Update Repos
+         * @description Verilen `repos` kullanıcının GERÇEKTEN erişebildiği bir kurulumda
+         *     OLMALI — her biri CANLI GitHub'dan (bu kullanıcının installation'ları
+         *     üzerinden) doğrulanır; değilse 403 (istemcinin gönderdiği repo'ya asla
+         *     körlemesine güvenilmez — T-79 brifinginin en kritik kuralı).
+         */
+        put: operations["update_repos_auth_repos_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -497,6 +599,25 @@ export interface components {
              */
             gemini: "configured" | "missing";
         };
+        /** InstallUrlResponse */
+        InstallUrlResponse: {
+            /** Url */
+            url: string;
+        };
+        /** InstallationSummary */
+        InstallationSummary: {
+            /** Installation Id */
+            installation_id: string;
+            /** Account Login */
+            account_login: string;
+            /** Repos */
+            repos: components["schemas"]["RepoSummary"][];
+        };
+        /** InstallationsResponse */
+        InstallationsResponse: {
+            /** Installations */
+            installations: components["schemas"]["InstallationSummary"][];
+        };
         /** LineRange */
         LineRange: {
             /** Start */
@@ -638,6 +759,46 @@ export interface components {
             email: string;
             /** Password */
             password: string;
+        };
+        /**
+         * RepoSummary
+         * @description T-79 — `GET /auth/installations` uç sözleşmesi (brifing, birebir).
+         */
+        RepoSummary: {
+            /** Full Name */
+            full_name: string;
+            /** Private */
+            private: boolean;
+        };
+        /**
+         * ReposResponse
+         * @description T-79 — `GET /auth/repos` uç sözleşmesi (brifing, birebir).
+         */
+        ReposResponse: {
+            /** Selected */
+            selected: string[];
+            /** Active */
+            active?: string | null;
+            /** Demo */
+            demo?: string | null;
+        };
+        /** ReposUpdateRequest */
+        ReposUpdateRequest: {
+            /** Repos */
+            repos: string[];
+            /** Active */
+            active?: string | null;
+        };
+        /**
+         * ReposUpdateResponse
+         * @description T-79 — `PUT /auth/repos` uç sözleşmesi (brifing, birebir — `demo` YOK,
+         *     yalnız `GET /auth/repos`'ta var).
+         */
+        ReposUpdateResponse: {
+            /** Selected */
+            selected: string[];
+            /** Active */
+            active?: string | null;
         };
         /** ScopeCurrent */
         ScopeCurrent: {
@@ -829,6 +990,15 @@ export interface operations {
                     "application/json": components["schemas"]["RadarResponse"];
                 };
             };
+            /** @description ?repo= izinli sette değil (T-79) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
             /** @description Demo istek limiti aşıldı (yalnız DEMO_MODE) */
             429: {
                 headers: {
@@ -880,6 +1050,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ScopeVerdict"];
+                };
+            };
+            /** @description ?repo= izinli sette değil (T-79) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
             /** @description Scope referansı bulunamadı */
@@ -951,6 +1130,15 @@ export interface operations {
                     "application/json": components["schemas"]["ScopeCurrent"];
                 };
             };
+            /** @description ?repo= izinli sette değil (T-79) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
             /** @description Demo istek limiti aşıldı (yalnız DEMO_MODE) */
             429: {
                 headers: {
@@ -1002,6 +1190,15 @@ export interface operations {
                     "application/json": components["schemas"]["ScopeVerdictsResponse"];
                 };
             };
+            /** @description ?repo= izinli sette değil (T-79) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
             /** @description Demo istek limiti aşıldı (yalnız DEMO_MODE) */
             429: {
                 headers: {
@@ -1051,6 +1248,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["BoardResponse"];
+                };
+            };
+            /** @description ?repo= izinli sette değil (T-79) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
             /** @description Demo istek limiti aşıldı (yalnız DEMO_MODE) */
@@ -1108,6 +1314,15 @@ export interface operations {
             };
             /** @description Geçersiz doğal dil sorgusu */
             400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description ?repo= izinli sette değil (T-79) */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -1177,6 +1392,15 @@ export interface operations {
                     "application/json": components["schemas"]["TouchGraph"];
                 };
             };
+            /** @description ?repo= izinli sette değil (T-79) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -1237,6 +1461,15 @@ export interface operations {
                     "application/json": components["schemas"]["PresenceResponse"];
                 };
             };
+            /** @description ?repo= izinli sette değil (T-79) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
             /** @description Demo istek limiti aşıldı (yalnız DEMO_MODE) */
             429: {
                 headers: {
@@ -1291,6 +1524,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EventsResponse"];
+                };
+            };
+            /** @description ?repo= izinli sette değil (T-79) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
             /** @description Validation Error */
@@ -1454,6 +1696,15 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
+            /** @description İzinsiz repo (T-79) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
             /** @description Demo istek limiti aşıldı (yalnız DEMO_MODE) */
             429: {
                 headers: {
@@ -1516,6 +1767,15 @@ export interface operations {
             };
             /** @description Oturum yok/geçersiz */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description İzinsiz repo (T-79) */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -1594,6 +1854,15 @@ export interface operations {
                 };
                 content?: never;
             };
+            /** @description İzinsiz repo (T-79) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -1666,6 +1935,15 @@ export interface operations {
             };
             /** @description Oturum yok/geçersiz */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description İzinsiz repo (T-79) */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -1755,6 +2033,15 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
+            /** @description İzinsiz repo (T-79) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
             /** @description Bu e-posta ile zaten bir hesap var */
             409: {
                 headers: {
@@ -1832,6 +2119,15 @@ export interface operations {
                 };
                 content?: never;
             };
+            /** @description İzinsiz repo (T-79) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
             /** @description Demo istek limiti aşıldı (yalnız DEMO_MODE) */
             429: {
                 headers: {
@@ -1897,6 +2193,414 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description İzinsiz repo (T-79) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Demo istek limiti aşıldı (yalnız DEMO_MODE) */
+            429: {
+                headers: {
+                    /** @description Saniye — pencere kayınca tekrar denenebilir */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Kalici saglayici hatasi (GitHub/Gemini/Ollama) */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Gecici olarak erisilemez */
+            503: {
+                headers: {
+                    /** @description Saniye — yalniz kendiliginden duzelebilir durumlarda */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    install_url_auth_install_url_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InstallUrlResponse"];
+                };
+            };
+            /** @description OAuth state doğrulanamadı */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Oturum yok/geçersiz */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description İzinsiz repo (T-79) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Demo istek limiti aşıldı (yalnız DEMO_MODE) */
+            429: {
+                headers: {
+                    /** @description Saniye — pencere kayınca tekrar denenebilir */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Kalici saglayici hatasi (GitHub/Gemini/Ollama) */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Yapılandırılmamış */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    install_callback_auth_install_callback_get: {
+        parameters: {
+            query?: {
+                installation_id?: string | null;
+                setup_action?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description OAuth state doğrulanamadı */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Oturum yok/geçersiz */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description İzinsiz repo (T-79) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Demo istek limiti aşıldı (yalnız DEMO_MODE) */
+            429: {
+                headers: {
+                    /** @description Saniye — pencere kayınca tekrar denenebilir */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Kalici saglayici hatasi (GitHub/Gemini/Ollama) */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Gecici olarak erisilemez */
+            503: {
+                headers: {
+                    /** @description Saniye — yalniz kendiliginden duzelebilir durumlarda */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    list_installations_auth_installations_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InstallationsResponse"];
+                };
+            };
+            /** @description OAuth state doğrulanamadı */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Oturum yok/geçersiz */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description İzinsiz repo (T-79) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Demo istek limiti aşıldı (yalnız DEMO_MODE) */
+            429: {
+                headers: {
+                    /** @description Saniye — pencere kayınca tekrar denenebilir */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Kalici saglayici hatasi (GitHub/Gemini/Ollama) */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Gecici olarak erisilemez */
+            503: {
+                headers: {
+                    /** @description Saniye — yalniz kendiliginden duzelebilir durumlarda */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    get_repos_auth_repos_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReposResponse"];
+                };
+            };
+            /** @description OAuth state doğrulanamadı */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Oturum yok/geçersiz */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description İzinsiz repo (T-79) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Demo istek limiti aşıldı (yalnız DEMO_MODE) */
+            429: {
+                headers: {
+                    /** @description Saniye — pencere kayınca tekrar denenebilir */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Kalici saglayici hatasi (GitHub/Gemini/Ollama) */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Gecici olarak erisilemez */
+            503: {
+                headers: {
+                    /** @description Saniye — yalniz kendiliginden duzelebilir durumlarda */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    update_repos_auth_repos_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReposUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReposUpdateResponse"];
+                };
+            };
+            /** @description OAuth state doğrulanamadı */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Oturum yok/geçersiz */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description İzinsiz repo */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
             /** @description Demo istek limiti aşıldı (yalnız DEMO_MODE) */

@@ -84,7 +84,6 @@ from ensemble.integrations.github.oauth import (
 )
 from ensemble.store.identity_store import get_or_create_github_user
 from ensemble.store.installation_store import (
-    get_installation_for_user,
     list_installations_for_user,
     list_watched_repos,
     replace_watched_repos,
