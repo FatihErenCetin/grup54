@@ -1,0 +1,8 @@
+# Yalnızca .app/.dmg PAKETLEME sırasında gereken araçlar (T-305).
+#
+# Bilinçli olarak kök `pyproject.toml`'a / `uv.lock`'a EKLENMEDİ — bunlar
+# `uv sync`'in normal akışını (dev/test) etkilemesin. `build_macos.sh`
+# `uv run --with-requirements packaging/requirements-build.txt pyinstaller ...`
+# ile GEÇİCİ bir üst-katman ortamı kullanır (proje bağımlılıkları + bu liste),
+# lock dosyasına dokunmaz.
+pyinstaller>=6.10,<7

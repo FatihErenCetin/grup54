@@ -42,6 +42,13 @@ dist/
 # Frontend build artıkları (#19)
 *.tsbuildinfo
 
+# === macOS masaüstü paketi (T-305) — PyInstaller/dmg çıktıları ===
+# `packaging/build_macos.sh` üretir; büyük ikili dosyalar (~35-75MB), repo'ya
+# GİRMEZ. Kaynak (`packaging/*.py`, `*.spec`, `*.sh`) takip edilmeye devam eder.
+packaging/dist-macos/
+packaging/build-macos/
+*.dmg
+
 # === Claude Code izole worktree kopyaları (#245) ===
 # Ajanların geçici çalışma kopyaları; .claude/skills/ ve .claude/agents/ TAKİP EDİLMEYE
 # devam eder (yalnızca worktrees/ ignore edilir, üst .claude/ dizini değil).

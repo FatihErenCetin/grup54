@@ -147,6 +147,12 @@ Deploy adımları + env→platform eşlemesi + rollback: [`docs/deploy-runbook.m
 
 ---
 
+## 🖥️ macOS masaüstü paketi
+
+Geliştirici ortamı kurmadan (uv/Node gerekmez) çalıştırmak için sürükle-bırak `.app`/`.dmg` paketi — "Obsidian'ı kurar gibi". İmzasız (Apple Developer hesabı yok) — ilk açılışta sağ tık → Aç gerekir, bu GİZLENMEDİ. Kurulum adımları + Gatekeeper notu + `make paket-macos` ile yeniden üretme: [`docs/macos-paket-kurulumu.md`](docs/macos-paket-kurulumu.md).
+
+---
+
 # Sprint 1
 
 > **Tarih:** 19 Haziran – 5 Temmuz 2026 · **Takım:** grup54 (PO Fatih Eren Çetin · SM Esma Fazilet Karagülle · Dev Enes Talha Erdem · Dev Semih Marufoğlu) · **Ürün:** Ensemble — AI-çağı yazılım ekipleri için "paylaşılan proje beyni" (proaktif çakışma radarı · canlı scope-drift bekçisi · kendiliğinden dolan board · doğal dille "projeye sor").

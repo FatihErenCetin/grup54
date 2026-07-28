@@ -1,4 +1,4 @@
-.PHONY: install dev test lint openapi contracts eval-dataset eval-run eval-sweep eval eval-gate eval-butce eval-provider eval-model-secimi scope-eval harness-init frontend-build-guard deploy
+.PHONY: install dev test lint openapi contracts eval-dataset eval-run eval-sweep eval eval-gate eval-butce eval-provider eval-model-secimi scope-eval harness-init frontend-build-guard deploy paket-macos up
 
 install:
 	uv sync --all-packages
@@ -25,6 +25,16 @@ lint:
 
 migrate:
 	cd src/backend && uv run alembic upgrade head
+
+# T-305 FAZ 1 — Docker istemeyenler icin tek komut: migrate + backend +
+# frontend'i AYNI terminalde birlikte kaldirir (Ctrl+C hepsini durdurur).
+# `docker compose up`'un elle-surec esdegeri; ayni "hicbir anahtar olmadan
+# calisir" vaadini tasir (Fake adapter'lar, bkz. docker-compose.yml basligi).
+up: migrate
+	@trap 'kill 0' EXIT INT TERM; \
+	uv run uvicorn ensemble.app:create_app --factory --reload --port 8000 & \
+	(cd src/frontend && npm run dev) & \
+	wait
 
 eval-dataset:
 	uv run python eval/backtest/build_dataset.py
@@ -93,3 +103,11 @@ frontend-build-guard:
 # başlığı). Hedef ADI bilerek `deploy` kaldı (diğer referanslar kırılmasın).
 deploy:
 	cd deploy && docker compose -f docker-compose.prod.yml --env-file .env.production up -d --build
+
+# T-305 masaüstü paketi: sürükle-bırak macOS kurulumu ("Obsidian'ı kurar gibi").
+# Yalnızca macOS'ta çalışır. Üretir: packaging/dist-macos/Ensemble.app (~72M) +
+# packaging/dist-macos/Ensemble.dmg (~36M, Applications kısayoluna sürükle-bırak
+# düzeni + "İlk açılışta" Gatekeeper notu dahil). Detay + kurulum yönergesi:
+# docs/macos-paket-kurulumu.md. İkisi de gitignored (büyük ikili, repo'ya girmez).
+paket-macos:
+	packaging/build_macos.sh
