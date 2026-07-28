@@ -26,7 +26,9 @@ lint:
 migrate:
 	cd src/backend && uv run alembic upgrade head
 
-# T-305 FAZ 1 — Docker istemeyenler icin tek komut: migrate + backend +
+# T-307 FAZ 1 — Docker istemeyenler icin tek komut: migrate + backend +
+# (Bu hedef T-307'nin isi ama es zamanli calisan paketleme dalinin genis
+#  `git add`'i yuzunden main'e #306 ile girdi - atif orada yanlis gorunuyor.)
 # frontend'i AYNI terminalde birlikte kaldirir (Ctrl+C hepsini durdurur).
 # `docker compose up`'un elle-surec esdegeri; ayni "hicbir anahtar olmadan
 # calisir" vaadini tasir (Fake adapter'lar, bkz. docker-compose.yml basligi).

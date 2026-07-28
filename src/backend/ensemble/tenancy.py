@@ -122,6 +122,35 @@ class TenantRegistry:
         self._lock = threading.Lock()
         self._teams: OrderedDict[str, ServiceTeam] = OrderedDict()
 
+    def update_shared_ports(
+        self,
+        *,
+        judge_port: JudgePort,
+        embeddings_port: EmbeddingsPort,
+        query_judge_port: QueryJudgePort,
+        scope_judge_port: ScopeJudgePort,
+    ) -> None:
+        """T-307 FAZ 2 KURAL 5 — yerel sağlayıcı ayarları (`PUT /settings/
+        saglayici`) değiştiğinde TÜM kiracılar arasında PAYLAŞILAN port'ları
+        yeniden kurar VE LRU'daki (demo-DIŞI, T-79) kiracı takımlarını
+        TAHLİYE eder.
+
+        Tahliye ŞART: `_build_team` port'ları KENDİ `RadarService`/
+        `ScopeService`/`QueryService` örneğinin kurucusuna GÖMER (bkz. o
+        metod) — yalnızca bu sözlükteki `_judge_port` vb. referansları
+        güncellemek, ZATEN inşa edilmiş (cache'teki) bir takımın hâlâ ESKİ
+        adaptörle çalışmasına engel olmaz. Demo takımı (`self._demo_team`)
+        bu sözlüğe hiç girmez (`get_team` bunu ayrıca döner) — o,
+        `ensemble.app.rebuild_llm_services` tarafından KENDİ attribute'ları
+        üzerinden AYRICA güncellenir.
+        """
+        with self._lock:
+            self._judge_port = judge_port
+            self._embeddings_port = embeddings_port
+            self._query_judge_port = query_judge_port
+            self._scope_judge_port = scope_judge_port
+            self._teams.clear()
+
     def get_team(self, tenant: Tenant) -> ServiceTeam:
         """`tenant`'a karşılık gelen (memoize edilmiş) servis takımını döner.
 

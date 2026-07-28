@@ -11,6 +11,28 @@ from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 
 
+def normalize_local_ollama_url(value: str) -> str:
+    """`OLLAMA_BASE_URL` biçim kuralı — TEK kaynak (#78 loopback zorunluluğu).
+
+    Hem `Settings.OLLAMA_BASE_URL` alan doğrulayıcısı (açılış-anı, `.env`den)
+    HEM DE T-307 FAZ 2 (`PUT /settings/saglayici`, kullanıcı ayarlar sayfasından
+    kaydettiğinde) AYNI kuralı uygulamalı — iki ayrı kopya (biri burada, biri
+    router'da) sessizce KAYARSA biri loopback-dışı bir adresi kabul edip
+    diğeri reddedebilir (repo bağlamının makineden çıkmama garantisi ikisinden
+    BİRİNDE delinir). `ValueError` fırlatır — çağıran (Settings validator'ı ya
+    da router) kendi hata biçimine (pydantic ValidationError / HTTP 422) çevirir.
+    """
+    normalized = value.rstrip("/")
+    parsed = urlparse(normalized)
+    if parsed.scheme != "http" or parsed.hostname not in {
+        "localhost",
+        "127.0.0.1",
+        "::1",
+    }:
+        raise ValueError("OLLAMA_BASE_URL yerel bir HTTP loopback adresi olmali (#78)")
+    return normalized
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=str(_REPO_ROOT / ".env"), extra="ignore")
 
@@ -74,15 +96,7 @@ class Settings(BaseSettings):
     @field_validator("OLLAMA_BASE_URL")
     @classmethod
     def _validate_local_ollama_url(cls, value: str) -> str:
-        normalized = value.rstrip("/")
-        parsed = urlparse(normalized)
-        if parsed.scheme != "http" or parsed.hostname not in {
-            "localhost",
-            "127.0.0.1",
-            "::1",
-        }:
-            raise ValueError("OLLAMA_BASE_URL yerel bir HTTP loopback adresi olmali (#78)")
-        return normalized
+        return normalize_local_ollama_url(value)
 
     # GitHub App (machine auth - ingest, #16). Hepsi opsiyonel - FakeGitHubAdapter
     # gerektirmez; eksikse GitHubAdapter/InstallationTokenCache somutlastirilirken
@@ -108,6 +122,16 @@ class Settings(BaseSettings):
     # gecmisi kaybediyordu (olculdu: repo 19 Haziran'dan beri ~250 commit,
     # akis 21 Temmuz'dan geriye gitmiyordu). Iki farkli ihtiyac, iki ayar.
     GITHUB_HISTORY_LIMIT: int = 500
+    # Backend frontend'i KENDISI servis etsin mi (tek surecli masaustu paketi).
+    #
+    # ACIK BAYRAK, otomatik tespit DEGIL. Eskiden "dist/ varsa mount et"
+    # deniyordu ve bu, uygulamanin davranisini "birinin `npm run build`
+    # calistirip calistirmadigina" baglıyordu: CI'da dist/ yok -> API 404
+    # doner; gelistiricinin makinesinde dist/ var -> ayni yol SPA'ya duser.
+    # Iki test tam bu yuzden yerelde kirmizi, CI'da yesildi (olculdu).
+    # Sunucuda birinin frontend derlemesi de backend'i sessizce farkli
+    # davrandirirdi. Paket ve compose bunu ACIKCA acar.
+    ENSEMBLE_SERVE_FRONTEND: bool = False
     # 429'da sunucunun dayattigi `retryDelay`'e uyariz (#283) ama INSANIN
     # BEKLEDIGI istekte bu sinirla kirpilir. Olculdu (2026-07-27): Gemini
     # generate kotasi GUNDE 20; tukendiginde `retryDelay: 23s` geliyor ama

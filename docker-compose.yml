@@ -1,37 +1,96 @@
-# Lokal "hosted" mod denemesi (#61): pgvector'lu Postgres + backend imajı.
-services:
-  db:
-    image: pgvector/pgvector:pg16
-    restart: unless-stopped
-    environment:
-      POSTGRES_USER: ensemble
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ensemble}
-      POSTGRES_DB: ensemble
-    ports:
-      - "${POSTGRES_PORT:-5432}:5432"
-    volumes:
-      - ensemble-pg-data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ensemble -d ensemble"]
-      interval: 5s
-      timeout: 3s
-      retries: 10
+# Yerel TEK-KOMUT kurulumu (T-307 FAZ 1) — `docker compose up` çalışan bir
+# ürün açar, HİÇBİR anahtar/`.env` gerekmez.
+#
+# ENSEMBLE_MODE=local: SQLite (dosya) + bellek-içi FAISS vektör indeksi
+# (`LocalVectorIndex`) kullanılır — Postgres/pgvector burada GEREKMİYOR
+# (yalnız `store/engine.py`'nin hosted dalı Postgres ister). Anahtar yoksa
+# Fake adapter'lara (`FakeGitHubAdapter`/`FakeJudgeAdapter`) düşülür — bu
+# YARIM bir açılış DEĞİL: GitHub/Gemini'ye gerçek ağ çağrısı yapılmaz, ama
+# `/health`, `/board`, `/radar`, `/scope`, `/events`, `/graph`, `/query`
+# HEPSİ 200 döner (ölçülen önceki eksik: migration hiç koşmadığı için
+# `/board`/`/events`/`/graph` "no such table" ile 500 dönüyordu — `migrate`
+# servisi BUNU KAPATIR, `api` onsuz hiç başlamaz).
+#
+# Hosted modu (Postgres+pgvector) YEREL denemek isteyen için ayrı bir dosya
+# zaten var: `deploy/docker-compose.prod.yml` (üretimde de KULLANILAN gerçek
+# dosya) — burası ONUN yerini TUTMAZ, farklı bir amaca (kurulum kolaylığı)
+# hizmet eder.
+#
+# Kullanıcı kendi API anahtarını sonradan `/ayarlar` sayfasından (T-307
+# FAZ 2, `PUT /settings/saglayici`) girebilir — `.env`'e hiç dokunmadan;
+# `ensemble-local-settings` volume'u bu ayarı konteyner yeniden
+# oluşturulsa bile (`docker compose up` tekrar) KORUR.
+name: ensemble-local
 
+services:
+  # ===========================================================================
+  # migrate — TEK ATIMLIK. `api` bunun BAŞARIYLA bitmesini bekler (fail-closed,
+  # `deploy/docker-compose.prod.yml` ile AYNI desen — bkz. o dosyanın
+  # kendi "migrate" yorumu). Bu adım OLMADAN `/board`/`/events`/`/graph`
+  # "no such table" ile 500 döner (ölçülen, bu PR'ın asıl bulgusu).
+  # ===========================================================================
+  migrate:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    working_dir: /app/src/backend
+    command: ["alembic", "upgrade", "head"]
+    environment:
+      ENSEMBLE_MODE: local
+      DATABASE_URL: sqlite:////app/data/ensemble.db
+    volumes:
+      - ensemble-local-data:/app/data
+    restart: "no"
+
+  # ===========================================================================
+  # api — FastAPI/uvicorn. Anahtarsız açılır (Fake adapter'lar).
+  # ===========================================================================
   api:
     build:
       context: .
       dockerfile: Dockerfile
     restart: unless-stopped
     environment:
-      ENSEMBLE_MODE: hosted
-      DATABASE_URL: postgresql+psycopg://ensemble:${POSTGRES_PASSWORD:-ensemble}@db:5432/ensemble
+      ENSEMBLE_MODE: local
+      DATABASE_URL: sqlite:////app/data/ensemble.db
       CORS_ORIGINS: http://localhost:5173,http://127.0.0.1:5173
       PORT: "8000"
+    # Kullanıcının kendi `.env`'i varsa (opsiyonel — GEMINI_API_KEY vb.)
+    # BİLEREK okunur; yoksa (`required: false`) sessizce atlanır (yukarıdaki
+    # `environment:` zaten anahtarsız açılış için yeterli).
+    env_file:
+      - path: .env
+        required: false
     ports:
       - "8000:8000"
+    volumes:
+      # SQLite DB dosyası — `migrate` ile PAYLAŞILAN aynı volume (aksi halde
+      # migration'ın kurduğu tablolar api'nin gördüğü dosyada OLMAZDI).
+      - ensemble-local-data:/app/data
+      # Sağlayıcı ayarları (T-307 FAZ 2) — `~/.ensemble/ayarlar.json`
+      # (`HOME=/app`, Dockerfile) BU volume'da yaşar; konteyner silinip
+      # yeniden oluşturulsa (`docker compose up` tekrar) bile KORUNUR.
+      - ensemble-local-settings:/app/.ensemble
     depends_on:
-      db:
-        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+  # ===========================================================================
+  # frontend — Vite geliştirme sunucusu. Prod build/deploy Vercel'de yapılır
+  # (bu servis ONU DEĞİŞTİRMEZ) — burası yalnızca `docker compose up` ile
+  # PO'nun kendi makinesinde tek komutla açılan bir arayüz içindir.
+  # ===========================================================================
+  frontend:
+    build:
+      context: ./src/frontend
+      dockerfile: Dockerfile
+    environment:
+      VITE_API_BASE_URL: http://localhost:8000
+    ports:
+      - "5173:5173"
+    depends_on:
+      - api
 
 volumes:
-  ensemble-pg-data:
+  ensemble-local-data:
+  ensemble-local-settings:

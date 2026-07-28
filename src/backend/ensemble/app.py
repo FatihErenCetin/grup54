@@ -5,11 +5,24 @@ from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from ensemble.api.errors import ERROR_RESPONSES, ErrorEnvelope, register_exception_handlers
 from ensemble.api.rate_limit import DemoRateLimitMiddleware
-from ensemble.api.routers import auth, board, events, graph, health, query, radar, scope, webhook
+from ensemble.api.routers import (
+    auth,
+    board,
+    events,
+    graph,
+    health,
+    query,
+    radar,
+    scope,
+    settings as settings_router,
+    webhook,
+)
 from ensemble.config import Settings, get_settings
 from ensemble.engine.board import BoardService
 from ensemble.engine.cache import CachedConflictJudge, CachedQueryJudge, CachedScopeJudge
@@ -43,11 +56,49 @@ from ensemble.integrations.query_source import HarnessEventQuerySource
 from ensemble.ports import EmbeddingsPort, GitHubPort, JudgePort, VectorIndexPort
 from ensemble.store.engine import get_engine, get_session_factory
 from ensemble.store.models import DEFAULT_REPO_FULL_NAME
+from ensemble.store.provider_settings import read_provider_settings
 from ensemble.store.vector_store import LocalVectorIndex, build_vector_index
 from ensemble.tenancy import ServiceTeam, TenantRegistry
 from ensemble_shared.harness import FileHarnessPort, HarnessError
 
 logger = logging.getLogger("ensemble.wiring")
+
+
+def apply_provider_overlay(settings: Settings) -> Settings:
+    """T-307 FAZ 2 — `~/.ensemble/ayarlar.json`'daki (varsa) kullanıcı
+    sağlayıcı ayarlarını `settings`'in ÜZERİNE bindirir ve YENİ bir `Settings`
+    kopyası döner (`settings` DEĞİŞTİRİLMEZ — pydantic `model_copy` yeni bir
+    nesne üretir).
+
+    YALNIZ local modda uygulanır: hosted'da bu dosyanın (orada bile bulunsa)
+    HİÇBİR etkisi olmamalı — `/settings/*` uçları zaten hosted'ı 404'ler, ama
+    bu fonksiyon `lifespan`'DEN ÖNCE de (aşağıda `create_app`'te) çağrıldığı
+    için ayrı, kendi başına yeterli bir muhafız burada da olmalı (savunma
+    derinliği — tek noktaya güvenme).
+
+    `model_copy(update=...)` BİLEREK: pydantic bu çağrıda alan validator'larını
+    YENİDEN ÇALIŞTIRMAZ (belgelenmiş davranış). Bu güvenlidir, çünkü üzerine
+    bindirilen değerler zaten `PUT /settings/saglayici`'de doğrulanıp
+    (ör. Ollama URL için `normalize_local_ollama_url`) diske öyle yazılmıştı —
+    burada ikinci bir doğrulama TEKRARI gerekmez.
+    """
+    if settings.ENSEMBLE_MODE != "local":
+        return settings
+    data = read_provider_settings()
+    if not data:
+        return settings
+    updates: dict[str, object] = {}
+    if data.get("llm_provider") in ("gemini", "ollama"):
+        updates["LLM_PROVIDER"] = data["llm_provider"]
+    if data.get("gemini_api_key"):
+        updates["GEMINI_API_KEY"] = data["gemini_api_key"]
+    if data.get("groq_api_key"):
+        updates["GROQ_API_KEY"] = data["groq_api_key"]
+    if data.get("ollama_base_url"):
+        updates["OLLAMA_BASE_URL"] = data["ollama_base_url"]
+    if not updates:
+        return settings
+    return settings.model_copy(update=updates)
 
 
 def _gemini_single_flight_wait_s(settings: Settings) -> float:
@@ -383,6 +434,80 @@ def _build_scope_service(settings: Settings, radar_service: RadarService) -> Sco
     )
 
 
+def rebuild_llm_services(app: FastAPI) -> None:
+    """T-307 FAZ 2 KURAL 5 — `PUT /settings/saglayici` sonrası çağrılır.
+
+    Çağıran (`api/routers/settings.py`) bu fonksiyondan ÖNCE `app.state.
+    settings`'i zaten `apply_provider_overlay` ile YENİLEMİŞ olmalı — burası
+    yalnızca o YENİ `Settings`'ten port'ları YENİDEN İNŞA edip demo
+    servislerine + `TenantRegistry`'ye devreder.
+
+    NEDEN yetmiyor `app.state.settings`'i güncellemek TEK BAŞINA: judge/
+    embeddings/github port'ları (`GeminiJudgeAdapter`, `OllamaAdapter`, ...)
+    kurucularında ALDIKLARI `Settings`'i SAKLAR ve BİR DAHA OKUMAZLAR (bkz.
+    o sınıfların `__init__`'i — ör. `GeminiJudgeAdapter.__init__` yalnızca
+    `self._settings = settings` yapar). `Settings` nesnesinin kendisi
+    pydantic'te mutable olsa da, ZATEN İNŞA EDİLMİŞ bir adaptör örneği eski
+    anahtarı kullanmaya devam eder — tek çözüm, `_build_*` fabrikalarını YENİ
+    `settings` ile TEKRAR çağırıp üretilen port'u ilgili servisin
+    attribute'una ATAMAK (`RadarService`/`ScopeService`/`QueryService` bunları
+    PLAIN mutable attribute olarak tutar, bkz. o sınıfların `__init__`'i).
+
+    DEMO_MODE sarmalayıcıları (`CachedScopeJudge`/`CachedQueryJudge`) burada
+    `_build_scope_service`/`_build_query_service` İLE AYNI koşulla yeniden
+    uygulanır — aksi halde DEMO_MODE=true (nadir ama teorik olarak local'de de
+    set edilebilir) bir kurulumda rebuild sonrası cache katmanı SESSİZCE
+    kaybolurdu.
+    """
+    settings = app.state.settings
+    session_factory = app.state.session_factory
+
+    new_judge_port = _build_judge_port(settings, session_factory=session_factory)
+    new_embeddings_port = _build_embeddings_port(settings)
+    new_github_port = _build_github_port(settings)
+
+    new_scope_judge_port = build_scope_judge(settings)
+    if settings.DEMO_MODE:
+        new_scope_judge_port = CachedScopeJudge(
+            new_scope_judge_port,
+            ttl_s=settings.DEMO_CACHE_TTL_S,
+            max_entries=settings.DEMO_CACHE_MAX_ENTRIES,
+            single_flight_wait_s=_gemini_single_flight_wait_s(settings),
+        )
+
+    new_query_judge_port = build_query_judge(settings)
+    if settings.DEMO_MODE:
+        new_query_judge_port = CachedQueryJudge(
+            new_query_judge_port,
+            ttl_s=settings.DEMO_CACHE_TTL_S,
+            max_entries=settings.DEMO_CACHE_MAX_ENTRIES,
+            single_flight_wait_s=_gemini_single_flight_wait_s(settings),
+        )
+
+    radar_service = app.state.radar_service
+    radar_service.judge_port = new_judge_port
+    radar_service.embeddings_port = new_embeddings_port
+    radar_service.github_port = new_github_port
+
+    scope_service = app.state.scope_service
+    scope_service.judge_port = new_scope_judge_port
+    scope_service.embeddings_port = new_embeddings_port
+    scope_service.subject_port = (
+        new_github_port if isinstance(new_github_port, GitHubAdapter) else None
+    )
+
+    query_service = app.state.query_service
+    query_service.judge_port = new_query_judge_port
+    query_service.embeddings_port = new_embeddings_port
+
+    app.state.tenant_registry.update_shared_ports(
+        judge_port=new_judge_port,
+        embeddings_port=new_embeddings_port,
+        query_judge_port=new_query_judge_port,
+        scope_judge_port=new_scope_judge_port,
+    )
+
+
 def _verify_harness_boot(scope_service: ScopeService) -> None:
     """#242 BLOCKER 1(b) — FAIL-CLOSED açılış kontrolü.
 
@@ -522,6 +647,85 @@ async def lifespan(app: FastAPI):
     # TODO: Kapanışta kaynakları temizle
 
 
+def _frontend_dist_dir() -> Path | None:
+    """`src/frontend/dist` (Vite prod build çıktısı) — `index.html` GERÇEKTEN
+    varsa yol döner, yoksa `None` (henüz build edilmemiş / backend-only
+    kurulum — mount ATLANIR, mevcut API-only davranış AYNEN kalır, regresyon
+    yok). PyInstaller ile PAKETLENMİŞ (frozen) çalışırken bu yol hiç var
+    olmaz (`packaging/launcher.py` frontend'i BAMBAŞKA bir bundle-içi yoldan,
+    `frontend_dist/` adıyla kendisi mount eder) — bu fonksiyon o durumda
+    sessizce `None` döner, iki mekanizma birbirini GÖLGELEMEZ.
+    """
+    candidate = Path(__file__).resolve().parents[2] / "frontend" / "dist"
+    if (candidate / "index.html").is_file():
+        return candidate
+    return None
+
+
+def _html_isteniyor(scope) -> bool:
+    """İstemci GERÇEKTEN HTML istiyor mu (tarayıcı gezinmesi mi)?
+
+    SPA fallback'i KOŞULSUZ yapmak, bulunamayan her yolu 200 + HTML'e çevirir —
+    API istemcisi `response.ok` deyip çağrının BAŞARILI olduğunu sanır. Bu,
+    bu repoda gün boyu avlanan fail-open deseninin ta kendisi: **hata bir
+    başarıya dönüşüyor** (bkz. D-53). `test_error_envelope.py`'nin iki testi
+    tam bunu yakaladı: `/boyle-bir-yol-yok` 404 yerine 200 dönüyordu.
+
+    Ayrım "kim soruyor": tarayıcı gezinmesi `Accept: text/html,...` gönderir,
+    API istemcisi `application/json` ya da `*/*`. Yalnız HTML'i AÇIKÇA
+    isteyene SPA veriyoruz; gerisi dürüst 404 zarfını alıyor.
+    """
+    for ad, deger in scope.get("headers", []):
+        if ad == b"accept":
+            return b"text/html" in deger.lower()
+    return False
+
+
+class _SPAStaticFiles(StaticFiles):
+    """`StaticFiles(html=True)` + GERÇEK SPA fallback.
+
+    Starlette'in kendi `html=True` modu yalnız İKİ şeyi bilir: dizin
+    isteklerinde `index.html`'i ve eşleşmeyen istekte (varsa) `404.html`'i —
+    bilinmeyen bir alt yol (ör. React Router'ın `/ayarlar` sayfası doğrudan
+    yenilendiğinde) için 404 DÖNER, `index.html`'i 200 ile DÖNMEZ (bkz.
+    `starlette.staticfiles.StaticFiles.get_response` kaynağı — client-side
+    router'ın devralması için asıl SPA fallback'i BURASI ekler: 404'ü
+    yutar ve `index.html`'i tekrar dener.
+    """
+
+    async def get_response(self, path: str, scope):  # type: ignore[override]
+        try:
+            return await super().get_response(path, scope)
+        except StarletteHTTPException as exc:
+            if exc.status_code == 404 and _html_isteniyor(scope):
+                return await super().get_response("index.html", scope)
+            raise
+
+
+def _mount_frontend_if_built(app: FastAPI, settings: Settings) -> None:
+    """T-307 FAZ 3 — yerel modda `dist/` varsa backend'in KENDİSİ frontend'i
+    servis eder (tek-süreçli masaüstü paketi için ŞART, bkz. `packaging/`).
+
+    SIRALAMA KRİTİK: bu, `create_app()`'in EN SONUNDA (tüm `app.include_
+    router(...)` çağrılarından SONRA) çağrılmalı — Starlette route'ları
+    EKLENDİĞİ SIRAYLA dener, bu yüzden `/health`, `/board`, `/settings/*`
+    gibi API yolları HER ZAMAN önce eşleşir; yalnız hiçbirine uymayan
+    istekler (SPA sayfaları, statik varlıklar) bu mount'a düşer (kilit:
+    `tests/unit/test_static_serving.py`).
+
+    Hosted'da (`ENSEMBLE_MODE != "local"`) mevcut davranış AYNEN kalır —
+    Vercel frontend'i zaten servis ediyor, backend'in AYRICA bunu yapması
+    ne gerekli ne de istenen (D-23'ün ruhu: hosted davranışı bu FAZ'dan
+    ETKİLENMEMELİ).
+    """
+    if settings.ENSEMBLE_MODE != "local" or not settings.ENSEMBLE_SERVE_FRONTEND:
+        return
+    dist_dir = _frontend_dist_dir()
+    if dist_dir is None:
+        return
+    app.mount("/", _SPAStaticFiles(directory=str(dist_dir), html=True), name="frontend_dist")
+
+
 def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or get_settings()
     app = FastAPI(
@@ -530,7 +734,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         description="AI-çağı ekipleri için paylaşılan proje beyni",
         lifespan=lifespan,
     )
-    app.state.settings = settings
+    # T-307 FAZ 2: `base_settings` — çağıranın/env'in verdiği ORİJİNAL Settings,
+    # overlay UYGULANMADAN önce. `PUT /settings/saglayici` her yeni kayıttan
+    # sonra overlay'i BU temelin üzerine yeniden hesaplar (`apply_provider_
+    # overlay(app.state.base_settings)`) — `app.state.settings`'in KENDİSİNİ
+    # temel almaz, aksi halde art arda iki PUT'ta önceki overlay'in üzerine
+    # katmanlanır (yanlış değil ama gereksiz karmaşık) ve testte izlemesi
+    # zorlaşırdı. `app.state.settings` — TÜM router'ların (`SettingsDep`) VE
+    # `lifespan`'in okuduğu EFEKTİF ayar: `~/.ensemble/ayarlar.json`'da
+    # (varsa, yalnız local modda) kaydedilmiş bir sağlayıcı ayarı, süreç
+    # yeniden başlasa bile (ör. `docker compose restart`, kalıcı volume ile)
+    # burada devreye girer.
+    app.state.base_settings = settings
+    app.state.settings = apply_provider_overlay(settings)
 
     # Hosted demo IP/rate cap (#63) — CORS'TAN ÖNCE eklenmeli. Starlette
     # add_middleware'i başa ekler → SON eklenen middleware EN DIŞTA koşar.
@@ -602,5 +818,27 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         403: {"model": ErrorEnvelope, "description": "İzinsiz repo (T-79)"},
     }
     app.include_router(auth.router, responses=_auth_responses)
+
+    # T-307 FAZ 2: yalnız local modda anlamlı uçlar — router'IN KENDİSİ her
+    # zaman bağlanır (KURAL 1'i `_require_local_mode` her istekte uygular,
+    # bkz. settings.py), openapi.json'da hosted/local FARKINA göre KOŞULLU
+    # bağlanmaz (webhook/auth router'larıyla AYNI ilke — drift-check kararlı
+    # kalsın, #45/#150 dersi).
+    _settings_responses = {
+        **ERROR_RESPONSES,
+        404: {"model": ErrorEnvelope, "description": "Yalnız local modda vardır (T-307 KURAL 1)"},
+    }
+    app.include_router(settings_router.router, responses=_settings_responses)
+
+    # T-307 FAZ 3: yerel modda `dist/` (Vite prod build çıktısı) VARSA
+    # backend'in KENDİSİ frontend'i servis eder — tek-süreçli masaüstü paketi
+    # (`packaging/`, #305) için ŞART: iki ayrı süreç/port yerine tek port.
+    # Hosted'da (Vercel frontend'i servis ediyor) mevcut davranış AYNEN kalır
+    # — bu mount SADECE `ENSEMBLE_MODE == "local"` VE `dist/index.html`
+    # GERÇEKTEN varsa devreye girer; API router'ları HER ZAMAN ÖNCE
+    # eklendiği için (Starlette route'ları ekleniş SIRASINA göre dener) bu
+    # mount onları asla GÖLGELEMEZ (bkz. test_static_serving.py sıralama
+    # kilidi).
+    _mount_frontend_if_built(app, settings)
 
     return app

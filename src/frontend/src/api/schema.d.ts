@@ -405,6 +405,65 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/settings/saglayici": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Provider Settings */
+        get: operations["get_provider_settings_settings_saglayici_get"];
+        /** Update Provider Settings */
+        put: operations["update_provider_settings_settings_saglayici_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/settings/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Test Provider */
+        post: operations["test_provider_settings_test_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/settings/mcp": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Mcp Config
+         * @description T-307 FAZ 4 — hazır `.mcp.json` parçacığı, MUTLAK yol ile (kullanıcının
+         *     kendi makinesindeki gerçek repo kökü). Sahte "bağlandı" durumu ÜRETMEZ —
+         *     yalnız yapıştırılacak içeriği + hedef dosya yolunu döner; Claude Code'un
+         *     (ya da başka bir MCP istemcisinin) bunu OKUMASI için yeniden başlatılması
+         *     GEREKİR (bu uç bunu doğrulayamaz/garanti edemez, dürüstçe belirtir).
+         */
+        get: operations["get_mcp_config_settings_mcp_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -645,6 +704,13 @@ export interface components {
             /** Password */
             password: string;
         };
+        /** McpConfigResponse */
+        McpConfigResponse: {
+            /** Config Json */
+            config_json: string;
+            /** Yol */
+            yol: string;
+        };
         /** NearestRef */
         NearestRef: {
             /**
@@ -725,6 +791,56 @@ export interface components {
              * Format: date-time
              */
             latest_ts: string;
+        };
+        /** ProviderKeys */
+        ProviderKeys: {
+            /** Gemini */
+            gemini?: string | null;
+            /** Groq */
+            groq?: string | null;
+        };
+        /** ProviderSettingsResponse */
+        ProviderSettingsResponse: {
+            /**
+             * Mode
+             * @enum {string}
+             */
+            mode: "local" | "hosted";
+            /**
+             * Saglayici
+             * @enum {string}
+             */
+            saglayici: "gemini" | "ollama";
+            anahtarlar: components["schemas"]["ProviderKeys"];
+            /** Ollama Url */
+            ollama_url: string;
+        };
+        /** ProviderTestRequest */
+        ProviderTestRequest: {
+            /**
+             * Saglayici
+             * @enum {string}
+             */
+            saglayici: "gemini" | "groq" | "ollama";
+        };
+        /** ProviderTestResponse */
+        ProviderTestResponse: {
+            /** Calisiyor */
+            calisiyor: boolean;
+            /** Mesaj */
+            mesaj: string;
+        };
+        /** ProviderUpdateRequest */
+        ProviderUpdateRequest: {
+            /**
+             * Saglayici
+             * @enum {string}
+             */
+            saglayici: "gemini" | "groq" | "ollama";
+            /** Anahtar */
+            anahtar?: string | null;
+            /** Ollama Url */
+            ollama_url?: string | null;
         };
         /** QueryResponse */
         QueryResponse: {
@@ -2631,6 +2747,272 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Demo istek limiti aşıldı (yalnız DEMO_MODE) */
+            429: {
+                headers: {
+                    /** @description Saniye — pencere kayınca tekrar denenebilir */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Kalici saglayici hatasi (GitHub/Gemini/Ollama) */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Gecici olarak erisilemez */
+            503: {
+                headers: {
+                    /** @description Saniye — yalniz kendiliginden duzelebilir durumlarda */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    get_provider_settings_settings_saglayici_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProviderSettingsResponse"];
+                };
+            };
+            /** @description Yalnız local modda vardır (T-307 KURAL 1) */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Demo istek limiti aşıldı (yalnız DEMO_MODE) */
+            429: {
+                headers: {
+                    /** @description Saniye — pencere kayınca tekrar denenebilir */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Kalici saglayici hatasi (GitHub/Gemini/Ollama) */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Gecici olarak erisilemez */
+            503: {
+                headers: {
+                    /** @description Saniye — yalniz kendiliginden duzelebilir durumlarda */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    update_provider_settings_settings_saglayici_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProviderUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProviderSettingsResponse"];
+                };
+            };
+            /** @description Yalnız local modda vardır (T-307 KURAL 1) */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Demo istek limiti aşıldı (yalnız DEMO_MODE) */
+            429: {
+                headers: {
+                    /** @description Saniye — pencere kayınca tekrar denenebilir */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Kalici saglayici hatasi (GitHub/Gemini/Ollama) */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Gecici olarak erisilemez */
+            503: {
+                headers: {
+                    /** @description Saniye — yalniz kendiliginden duzelebilir durumlarda */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    test_provider_settings_test_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProviderTestRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProviderTestResponse"];
+                };
+            };
+            /** @description Yalnız local modda vardır (T-307 KURAL 1) */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Demo istek limiti aşıldı (yalnız DEMO_MODE) */
+            429: {
+                headers: {
+                    /** @description Saniye — pencere kayınca tekrar denenebilir */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Kalici saglayici hatasi (GitHub/Gemini/Ollama) */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Gecici olarak erisilemez */
+            503: {
+                headers: {
+                    /** @description Saniye — yalniz kendiliginden duzelebilir durumlarda */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    get_mcp_config_settings_mcp_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["McpConfigResponse"];
+                };
+            };
+            /** @description Yalnız local modda vardır (T-307 KURAL 1) */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
             /** @description Demo istek limiti aşıldı (yalnız DEMO_MODE) */
