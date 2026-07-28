@@ -1,9 +1,20 @@
 import { Link, NavLink, Outlet } from "react-router-dom";
+import pkg from "../../package.json";
 import { config } from "../lib/config";
 import { useSaglik } from "../lib/useSaglik";
+import { useSimdi } from "../lib/useSimdi";
 import { gorunenAd, useAuth, useCikisYap } from "../lib/useAuth";
 import { useRepolar } from "../lib/useRepoSecici";
 import { useMcpConfig, useSaglayiciAyarlari } from "../lib/useSettings";
+import {
+  ActivityIcon,
+  AskIcon,
+  BoardIcon,
+  GraphIcon,
+  RadarIcon,
+  ScopeIcon,
+  SettingsIcon,
+} from "./NavIcons";
 import { ActorChip } from "./ui";
 
 /* Bugünkü sabit demo etiketi (D-23) — anonim ziyaretçi/giriş yapılandırılmamış/
@@ -42,15 +53,16 @@ function AktifRepoGostergesi() {
 }
 
 /* Ters-L kabuk (Linear deseni): sol dar sidebar + üst ince bar.
-   Sıra = demo anlatım sırası; Radar her zaman açılış sayfası. */
+   Sıra = demo anlatım sırası; Radar her zaman açılış sayfası.
+   İkonlar #316/A2 — NavIcons.tsx (inline SVG, yeni bağımlılık yok). */
 
 const NAV = [
-  { to: "/radar", label: "Radar" },
-  { to: "/board", label: "Board" },
-  { to: "/scope", label: "Scope" },
-  { to: "/graph", label: "Graf" },
-  { to: "/activity", label: "Activity" },
-  { to: "/ask", label: "Ask" },
+  { to: "/radar", label: "Radar", Icon: RadarIcon },
+  { to: "/board", label: "Board", Icon: BoardIcon },
+  { to: "/scope", label: "Scope", Icon: ScopeIcon },
+  { to: "/graph", label: "Graf", Icon: GraphIcon },
+  { to: "/activity", label: "Activity", Icon: ActivityIcon },
+  { to: "/ask", label: "Ask", Icon: AskIcon },
 ];
 
 /** Ayarlar (/ayarlar, T-309) nav'da YALNIZ backend GERÇEKTEN 200 dönerse
@@ -109,17 +121,87 @@ function AuthGostergesi() {
   );
 }
 
+/** Topbar'daki canlılık nabzı (#316/A4) — eskiden burada `/health`'i
+    ANIMSATAN ama hiçbir gerçek veriye bağlı olmayan sabit bir gri nokta
+    vardı ("#20 canlandıracak" yorumu kalmıştı; #20 uzun zaman önce bitti,
+    nokta hiç bağlanmadı). Artık AYNI `/health` sorgusunun (react-query
+    cache'i topbar'daki mod rozetiyle PAYLAŞILIR, ikinci istek atılmaz)
+    `dataUpdatedAt`'ından, gerçek "son başarılı yanıttan bu yana geçen süre"
+    gösterir — sahte-canlılık yasak (D-34): hiç başarılı yanıt gelmediyse
+    "CANLI" YAZILMAZ, dürüst bir ara/hata durumu basılır. */
+function CanlilikNabzi() {
+  const { error, dataUpdatedAt } = useSaglik();
+  const simdi = useSimdi();
+
+  if (dataUpdatedAt === 0) {
+    const baglantiYok = error != null;
+    return (
+      <span
+        className="flex items-center gap-1.5 text-xs text-muted-foreground"
+        title={baglantiYok ? "Backend'e ulaşılamıyor" : "İlk /health yanıtı bekleniyor"}
+      >
+        <span
+          aria-hidden
+          className={`size-2 rounded-full ${baglantiYok ? "bg-severity-high" : "bg-status-backlog"}`}
+        />
+        {baglantiYok ? "Bağlantı yok" : "Bağlanıyor…"}
+      </span>
+    );
+  }
+
+  const gecenSn = Math.max(0, Math.round((simdi - dataUpdatedAt) / 1000));
+  return (
+    <span
+      className="flex items-center gap-1.5 text-xs text-muted-foreground"
+      title="Son başarılı /health yanıtından bu yana geçen süre"
+    >
+      <span aria-hidden className="size-2 animate-pulse rounded-full bg-status-done" />
+      <span className="font-medium text-status-done">CANLI</span>
+      <span className="tabular-nums">· {gecenSn} sn önce</span>
+    </span>
+  );
+}
+
+/** Kesişim logosu (#316/A1) — iki iç içe geçmiş halka ("ensemble/birliktelik"
+    imgesi), eskiden turuncu dolu tek bir nokta vardı. Inline SVG, yeni
+    bağımlılık yok (bu satırın hemen üstündeki yorum "Pencil'dan gelecek"
+    diyordu, D-34 — artık geldi). */
+function EnsembleLogo() {
+  return (
+    <svg
+      width="20"
+      height="20"
+      viewBox="0 0 20 20"
+      fill="none"
+      aria-hidden
+      data-testid="ensemble-logo"
+      className="shrink-0"
+    >
+      <circle cx="7.2" cy="10" r="6" stroke="currentColor" strokeWidth="1.6" className="text-primary" />
+      <circle
+        cx="12.8"
+        cy="10"
+        r="6"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        className="text-foreground"
+      />
+    </svg>
+  );
+}
+
 export default function AppLayout() {
   const ayarlarGorunur = useAyarlarGorunurMu();
   const saglik = useSaglik();
-  const nav = ayarlarGorunur ? [...NAV, { to: "/ayarlar", label: "Ayarlar" }] : NAV;
+  const nav = ayarlarGorunur
+    ? [...NAV, { to: "/ayarlar", label: "Ayarlar", Icon: SettingsIcon }]
+    : NAV;
 
   return (
     <div className="flex h-screen">
       <aside className="flex w-44 flex-col border-r border-border">
         <div className="flex items-center gap-2 px-4 py-4">
-          {/* Kesişim logosu placeholder'ı — Pencil'dan gelecek (D-34) */}
-          <span className="inline-block size-3 rounded-full bg-primary" aria-hidden />
+          <EnsembleLogo />
           <span className="text-sm font-semibold tracking-tight">Ensemble</span>
         </div>
         <nav className="flex-1 space-y-0.5 px-2">
@@ -129,17 +211,24 @@ export default function AppLayout() {
               to={n.to}
               end
               className={({ isActive }) =>
-                `block rounded px-2 py-1.5 text-sm ${
+                `flex items-center gap-2 rounded px-2 py-1.5 text-sm ${
                   isActive
                     ? "bg-muted font-medium"
                     : "text-muted-foreground hover:bg-muted/50"
                 }`
               }
             >
+              <n.Icon className="size-4 shrink-0" />
               {n.label}
             </NavLink>
           ))}
         </nav>
+        {/* Künye (#316/A3): local/hosted CANLI /health'ten (topbar rozetiyle
+            AYNI sorgu, react-query cache paylaşır — ikinci istek atılmaz);
+            sürüm gerçek kaynaktan (`package.json`, uydurma "v0.1" DEĞİL). */}
+        <div className="border-t border-border px-4 py-3 text-[11px] text-muted-foreground">
+          {saglik.data?.mode ?? config.mode} · v{pkg.version} · source-available
+        </div>
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
@@ -165,15 +254,16 @@ export default function AppLayout() {
             >
               {saglik.data?.mode ?? config.mode}
             </span>
-            {/* health noktası — #20 canlandıracak (GET /health) */}
-            <span
-              className="size-2 rounded-full bg-status-backlog"
-              title="Backend bağlantısı bekleniyor (#20)"
-            />
+            <CanlilikNabzi />
             <AuthGostergesi />
           </div>
         </header>
-        <main className="min-w-0 flex-1 overflow-y-auto p-6">
+        {/* overflow-x-hidden (#316/H3): sayfa gövdesi hiçbir zaman yatay
+            KAYMAMALI — geniş içerik (örn. 26 modüllük ısı matrisi) KENDİ
+            `overflow-x-auto` kabında kayar (GraphPage/BoardPage/IsiMatrisi
+            zaten böyle), burası yalnız savunma: bir sayfa yanlışlıkla
+            taşırırsa main'in KENDİSİ yatay kaymasın, tek sorumlu iç kap kalsın. */}
+        <main className="min-w-0 flex-1 overflow-x-hidden overflow-y-auto p-6">
           <Outlet />
         </main>
       </div>
