@@ -22,6 +22,7 @@ from pydantic import ValidationError
 from ensemble.api.auth_session import SESSION_COOKIE_NAME, STATE_COOKIE_NAME, sign_session, verify_session
 from ensemble.app import create_app
 from ensemble.config import Settings
+from ensemble.store.models import Base
 
 _AUTH_SETTINGS = {
     "GITHUB_OAUTH_CLIENT_ID": "client-123",
@@ -127,20 +128,33 @@ def test_callback_state_uyusmazliginda_400():
     assert resp.status_code == 400
 
 
-def test_callback_mutlu_yol_oturum_cerezi_kurulur_ve_yonlendirir(monkeypatch):
+def test_callback_mutlu_yol_oturum_cerezi_kurulur_ve_yonlendirir(monkeypatch, tmp_path):
+    """T-79: callback artık (`identities` üzerinden get-or-create) `users`'a
+    yazıyor — bu yüzden bu TEK test (dosyadaki diğerlerinin aksine) kendi
+    `tmp_path` SQLite'ını kurar (`test_auth_email.py` ile AYNI desen);
+    varsayılan `_client()` gerçek repo kökü `ensemble.db`'sine düşer ve onu
+    override etmemek gerçek geliştirici veritabanını kirletirdi."""
     monkeypatch.setattr(
         "ensemble.api.routers.auth.exchange_code_for_token",
         lambda settings, *, code, redirect_uri: "gho_faketoken",
     )
     monkeypatch.setattr(
         "ensemble.api.routers.auth.fetch_github_user",
-        lambda access_token, **_kwargs: ("esma6", "https://avatars.example/esma6.png"),
+        lambda access_token, **_kwargs: ("esma6", "https://avatars.example/esma6.png", "999111"),
     )
     # Mutlak URL - production'daki gercek deger (#258): goreli "/radar"
     # artik Settings acilista reddediyor (bkz. test_config.py).
-    with _client(
-        **_AUTH_SETTINGS, AUTH_POST_LOGIN_URL="https://app.example.com/radar"
-    ) as client:
+    db_path = tmp_path / "callback.db"
+    settings = Settings(
+        _env_file=None,
+        DATABASE_URL=f"sqlite:///{db_path}",
+        **{**_AUTH_SETTINGS, "AUTH_POST_LOGIN_URL": "https://app.example.com/radar"},
+    )
+    app = create_app(settings)
+    with TestClient(app, base_url="https://testserver") as client:
+        engine = app.state.session_factory.kw["bind"]
+        Base.metadata.create_all(engine)
+
         client.get("/auth/login", follow_redirects=False)
         state = client.cookies.get(STATE_COOKIE_NAME)
 
@@ -151,9 +165,32 @@ def test_callback_mutlu_yol_oturum_cerezi_kurulur_ve_yonlendirir(monkeypatch):
         session_cookie = client.cookies.get(SESSION_COOKIE_NAME)
         assert session_cookie is not None
         payload = verify_session("session-secret-xyz", session_cookie)
-        assert payload == {"handle": "esma6", "avatar_url": "https://avatars.example/esma6.png"}
+        assert payload["handle"] == "esma6"
+        assert payload["avatar_url"] == "https://avatars.example/esma6.png"
+        # T-79: get-or-create bir `users.id` açtı — session artık `sub` da taşır.
+        assert payload["sub"]
         # state çerezi tek kullanımlık — geri gelen yanıtta temizlenmiş olmalı.
         assert client.cookies.get(STATE_COOKIE_NAME) is None
+
+        with app.state.session_factory() as session:
+            from ensemble.store.models import IdentityRow, UserRow
+
+            user = session.query(UserRow).filter_by(github_handle="esma6").one()
+            assert user.id == payload["sub"]
+            identity = session.query(IdentityRow).filter_by(provider_user_id="999111").one()
+            assert identity.user_id == user.id
+
+        # İkinci giriş AYNI GitHub kimliği için YENİ bir `users` satırı AÇMAZ.
+        resp2 = client.get("/auth/login", follow_redirects=False)
+        state2 = client.cookies.get(STATE_COOKIE_NAME)
+        resp2 = client.get(f"/auth/callback?code=abc2&state={state2}", follow_redirects=False)
+        assert resp2.status_code == 302
+        payload2 = verify_session("session-secret-xyz", client.cookies.get(SESSION_COOKIE_NAME))
+        assert payload2["sub"] == payload["sub"]
+        with app.state.session_factory() as session:
+            from ensemble.store.models import UserRow
+
+            assert session.query(UserRow).filter_by(github_handle="esma6").count() == 1
 
 
 def test_callback_goreli_yonlendirme_ayari_sunucu_ayaga_kalkmadan_reddedilir():

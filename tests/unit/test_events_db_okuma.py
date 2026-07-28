@@ -6,8 +6,10 @@ from sqlalchemy.orm import sessionmaker
 
 from ensemble.engine.events import EventService
 from ensemble.models import NormalizedEvent
-from ensemble.store.models import Base, EventRow
+from ensemble.store.models import DEFAULT_REPO_FULL_NAME, Base, EventRow
 from ensemble_shared.harness import FileHarnessPort
+
+_REPO = DEFAULT_REPO_FULL_NAME
 
 
 class _TekTuketimlikGitHub:
@@ -50,7 +52,7 @@ def _kurulum():
     olaylar = [_ev(3, "esma"), _ev(2, "fatih"), _ev(1, "enes")] # 3: eski, 1: yeni (artan sırada eklensin ki max_ts test edilebilsin)
     with SF() as s:
         for e in olaylar:
-            s.add(EventRow(id=e.id, type=e.type, actor=e.actor, branch=e.branch,
+            s.add(EventRow(id=e.id, repo_full_name=_REPO, type=e.type, actor=e.actor, branch=e.branch,
                            files=e.files, ts=e.ts.replace(tzinfo=None), ref=e.ref))
         s.commit()
     return SF, olaylar
@@ -99,7 +101,7 @@ def test_etag_tum_db_uzerinden_hesaplanir():
     # 2. DB'ye eski bir olay ekleyelim (since'den daha eski)
     with SF() as s:
         yeni = _ev(10, "gec_gelen") # 10 dakika eski
-        s.add(EventRow(id=yeni.id, type=yeni.type, actor=yeni.actor, branch=yeni.branch,
+        s.add(EventRow(id=yeni.id, repo_full_name=_REPO, type=yeni.type, actor=yeni.actor, branch=yeni.branch,
                        files=yeni.files, ts=yeni.ts.replace(tzinfo=None), ref=yeni.ref))
         s.commit()
         

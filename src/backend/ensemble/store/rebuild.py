@@ -32,7 +32,13 @@ from typing import Iterable
 from sqlalchemy.orm import Session
 
 from ensemble.ports import EmbeddingsPort, GitHubPort, VectorIndexPort
-from ensemble.store.models import EventRow, PresenceRow, TaskProjectionRow, TaskStatusEventRow
+from ensemble.store.models import (
+    DEFAULT_REPO_FULL_NAME,
+    EventRow,
+    PresenceRow,
+    TaskProjectionRow,
+    TaskStatusEventRow,
+)
 from ensemble_shared.harness import HarnessPort
 
 
@@ -53,14 +59,18 @@ def append_status_events(session: Session, events: Iterable[TaskStatusEventRow])
     Args:
         session: aktif SQLAlchemy oturumu (caller commit eder).
         events: eklenecek TaskStatusEventRow nesneleri (henüz session'a
-            eklenmemiş / flush edilmemiş olabilir).
+            eklenmemiş / flush edilmemiş olabilir) — HER birinin
+            `repo_full_name`'i ÇAĞIRAN tarafından ZATEN doldurulmuş olmalı
+            (T-79: PK'nin parçası, bkz. store/models.py).
 
     Returns:
         Gerçekten eklenen (yeni) satır sayısı.
     """
     inserted = 0
     for event in events:
-        existing = session.get(TaskStatusEventRow, (event.source_event_id, event.task_id))
+        existing = session.get(
+            TaskStatusEventRow, (event.source_event_id, event.task_id, event.repo_full_name)
+        )
         if existing is not None:
             continue
         session.add(event)
@@ -112,9 +122,20 @@ def rebuild_projection(
     backfill_limit: int = 50,
     vector_index: VectorIndexPort | None = None,
     embeddings: EmbeddingsPort | None = None,
+    *,
+    repo_full_name: str = DEFAULT_REPO_FULL_NAME,
 ) -> dict[str, int]:
     """Harness (tohum) + GitHub (events/vector) + task_status_events (fold)
     verisiyle projeksiyonu ve vektör indeksini yeniden kur.
+
+    `repo_full_name` (T-79, çok-kiracılık): beş projeksiyon tablosu da artık
+    bu kiracıya göre PK'nin parçası (bkz. store/models.py). Bu fonksiyon
+    yalnızca KENDİ `repo_full_name`'ine ait satırları SİLİP yeniden kurar —
+    global `.delete()` (eski davranış) çok-kiracılı bir DB'de diğer
+    kiracıların projeksiyonunu da silerdi (izolasyon ihlali). Varsayılan
+    (`DEFAULT_REPO_FULL_NAME`) tek-kiracılı/test çağrılarını (repo_full_name
+    hiç verilmezse) geriye dönük ÇALIŞIR tutar — üretim DI'sı (tenancy.py)
+    HER ZAMAN açıkça geçer.
 
     Sıra ÖNEMLİ ve SABİTTİR:
       a) tasks/presence — `.harness` tohumundan kurulur (silinip yeniden yazılır).
@@ -164,25 +185,28 @@ def rebuild_projection(
 
     try:
         # --- a) tasks: tohumdan kur ---
-        session.query(TaskProjectionRow).delete()
+        # T-79: yalnız BU kiracının satırları silinir/kurulur — global
+        # `.delete()` (eski davranış) çok-kiracılı bir DB'de diğer
+        # kiracıların projeksiyonunu da silerdi (izolasyon ihlali).
+        session.query(TaskProjectionRow).filter_by(repo_full_name=repo_full_name).delete()
 
         tasks = harness.read_tasks()
         task_rows: dict[str, TaskProjectionRow] = {}
         for task_data in tasks:
-            row = TaskProjectionRow.from_harness(task_data)
+            row = TaskProjectionRow.from_harness(task_data, repo_full_name=repo_full_name)
             task_rows[row.task_id] = row
         session.add_all(task_rows.values())
         session.flush()
 
         # --- presence (active/) ---
-        session.query(PresenceRow).delete()
+        session.query(PresenceRow).filter_by(repo_full_name=repo_full_name).delete()
 
         actives = harness.read_active()
-        presence_rows = [PresenceRow.from_harness(a) for a in actives]
+        presence_rows = [PresenceRow.from_harness(a, repo_full_name=repo_full_name) for a in actives]
         session.add_all(presence_rows)
 
         # --- b) events + vector index (GitHub backfill, #218) ---
-        session.query(EventRow).delete()
+        session.query(EventRow).filter_by(repo_full_name=repo_full_name).delete()
 
         event_rows: list[EventRow] = []
         if github is not None:
@@ -190,7 +214,7 @@ def rebuild_projection(
                 raise ValueError("github port requires both vector_index and embeddings for rebuild")
 
             events = github.fetch_backfill_events(limit_per_type=backfill_limit)
-            event_rows = [EventRow.from_domain(e) for e in events]
+            event_rows = [EventRow.from_domain(e, repo_full_name=repo_full_name) for e in events]
             session.add_all(event_rows)
 
             if events:
@@ -223,9 +247,12 @@ def rebuild_projection(
 
         # --- c) transitions: kalıcı günlüğü (ts, source_event_id) sırasıyla
         # katla (fold, D-55). Tohum (task_rows) (a)'da kurulduğu için burada
-        # her task_row.seed_status doludur; sıra bu yüzden ÖNEMLİ.
+        # her task_row.seed_status doludur; sıra bu yüzden ÖNEMLİ. T-79:
+        # yalnız BU kiracının geçişleri katlanır — filtresiz sorgu diğer
+        # kiracıların task_id'lerini (örn. "T-1" her repoda var olabilir)
+        # bu kiracının fold'una karıştırırdı.
         by_task: dict[str, list[TaskStatusEventRow]] = {}
-        for event_row in session.query(TaskStatusEventRow).all():
+        for event_row in session.query(TaskStatusEventRow).filter_by(repo_full_name=repo_full_name).all():
             by_task.setdefault(event_row.task_id, []).append(event_row)
 
         transitions_applied = 0
@@ -290,13 +317,25 @@ if __name__ == "__main__":
             "istiyorsan ENSEMBLE_ALLOW_FAKE_SEED=1 ver."
         )
 
+    # T-79: bu CLI script bilerek TEK repoyu (bugünkü demo/tek-kiracılı kurulum)
+    # yeniden kurar — settings'ten türetilen repo_full_name olmadan
+    # DEFAULT_REPO_FULL_NAME'e düşmek yanlış (boş) bir kiracıyı seed ederdi.
+    repo_full_name = settings.demo_repo_full_name
+    if not repo_full_name:
+        raise SystemExit(
+            "rebuild reddedildi: GITHUB_REPO_OWNER/GITHUB_REPO_NAME tanımlı değil "
+            "— hangi kiracının yeniden kurulacağı belirsiz (T-79)."
+        )
+
     engine = get_engine(settings)
     session_factory = get_session_factory(engine)
     with session_factory() as session:
         harness = FileHarnessPort()
         embeddings = _build_embeddings_port(settings)
         vector_index = build_vector_index(
-            settings, session_factory=session_factory if settings.ENSEMBLE_MODE == "hosted" else None
+            settings,
+            session_factory=session_factory if settings.ENSEMBLE_MODE == "hosted" else None,
+            repo_full_name=repo_full_name,
         )
 
         print("Rebuilding projection...")
@@ -310,5 +349,6 @@ if __name__ == "__main__":
             backfill_limit=settings.GITHUB_HISTORY_LIMIT,
             vector_index=vector_index,
             embeddings=embeddings,
+            repo_full_name=repo_full_name,
         )
         print(f"Rebuilt: {res}")

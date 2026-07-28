@@ -11,7 +11,7 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy.orm import Session
 
 from ensemble.models import GraphEdge, GraphNode, NormalizedEvent, TouchGraph
-from ensemble.store.models import EventRow
+from ensemble.store.models import DEFAULT_REPO_FULL_NAME, EventRow
 from ensemble_shared.harness import FileHarnessPort, HarnessPort
 
 DEFAULT_WINDOW_DAYS = 14
@@ -97,16 +97,21 @@ class GraphService:
         session_factory: Callable[[], Session],
         harness_port: HarnessPort | None = None,
         window_days: int = DEFAULT_WINDOW_DAYS,
+        *,
+        repo_full_name: str = DEFAULT_REPO_FULL_NAME,
     ):
         self.session_factory = session_factory
         self.harness_port = harness_port or FileHarnessPort()
         self.window_days = window_days
+        self.repo_full_name = repo_full_name
 
     def get_graph(self, window_days: int | None = None) -> TouchGraph:
         window = window_days if window_days is not None else self.window_days
         since = datetime.now(timezone.utc) - timedelta(days=window)
         with self.session_factory() as session:
-            events = [row.to_domain() for row in session.query(EventRow).all()]
+            # T-79: yalnız BU kiracının event'leri graf'a girer.
+            rows = session.query(EventRow).filter_by(repo_full_name=self.repo_full_name).all()
+            events = [row.to_domain() for row in rows]
         active_pairs = {
             (decl.get("handle", ""), _module_of(path))
             for decl in self.harness_port.read_active()

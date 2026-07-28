@@ -5,7 +5,7 @@ from datetime import datetime
 from fastapi import APIRouter, Header, Query, Response
 from pydantic import BaseModel
 
-from ensemble.api.deps import EventServiceDep
+from ensemble.api.deps import TenantEventServiceDep
 from ensemble.models import NormalizedEvent, PresenceEntry
 
 
@@ -32,7 +32,7 @@ router = APIRouter(tags=["events"])
 
 
 @router.get("/presence", response_model=PresenceResponse)
-def get_presence(service: EventServiceDep) -> PresenceResponse:
+def get_presence(service: TenantEventServiceDep) -> PresenceResponse:
     """Aktif çalışan beyanlarını döndürür; bayat kayıtlar read-time'da elenir (#60)."""
     entries, latest_ts = service.get_presence()
     return PresenceResponse(entries=entries, latest_ts=latest_ts)
@@ -40,7 +40,7 @@ def get_presence(service: EventServiceDep) -> PresenceResponse:
 
 @router.get("/events", response_model=EventsResponse)
 def get_events(
-    service: EventServiceDep,
+    service: TenantEventServiceDep,
     response: Response,
     since: datetime | None = Query(
         default=None,

@@ -42,7 +42,9 @@ from ensemble.integrations.ollama.client import RETRY_WAIT_CAP_S as OLLAMA_RETRY
 from ensemble.integrations.query_source import HarnessEventQuerySource
 from ensemble.ports import EmbeddingsPort, GitHubPort, JudgePort, VectorIndexPort
 from ensemble.store.engine import get_engine, get_session_factory
+from ensemble.store.models import DEFAULT_REPO_FULL_NAME
 from ensemble.store.vector_store import LocalVectorIndex, build_vector_index
+from ensemble.tenancy import ServiceTeam, TenantRegistry
 from ensemble_shared.harness import FileHarnessPort, HarnessError
 
 logger = logging.getLogger("ensemble.wiring")
@@ -292,6 +294,15 @@ def _build_embeddings_port(settings: Settings) -> EmbeddingsPort:
     return HashEmbeddings()
 
 
+def _demo_repo_full_name(settings: Settings) -> str:
+    """Demo/tek-kiracılı DI'nin (bugünkü app.state.*_service singleton'ları)
+    hangi `repo_full_name` etiketiyle projeksiyon yazıp okuyacağı (T-79).
+    `GITHUB_REPO_OWNER`/`NAME` yapılandırılmamışsa (yerel dev, App yok)
+    `DEFAULT_REPO_FULL_NAME`'e düşer — bugüne kadar zaten TEK (örtük) kiracı
+    vardı, bu yalnızca o örtük kiracıya bir AD verir; davranış değişmez."""
+    return settings.demo_repo_full_name or DEFAULT_REPO_FULL_NAME
+
+
 def _build_radar_service(
     settings: Settings,
     *,
@@ -323,7 +334,7 @@ def _build_query_service(
         session_factory = get_session_factory(get_engine(settings))
     if vector_index is None:
         if settings.ENSEMBLE_MODE == "local":
-            vector_index = build_vector_index(settings)
+            vector_index = build_vector_index(settings, repo_full_name=_demo_repo_full_name(settings))
         else:
             logger.warning("Hosted vector index henüz bağlı değil — local index kullanılıyor.")
             vector_index = LocalVectorIndex()
@@ -332,6 +343,7 @@ def _build_query_service(
         session_factory=session_factory,
         github_owner=settings.GITHUB_REPO_OWNER,
         github_repo=settings.GITHUB_REPO_NAME,
+        repo_full_name=_demo_repo_full_name(settings),
     )
     query_judge_port = build_query_judge(settings)
     if settings.DEMO_MODE:
@@ -451,17 +463,21 @@ async def lifespan(app: FastAPI):
     #   2) vector_index sonra — #183: kendisi de session_factory'yi alır
     #      (hosted'da pgvector, local'de FAISS).
     #   3) radar_service en son — ikisini birden tüketir.
+    demo_repo_full_name = _demo_repo_full_name(settings)
     app.state.session_factory = get_session_factory(get_engine(settings))
     app.state.vector_index = build_vector_index(
         settings,
         session_factory=app.state.session_factory if settings.ENSEMBLE_MODE == "hosted" else None,
+        repo_full_name=demo_repo_full_name,
     )
     app.state.radar_service = _build_radar_service(
         settings,
         session_factory=app.state.session_factory,
         vector_index=app.state.vector_index,
     )
-    app.state.graph_service = GraphService(app.state.session_factory)
+    app.state.graph_service = GraphService(
+        app.state.session_factory, repo_full_name=demo_repo_full_name
+    )
     app.state.query_service = _build_query_service(
         settings,
         app.state.radar_service,
@@ -470,11 +486,37 @@ async def lifespan(app: FastAPI):
     )
     app.state.scope_service = _build_scope_service(settings, app.state.radar_service)
     _verify_harness_boot(app.state.scope_service)
-    app.state.board_service = BoardService(session_factory=app.state.session_factory)
+    app.state.board_service = BoardService(
+        session_factory=app.state.session_factory, repo_full_name=demo_repo_full_name
+    )
     app.state.event_service = EventService(
         harness_port=FileHarnessPort(),
         github_port=_build_github_port(settings),
         session_factory=app.state.session_factory,
+        repo_full_name=demo_repo_full_name,
+    )
+
+    # #79 (T-79) — çok-kiracılı repo seçimi: demo kiracının takımı YUKARIDA
+    # kurulan singleton'ların KENDİSİDİR (yeniden kurulmaz, D-23 — "bugünkü
+    # public demo aynen çalışmaya devam etmeli"). Gerçek (installation'lı)
+    # kiracılar TenantRegistry tarafından İSTEK-ANINDA (lazy, LRU) kurulur —
+    # bkz. ensemble/tenancy.py + api/deps.py::TenantDep.
+    demo_team = ServiceTeam(
+        radar_service=app.state.radar_service,
+        board_service=app.state.board_service,
+        scope_service=app.state.scope_service,
+        query_service=app.state.query_service,
+        graph_service=app.state.graph_service,
+        event_service=app.state.event_service,
+    )
+    app.state.tenant_registry = TenantRegistry(
+        settings,
+        demo_team=demo_team,
+        session_factory=app.state.session_factory,
+        judge_port=app.state.radar_service.judge_port,
+        embeddings_port=app.state.radar_service.embeddings_port,
+        query_judge_port=app.state.query_service.judge_port,
+        scope_judge_port=app.state.scope_service.judge_port,
     )
     yield
     # TODO: Kapanışta kaynakları temizle
@@ -518,13 +560,21 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     register_exception_handlers(app, settings)
 
     # Router'ları bağla — ERROR_RESPONSES tek kaynaktan yayılır (spec beyanı, #54)
+    # T-79: bu altı router artık TenantDep (api/deps.py) üzerinden kiracı
+    # çözüyor — `?repo=` çağıranın izinli setinin dışındaysa 403 döner
+    # (health.py TenantDep KULLANMAZ, demo/app-genel radar_service'i okur —
+    # bu yüzden 403 yalnız bu listeye eklenir, health'e değil).
+    _tenant_responses = {
+        **ERROR_RESPONSES,
+        403: {"model": ErrorEnvelope, "description": "?repo= izinli sette değil (T-79)"},
+    }
     app.include_router(health.router, responses=ERROR_RESPONSES)
-    app.include_router(radar.router, responses=ERROR_RESPONSES)
-    app.include_router(scope.router, responses=ERROR_RESPONSES)
-    app.include_router(board.router, responses=ERROR_RESPONSES)
-    app.include_router(query.router, responses=ERROR_RESPONSES)
-    app.include_router(graph.router, responses=ERROR_RESPONSES)
-    app.include_router(events.router, responses=ERROR_RESPONSES)
+    app.include_router(radar.router, responses=_tenant_responses)
+    app.include_router(scope.router, responses=_tenant_responses)
+    app.include_router(board.router, responses=_tenant_responses)
+    app.include_router(query.router, responses=_tenant_responses)
+    app.include_router(graph.router, responses=_tenant_responses)
+    app.include_router(events.router, responses=_tenant_responses)
     # #62 hata sözleşmesi: framework HTTPException'ları da Ek D zarfını taşır
     # (errors.py::http_exception) ama bunu ERROR_RESPONSES'a genel eklemedik -
     # 400/401 diğer (GET) router'lara uymuyor. Webhook'a özel bildiriliyor ki
@@ -537,14 +587,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     }
     app.include_router(webhook.router, responses=_webhook_responses)
 
-    # #79 daraltılmış dilim: /auth/login 503 (yapılandırılmamış), /auth/callback
-    # 400 (state uyuşmazlığı) + 502/503 (GitHub hatası, ERROR_RESPONSES'tan
-    # miras), /auth/me 401 (oturum yok/geçersiz) — webhook'un 400/401 ekleme
+    # #79: /auth/login 503 (yapılandırılmamış), /auth/callback 400 (state
+    # uyuşmazlığı) + 502/503 (GitHub hatası, ERROR_RESPONSES'tan miras),
+    # /auth/me 401 (oturum yok/geçersiz) — webhook'un 400/401 ekleme
     # deseniyle AYNI (Ek D'ye genel eklenmez, GET router'lara uymuyor).
+    # T-79: Installation picker uçları (`PUT /auth/repos`) 403 EKLER —
+    # istemcinin gönderdiği repo izinli setin dışındaysa (bkz. api/deps.py::
+    # get_tenant + auth.py::update_repos, ikisi de AYNI "körlemesine
+    # güvenme" kuralını uygular).
     _auth_responses = {
         **ERROR_RESPONSES,
         400: {"model": ErrorEnvelope, "description": "OAuth state doğrulanamadı"},
         401: {"model": ErrorEnvelope, "description": "Oturum yok/geçersiz"},
+        403: {"model": ErrorEnvelope, "description": "İzinsiz repo (T-79)"},
     }
     app.include_router(auth.router, responses=_auth_responses)
 

@@ -19,6 +19,7 @@ from ensemble.engine.status_rules import StatusTransition
 from ensemble.models import NormalizedEvent
 from ensemble.store.engine import get_engine, get_session_factory
 from ensemble.store.models import (
+    DEFAULT_REPO_FULL_NAME,
     Base,
     EventRow,
     PresenceRow,
@@ -26,6 +27,8 @@ from ensemble.store.models import (
     TaskStatusEventRow,
 )
 from ensemble_shared.harness import HarnessPort
+
+_REPO = DEFAULT_REPO_FULL_NAME
 
 
 def _make_session():
@@ -37,7 +40,12 @@ def _make_session():
 
 
 def _seed_task(session, task_id: str, status: str = "todo", title: str = "Görev") -> TaskProjectionRow:
-    task = TaskProjectionRow(task_id=task_id, title=title, status=status, seed_status=status)
+    # Projector varsayılan repo_full_name'i (DEFAULT_REPO_FULL_NAME) kullanır
+    # (bu testler Projector(session, harness) — repo_full_name'siz — çağırıyor)
+    # — tohum satır AYNI kiracıyla açılmalı, yoksa `session.get` eşleşmez.
+    task = TaskProjectionRow(
+        task_id=task_id, repo_full_name=_REPO, title=title, status=status, seed_status=status
+    )
     session.add(task)
     session.commit()
     return task

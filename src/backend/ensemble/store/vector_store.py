@@ -112,7 +112,26 @@ class FaissVectorIndex:
 
 
 class PgVectorIndex:
-    """PostgreSQL pgvector implementation of VectorIndexPort."""
+    """PostgreSQL pgvector implementation of VectorIndexPort.
+
+    `repo_full_name` (T-79, çok-kiracılık): `vector_index` tablosu artık
+    `(id, repo_full_name)` composite PK taşıyor (bkz. migration
+    a1f7c9d4e2b6) — `id` tek başına global benzersiz DEĞİL (örn.
+    "task:T-51" her repoda ayrı bir görev olabilir). `VectorIndexPort`
+    SÖZLEŞMESİ (upsert/query/clear/replace_all imzaları) BİLEREK
+    DEĞİŞTİRİLMEDİ — engine/query.py (QueryService) bu port'u çağıran TEK
+    yer ve tenant scoping'ten HABERSİZ kalmalı (engine sıfır dokunuş). Bunun
+    yerine her kiracı KENDİ `PgVectorIndex(..., repo_full_name=<repo>)`
+    örneğini alır (bkz. ensemble/tenancy.py) — kiracı bilgisi CONSTRUCTOR'da
+    bağlanır, her çağrıda parametre olarak geçilmez (GitHubAdapter'ın
+    owner/repo'yu constructor'da bağlamasıyla AYNI desen).
+
+    `repo_full_name=None` (varsayılan) geriye dönük uyumluluk için — mevcut
+    tek-kiracılı testler/çağrılar etkilenmez, ama o modda WHERE'siz
+    sorgu/upsert TÜM kiracıların satırlarına dokunur (yalnız yerel/eski
+    testlerde kullanılmalı; üretim DI'sı HER ZAMAN açıkça bir repo_full_name
+    verir).
+    """
 
     def __init__(
         self,
@@ -120,6 +139,7 @@ class PgVectorIndex:
         *,
         dimensions: int,
         table_name: str = "vector_index",
+        repo_full_name: str | None = None,
     ):
         if dimensions <= 0:
             raise ValueError("dimensions must be positive")
@@ -129,22 +149,35 @@ class PgVectorIndex:
         self.session_factory = session_factory
         self.dimensions = dimensions
         self.table_name = table_name
+        self.repo_full_name = repo_full_name
 
     def upsert(self, id: str, vec: list[float], meta: dict) -> None:
         _validate_vector_record(id, vec)
         self._validate_dimensions(vec)
 
-        stmt = text(
-            f"""
-            INSERT INTO {self.table_name} (id, embedding, meta)
-            VALUES (:id, CAST(:embedding AS vector), CAST(:meta AS jsonb))
-            ON CONFLICT (id) DO UPDATE
-            SET embedding = EXCLUDED.embedding,
-                meta = EXCLUDED.meta
-            """
-        )
+        if self.repo_full_name is not None:
+            stmt = text(
+                f"""
+                INSERT INTO {self.table_name} (id, repo_full_name, embedding, meta)
+                VALUES (:id, :repo_full_name, CAST(:embedding AS vector), CAST(:meta AS jsonb))
+                ON CONFLICT (id, repo_full_name) DO UPDATE
+                SET embedding = EXCLUDED.embedding,
+                    meta = EXCLUDED.meta
+                """
+            )
+        else:
+            stmt = text(
+                f"""
+                INSERT INTO {self.table_name} (id, embedding, meta)
+                VALUES (:id, CAST(:embedding AS vector), CAST(:meta AS jsonb))
+                ON CONFLICT (id) DO UPDATE
+                SET embedding = EXCLUDED.embedding,
+                    meta = EXCLUDED.meta
+                """
+            )
         params = {
             "id": id,
+            "repo_full_name": self.repo_full_name,
             "embedding": _to_pgvector_literal(vec),
             "meta": json.dumps(meta, sort_keys=True),
         }
@@ -159,24 +192,31 @@ class PgVectorIndex:
             raise ValueError("vec must not be empty")
         self._validate_dimensions(vec)
 
+        where_clause = "WHERE repo_full_name = :repo_full_name" if self.repo_full_name is not None else ""
         stmt = text(
             f"""
             SELECT id, 1 - (embedding <=> CAST(:embedding AS vector)) AS score
             FROM {self.table_name}
+            {where_clause}
             ORDER BY embedding <=> CAST(:embedding AS vector), id
             LIMIT :k
             """
         )
-        params = {"embedding": _to_pgvector_literal(vec), "k": k}
+        params = {"embedding": _to_pgvector_literal(vec), "k": k, "repo_full_name": self.repo_full_name}
         with self.session_factory() as session:
             rows = session.execute(stmt, params).all()
 
         return [(str(row.id), float(row.score)) for row in rows]
 
     def clear(self) -> None:
-        stmt = text(f"TRUNCATE TABLE {self.table_name}")
+        if self.repo_full_name is not None:
+            stmt = text(f"DELETE FROM {self.table_name} WHERE repo_full_name = :repo_full_name")
+            params = {"repo_full_name": self.repo_full_name}
+        else:
+            stmt = text(f"TRUNCATE TABLE {self.table_name}")
+            params = {}
         with self.session_factory() as session:
-            session.execute(stmt)
+            session.execute(stmt, params)
             session.commit()
 
     def replace_all(
@@ -185,34 +225,54 @@ class PgVectorIndex:
         *,
         session: Session | None = None,
     ) -> None:
-        """vector_index tablosunu TRUNCATE + toplu INSERT ile atomik yeniden kurar.
+        """`vector_index` tablosunu (yalnız BU kiracının satırlarını) TRUNCATE/
+        DELETE + toplu INSERT ile atomik yeniden kurar.
 
-        `session` verilirse (rebuild akışı, #218): TRUNCATE+INSERT çağıranın
-        DB transaction'ına yazılır ve commit ÇAĞIRANA bırakılır → DB satırları
-        (events) ile vektörler tek commit'te birlikte kalır ya da birlikte geri
-        alınır (DB güncellenip index eski kalmaz). `session` verilmezse kendi
-        transaction'ını açıp commit eder (bağımsız kullanım).
+        `repo_full_name` verilmişse TRUNCATE yerine `DELETE ... WHERE
+        repo_full_name=...` kullanılır — TRUNCATE tüm tabloyu (diğer
+        kiracıların vektörlerini de) silerdi (izolasyon ihlali).
+
+        `session` verilirse (rebuild akışı, #218): yazma çağıranın DB
+        transaction'ına katılır ve commit ÇAĞIRANA bırakılır → DB satırları
+        (events) ile vektörler tek commit'te birlikte kalır ya da birlikte
+        geri alınır. `session` verilmezse kendi transaction'ını açıp commit
+        eder (bağımsız kullanım).
         """
-        truncate_stmt = text(f"TRUNCATE {self.table_name}")
-        insert_stmt = text(
-            f"""
-            INSERT INTO {self.table_name} (id, embedding, meta)
-            VALUES (:id, CAST(:embedding AS vector), CAST(:meta AS jsonb))
-            ON CONFLICT (id) DO UPDATE
-            SET embedding = EXCLUDED.embedding,
-                meta = EXCLUDED.meta
-            """
-        )
+        if self.repo_full_name is not None:
+            clear_stmt = text(f"DELETE FROM {self.table_name} WHERE repo_full_name = :repo_full_name")
+            clear_params = {"repo_full_name": self.repo_full_name}
+            insert_stmt = text(
+                f"""
+                INSERT INTO {self.table_name} (id, repo_full_name, embedding, meta)
+                VALUES (:id, :repo_full_name, CAST(:embedding AS vector), CAST(:meta AS jsonb))
+                ON CONFLICT (id, repo_full_name) DO UPDATE
+                SET embedding = EXCLUDED.embedding,
+                    meta = EXCLUDED.meta
+                """
+            )
+        else:
+            clear_stmt = text(f"TRUNCATE {self.table_name}")
+            clear_params = {}
+            insert_stmt = text(
+                f"""
+                INSERT INTO {self.table_name} (id, embedding, meta)
+                VALUES (:id, CAST(:embedding AS vector), CAST(:meta AS jsonb))
+                ON CONFLICT (id) DO UPDATE
+                SET embedding = EXCLUDED.embedding,
+                    meta = EXCLUDED.meta
+                """
+            )
 
         for vid, vec, meta in vectors:
             _validate_vector_record(vid, vec)
             self._validate_dimensions(vec)
 
         def _apply(sess: Session) -> None:
-            sess.execute(truncate_stmt)
+            sess.execute(clear_stmt, clear_params)
             for vid, vec, meta in vectors:
                 params = {
                     "id": vid,
+                    "repo_full_name": self.repo_full_name,
                     "embedding": _to_pgvector_literal(vec),
                     "meta": json.dumps(meta, sort_keys=True),
                 }
@@ -235,13 +295,20 @@ def build_vector_index(
     settings: Settings,
     *,
     session_factory: Callable[[], Session] | None = None,
+    repo_full_name: str | None = None,
 ) -> VectorIndexPort:
+    """`repo_full_name` verilirse (T-79) hosted `PgVectorIndex` o kiracıya
+    SABİTLENİR (bkz. `PgVectorIndex` docstring'i); local `LocalVectorIndex`
+    zaten her kiracı için AYRI bir Python nesnesi olduğundan (bkz.
+    ensemble/tenancy.py) ek bir parametreye ihtiyaç duymaz — bellek-içi
+    izolasyon kendiliğinden sağlanır."""
     if settings.ENSEMBLE_MODE == "hosted":
         if session_factory is None:
             raise ValueError("session_factory is required for hosted vector index")
         return PgVectorIndex(
             session_factory,
             dimensions=settings.GEMINI_EMBEDDING_DIMENSIONS,
+            repo_full_name=repo_full_name,
         )
 
     return LocalVectorIndex()

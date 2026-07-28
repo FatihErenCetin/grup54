@@ -21,7 +21,13 @@ from ensemble.app import create_app
 from ensemble.config import Settings
 from ensemble.integrations.github.normalize import webhook_push_to_events
 from ensemble.store.engine import get_engine
-from ensemble.store.models import Base, EventRow, TaskProjectionRow, TaskStatusEventRow
+from ensemble.store.models import (
+    DEFAULT_REPO_FULL_NAME,
+    Base,
+    EventRow,
+    TaskProjectionRow,
+    TaskStatusEventRow,
+)
 
 _SECRET = "test-webhook-secret"
 
@@ -229,8 +235,19 @@ def test_webhook_push_to_events_bos_commits_bos_liste():
 
 
 def _seed_task(session_factory, task_id: str, status: str = "todo", title: str = "Görev") -> None:
+    # T-79: bu dosyanın `client` fixture'ı GITHUB_REPO_OWNER/NAME vermiyor —
+    # webhook.py bu durumda DEFAULT_REPO_FULL_NAME'e düşer (payload'da da
+    # `repository` yoksa); tohum satır AYNI kiracıyla açılmalı.
     with session_factory() as session:
-        session.add(TaskProjectionRow(task_id=task_id, title=title, status=status, seed_status=status))
+        session.add(
+            TaskProjectionRow(
+                task_id=task_id,
+                repo_full_name=DEFAULT_REPO_FULL_NAME,
+                title=title,
+                status=status,
+                seed_status=status,
+            )
+        )
         session.commit()
 
 

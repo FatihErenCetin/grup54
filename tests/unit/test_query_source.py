@@ -56,7 +56,8 @@ def test_source_harness_ve_eventleri_citation_corpusuna_cevirir(tmp_path):
                     files=["src/backend/ensemble/engine/query.py"],
                     ts=datetime(2026, 7, 21, 12, 0, tzinfo=timezone.utc),
                     ref="abc1234",
-                )
+                ),
+                repo_full_name="FatihErenCetin/grup54",
             )
         )
         session.commit()
@@ -67,6 +68,7 @@ def test_source_harness_ve_eventleri_citation_corpusuna_cevirir(tmp_path):
         repo_root=tmp_path,
         github_owner="FatihErenCetin",
         github_repo="grup54",
+        repo_full_name="FatihErenCetin/grup54",
     )
 
     corpus = source.load_query_corpus()

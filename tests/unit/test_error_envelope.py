@@ -7,7 +7,11 @@ detay sizdirmadigi (hosted) / ozet verdigi (local); Retry-After vatandasligi.
 import pytest
 from fastapi.testclient import TestClient
 
-from ensemble.api.deps import get_query_service, get_radar_service, get_scope_service
+from ensemble.api.deps import (
+    get_tenant_query_service,
+    get_tenant_radar_service,
+    get_tenant_scope_service,
+)
 from ensemble.api.errors import ErrorEnvelope
 from ensemble.app import create_app
 from ensemble.config import Settings
@@ -67,7 +71,7 @@ class _BoomScope:
 
 def _client(exc: Exception, mode: str = "local") -> TestClient:
     app = create_app(Settings(ENSEMBLE_MODE=mode))
-    app.dependency_overrides[get_radar_service] = lambda: _Boom(exc)
+    app.dependency_overrides[get_tenant_radar_service] = lambda: _Boom(exc)
     # raise_server_exceptions=False: 500 yolu cevap olarak gelsin, test patlamasin
     return TestClient(app, raise_server_exceptions=False)
 
@@ -233,7 +237,7 @@ def test_query_hatalari_acik_ama_ic_detaysiz_zarfla_doner(
     retry_after,
 ):
     app = create_app(Settings(_env_file=None))
-    app.dependency_overrides[get_query_service] = lambda: _BoomQuery(exc)
+    app.dependency_overrides[get_tenant_query_service] = lambda: _BoomQuery(exc)
 
     response = TestClient(app).get("/query", params={"q": "scope nedir"})
 
@@ -253,7 +257,7 @@ def test_query_hatalari_acik_ama_ic_detaysiz_zarfla_doner(
 )
 def test_scope_hatalari_acik_ama_ic_detaysiz_zarfla_doner(exc, status, code):
     app = create_app(Settings(_env_file=None))
-    app.dependency_overrides[get_scope_service] = lambda: _BoomScope(exc)
+    app.dependency_overrides[get_tenant_scope_service] = lambda: _BoomScope(exc)
 
     response = TestClient(app).get("/scope/check", params={"ref": "PR-42"})
 

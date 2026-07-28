@@ -3,7 +3,9 @@ from datetime import datetime, timedelta, timezone
 from ensemble.config import Settings
 from ensemble.engine.graph import GraphService
 from ensemble.store.engine import get_engine, get_session_factory
-from ensemble.store.models import Base, EventRow
+from ensemble.store.models import DEFAULT_REPO_FULL_NAME, Base, EventRow
+
+_REPO = DEFAULT_REPO_FULL_NAME
 
 
 def _session_factory():
@@ -26,6 +28,7 @@ def test_get_graph_db_projeksiyonundan_uretir():
         session.add(
             EventRow(
                 id="e1",
+                repo_full_name=_REPO,
                 type="commit",
                 actor="enes",
                 branch="main",
@@ -58,7 +61,7 @@ def test_get_graph_namespace_uyusmazligi_artik_yok():
     with session_factory() as session:
         session.add(
             EventRow(
-                id="e1", type="commit", actor="enes", branch="main",
+                id="e1", repo_full_name=_REPO, type="commit", actor="enes", branch="main",
                 files=["src/backend/models.py"], ts=datetime.now(timezone.utc), ref="abc",
             )
         )
@@ -77,7 +80,7 @@ def test_get_graph_active_beyani_yoksa_false():
     with session_factory() as session:
         session.add(
             EventRow(
-                id="e1", type="commit", actor="enes", branch="main",
+                id="e1", repo_full_name=_REPO, type="commit", actor="enes", branch="main",
                 files=["src/backend/a.py"], ts=datetime.now(timezone.utc), ref="abc",
             )
         )
@@ -97,6 +100,7 @@ def test_get_graph_pencere_disindaki_eventi_disliyor():
         session.add(
             EventRow(
                 id="e-eski",
+                repo_full_name=_REPO,
                 type="commit",
                 actor="enes",
                 branch="main",

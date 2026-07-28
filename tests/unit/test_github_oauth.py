@@ -112,23 +112,30 @@ def test_fetch_github_user_mutlu_yol():
     def handler(request: httpx.Request) -> httpx.Response:
         seen["auth_header"] = request.headers.get("authorization")
         return httpx.Response(
-            200, json={"login": "esma6", "avatar_url": "https://avatars.example/esma6.png"}
+            200,
+            json={
+                "login": "esma6",
+                "avatar_url": "https://avatars.example/esma6.png",
+                "id": 123456,
+            },
         )
 
-    handle, avatar_url = fetch_github_user("gho_abc123", http_client=_client(handler))
+    handle, avatar_url, github_user_id = fetch_github_user("gho_abc123", http_client=_client(handler))
 
     assert handle == "esma6"
     assert avatar_url == "https://avatars.example/esma6.png"
+    assert github_user_id == "123456"
     assert seen["auth_header"] == "Bearer gho_abc123"
 
 
 def test_fetch_github_user_avatar_yoksa_none_doner():
     def handler(_request: httpx.Request) -> httpx.Response:
-        return httpx.Response(200, json={"login": "esma6"})
+        return httpx.Response(200, json={"login": "esma6", "id": 42})
 
-    handle, avatar_url = fetch_github_user("tok", http_client=_client(handler))
+    handle, avatar_url, github_user_id = fetch_github_user("tok", http_client=_client(handler))
     assert handle == "esma6"
     assert avatar_url is None
+    assert github_user_id == "42"
 
 
 def test_fetch_github_user_401_auth_hatasina_donusur():

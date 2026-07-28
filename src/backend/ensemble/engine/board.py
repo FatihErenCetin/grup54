@@ -5,7 +5,7 @@ from typing import Callable, Iterable, Literal
 from sqlalchemy.orm import Session
 
 from ensemble.models import BoardCard
-from ensemble.store.models import TaskProjectionRow
+from ensemble.store.models import DEFAULT_REPO_FULL_NAME, TaskProjectionRow
 
 
 @dataclass(frozen=True)
@@ -39,12 +39,27 @@ def compute_board_provenance(rows: Iterable[object]) -> tuple[datetime | None, L
 
 
 class BoardService:
-    def __init__(self, session_factory: Callable[[], Session]):
+    """`repo_full_name` (T-79, çok-kiracılık): her kiracı KENDİ `BoardService`
+    örneğine sahiptir (bkz. ensemble/tenancy.py) — bu port'un imzası
+    (`get_cards`/`get_board`) DEĞİŞMEDİ, yalnızca constructor'a kiracı
+    bağlanıyor (GitHubAdapter'ın owner/repo'yu constructor'da bağlamasıyla
+    aynı desen)."""
+
+    def __init__(
+        self,
+        session_factory: Callable[[], Session],
+        repo_full_name: str = DEFAULT_REPO_FULL_NAME,
+    ):
         self.session_factory = session_factory
+        self.repo_full_name = repo_full_name
 
     def get_cards(self) -> list[BoardCard]:
         with self.session_factory() as session:
-            rows = session.query(TaskProjectionRow).all()
+            rows = (
+                session.query(TaskProjectionRow)
+                .filter_by(repo_full_name=self.repo_full_name)
+                .all()
+            )
             return [row.to_board_card() for row in rows]
 
     def get_board(self) -> BoardResult:
@@ -54,7 +69,11 @@ class BoardService:
         çağıranlar kırılmaz, kabul kriteri).
         """
         with self.session_factory() as session:
-            rows = session.query(TaskProjectionRow).all()
+            rows = (
+                session.query(TaskProjectionRow)
+                .filter_by(repo_full_name=self.repo_full_name)
+                .all()
+            )
             cards = [row.to_board_card() for row in rows]
             last_transition_at, source = compute_board_provenance(rows)
             return BoardResult(cards=cards, last_transition_at=last_transition_at, source=source)

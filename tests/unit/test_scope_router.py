@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 
 from fastapi.testclient import TestClient
 
-from ensemble.api.deps import get_scope_service
+from ensemble.api.deps import get_tenant_scope_service
 from ensemble.app import create_app
 from ensemble.config import Settings
 from ensemble.models import ScopeCurrent, ScopeVerdict
@@ -41,7 +41,7 @@ class _ScopeService:
 
 def _client() -> TestClient:
     app = create_app(Settings(_env_file=None))
-    app.dependency_overrides[get_scope_service] = _ScopeService
+    app.dependency_overrides[get_tenant_scope_service] = _ScopeService
     return TestClient(app)
 
 

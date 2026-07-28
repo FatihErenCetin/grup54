@@ -14,6 +14,36 @@ from ensemble.integrations.github.errors import GitHubConfigError
 _EXPIRY_BUFFER_S = 60
 
 
+def build_app_jwt(settings: Settings, *, clock: Callable[[], float] = time.time) -> str:
+    """App JWT (RS256) üret — `InstallationTokenCache._fetch_new_token`'ın
+    KULLANDIĞI AYNI mantık, çok-kiracılık (T-79) için tek bir yerde paylaşılır
+    (`InstallationTokenCache` + `integrations/github/app_api.py`'nin
+    ARBİTRER bir installation_id için anlık token üretmesi — bkz. o modül).
+
+    Yalnız `GITHUB_APP_ID` + (`GITHUB_APP_PRIVATE_KEY_PATH` veya
+    `GITHUB_APP_PRIVATE_KEY`) gerektirir — `GITHUB_APP_INSTALLATION_ID`
+    GEREKMEZ (JWT App'in KENDİSİ adına imzalanır, belirli bir kuruluma değil;
+    installation-token'a çevirme AYRI bir adımdır).
+    """
+    if not (
+        settings.GITHUB_APP_ID
+        and (settings.GITHUB_APP_PRIVATE_KEY_PATH or settings.GITHUB_APP_PRIVATE_KEY)
+    ):
+        raise GitHubConfigError(
+            "GITHUB_APP_ID/(GITHUB_APP_PRIVATE_KEY_PATH veya GITHUB_APP_PRIVATE_KEY) eksik"
+        )
+    if settings.GITHUB_APP_PRIVATE_KEY_PATH:
+        pem = Path(settings.GITHUB_APP_PRIVATE_KEY_PATH).read_text()
+    else:
+        pem = settings.GITHUB_APP_PRIVATE_KEY
+    now = int(clock())
+    return jwt.encode(
+        {"iat": now - 60, "exp": now + 540, "iss": settings.GITHUB_APP_ID},
+        pem,
+        algorithm="RS256",
+    )
+
+
 class InstallationTokenCache:
     """App JWT (RS256) -> installation access token.
 
@@ -52,18 +82,9 @@ class InstallationTokenCache:
             return self._token
 
     def _build_app_jwt(self) -> str:
-        # PATH varsa dosyadan (mevcut local akis); yoksa PEM icerigi dogrudan
-        # env'den (#186, hosted - Fly/Render secret'lari dosya degil string).
-        if self._settings.GITHUB_APP_PRIVATE_KEY_PATH:
-            pem = Path(self._settings.GITHUB_APP_PRIVATE_KEY_PATH).read_text()
-        else:
-            pem = self._settings.GITHUB_APP_PRIVATE_KEY
-        now = int(self._clock())
-        return jwt.encode(
-            {"iat": now - 60, "exp": now + 540, "iss": self._settings.GITHUB_APP_ID},
-            pem,
-            algorithm="RS256",
-        )
+        # T-79: mantık artık module-level `build_app_jwt`'te — burada yalnız
+        # delege edilir (davranış BİT-BİT AYNI, tek kaynak).
+        return build_app_jwt(self._settings, clock=self._clock)
 
     def _fetch_new_token(self) -> tuple[str, float]:
         app_jwt = self._build_app_jwt()

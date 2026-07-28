@@ -12,7 +12,7 @@ from sqlalchemy import select
 from ensemble.models import ActorRef, NormalizedEvent, PresenceEntry
 from ensemble.ports import GitHubPort
 from ensemble_shared.harness import HarnessPort
-from ensemble.store.models import EventRow
+from ensemble.store.models import DEFAULT_REPO_FULL_NAME, EventRow
 
 DEFAULT_PRESENCE_TTL_SECONDS = 7200  # 2 saat
 
@@ -40,15 +40,25 @@ def snapshot_boundary_ids(events: list[NormalizedEvent], latest_ts: datetime) ->
 
 
 class EventService:
+    """`repo_full_name` (T-79, çok-kiracılık): her kiracı KENDİ `EventService`
+    örneğine sahiptir (bkz. ensemble/tenancy.py) — `get_presence`'ın
+    `harness_port` üzerinden okuduğu `.harness/active/` demo-repo'ya ÖZGÜDÜR
+    (diğer kiracılar için dosya yok); non-demo kiracılara TenantRegistry
+    dürüst-boş bir harness portu (`NullHarnessPort`) verir, bu sınıf
+    KENDİSİ ayrım yapmaz (port'u sorgulamaz)."""
+
     def __init__(
         self,
         harness_port: HarnessPort,
         github_port: GitHubPort,
         session_factory: Callable[[], Session] | None = None,
+        *,
+        repo_full_name: str = DEFAULT_REPO_FULL_NAME,
     ):
         self.harness_port = harness_port
         self.github_port = github_port
         self.session_factory = session_factory
+        self.repo_full_name = repo_full_name
 
     def get_presence(
         self,
@@ -144,13 +154,26 @@ class EventService:
             etag = f'"{hashlib.sha1(payload.encode("utf-8")).hexdigest()}"'
         else:
             with self.session_factory() as session:
+                # T-79: her sorgu bu kiracıya (repo_full_name) filtrelenir —
+                # filtresiz sorgu diğer kiracıların event'lerini de sızdırırdı.
                 # Semih blocker fix: ETag tum DB snapshot'indan hesaplanmali
-                all_ids = session.scalars(select(EventRow.id).order_by(EventRow.id)).all()
+                all_ids = session.scalars(
+                    select(EventRow.id)
+                    .where(EventRow.repo_full_name == self.repo_full_name)
+                    .order_by(EventRow.id)
+                ).all()
                 payload = "|".join(all_ids)
                 etag = f'"{hashlib.sha1(payload.encode("utf-8")).hexdigest()}"'
 
                 naive_lower_bound = _to_naive_utc(lower_bound)
-                stmt = select(EventRow).where(EventRow.ts >= naive_lower_bound).order_by(EventRow.ts.asc(), EventRow.id.asc())
+                stmt = (
+                    select(EventRow)
+                    .where(
+                        EventRow.repo_full_name == self.repo_full_name,
+                        EventRow.ts >= naive_lower_bound,
+                    )
+                    .order_by(EventRow.ts.asc(), EventRow.id.asc())
+                )
                 rows = session.scalars(stmt).all()
                 ordered = [row.to_domain() for row in rows]
                 latest_ts = _to_naive_utc(ordered[-1].ts) if ordered else _to_naive_utc(lower_bound)

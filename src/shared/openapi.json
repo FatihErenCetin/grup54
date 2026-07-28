@@ -136,6 +136,16 @@
                 }
               }
             }
+          },
+          "403": {
+            "description": "?repo= izinli sette değil (T-79)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
           }
         }
       }
@@ -207,6 +217,16 @@
                 }
               }
             },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "?repo= izinli sette değil (T-79)",
             "content": {
               "application/json": {
                 "schema": {
@@ -301,6 +321,16 @@
                 }
               }
             }
+          },
+          "403": {
+            "description": "?repo= izinli sette değil (T-79)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
           }
         }
       }
@@ -368,6 +398,16 @@
                 }
               }
             }
+          },
+          "403": {
+            "description": "?repo= izinli sette değil (T-79)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
           }
         }
       }
@@ -428,6 +468,16 @@
                 }
               }
             },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "?repo= izinli sette değil (T-79)",
             "content": {
               "application/json": {
                 "schema": {
@@ -508,6 +558,16 @@
                 }
               }
             },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "?repo= izinli sette değil (T-79)",
             "content": {
               "application/json": {
                 "schema": {
@@ -615,6 +675,16 @@
               }
             }
           },
+          "403": {
+            "description": "?repo= izinli sette değil (T-79)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -685,6 +755,16 @@
                 }
               }
             },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "?repo= izinli sette değil (T-79)",
             "content": {
               "application/json": {
                 "schema": {
@@ -790,6 +870,16 @@
                 }
               }
             },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "?repo= izinli sette değil (T-79)",
             "content": {
               "application/json": {
                 "schema": {
@@ -1027,6 +1117,16 @@
                 }
               }
             }
+          },
+          "403": {
+            "description": "İzinsiz repo (T-79)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
           }
         }
       }
@@ -1112,6 +1212,16 @@
                 }
               }
             }
+          },
+          "403": {
+            "description": "İzinsiz repo (T-79)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
           }
         }
       },
@@ -1185,6 +1295,16 @@
           },
           "401": {
             "description": "E-posta ya da parola hatalı"
+          },
+          "403": {
+            "description": "İzinsiz repo (T-79)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
           },
           "422": {
             "description": "Validation Error",
@@ -1347,6 +1467,16 @@
               }
             }
           },
+          "403": {
+            "description": "İzinsiz repo (T-79)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -1431,6 +1561,16 @@
           },
           "401": {
             "description": "Oturum yok/geçersiz",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "İzinsiz repo (T-79)",
             "content": {
               "application/json": {
                 "schema": {
@@ -1524,6 +1664,16 @@
           },
           "401": {
             "description": "Oturum yok/geçersiz"
+          },
+          "403": {
+            "description": "İzinsiz repo (T-79)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
           }
         }
       }
@@ -1601,6 +1751,508 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "İzinsiz repo (T-79)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/install-url": {
+      "get": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Install Url",
+        "description": "GitHub App kurulum sayfasının adresi — kullanıcı buraya yönlendirilir.\n\nOturum ZORUNLU (`_require_session_user_id`): GitHub kuruluş sonrası\n`/auth/install-callback`'e dönerken bu oturumu kullanıp `installation_id`'yi\nHANGİ kullanıcıya bağlayacağını bilecek — oturumsuz başlatılan bir kurulum\nkimseye bağlanamaz (yetim installation_id, sessizce kaybolur).",
+        "operationId": "install_url_auth_install_url_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InstallUrlResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Kalici saglayici hatasi (GitHub/Gemini/Ollama)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Yapılandırılmamış"
+          },
+          "429": {
+            "description": "Demo istek limiti aşıldı (yalnız DEMO_MODE)",
+            "headers": {
+              "Retry-After": {
+                "description": "Saniye — pencere kayınca tekrar denenebilir",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "OAuth state doğrulanamadı",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Oturum yok/geçersiz"
+          },
+          "403": {
+            "description": "İzinsiz repo (T-79)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/install-callback": {
+      "get": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Install Callback",
+        "description": "GitHub'ın App kurulumu SONRASI yönlendirdiği uç (App ayarlarında\n\"Setup URL\" olarak bu adres kayıtlı olmalı — operasyonel bir GitHub App\nyapılandırma adımı, bu koddan YÖNETİLEMEZ; bkz. PR gövdesi \"bilinen\nsınırlar\").\n\nCSRF notu (bilinçli, dar kapsamlı kabul): bu uç bir TOKEN DEĞİŞTİRMEZ\n(OAuth `/callback`'in aksine `code`→`access_token` yok) — yalnızca\nGitHub'ın verdiği `installation_id`'yi oturumdaki kullanıcıya bağlar. En\nkötü senaryo bir saldırganın KENDİ (zaten kendisine ait) installation_id'sini\nkurbanın oturumuna bağlatması — kurbanın verisi SIZMAZ, yalnızca saldırganın\nreposu kurbanın \"izlenebilir\" setine girer (kurban `PUT /auth/repos`'a\nkadar hiçbir şey görmez). Bu düşük-önem sınır PR gövdesinde açıkça notlanır.",
+        "operationId": "install_callback_auth_install_callback_get",
+        "parameters": [
+          {
+            "name": "installation_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Installation Id"
+            }
+          },
+          {
+            "name": "setup_action",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Setup Action"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "502": {
+            "description": "Kalici saglayici hatasi (GitHub/Gemini/Ollama)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Gecici olarak erisilemez",
+            "headers": {
+              "Retry-After": {
+                "description": "Saniye — yalniz kendiliginden duzelebilir durumlarda",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Demo istek limiti aşıldı (yalnız DEMO_MODE)",
+            "headers": {
+              "Retry-After": {
+                "description": "Saniye — pencere kayınca tekrar denenebilir",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "OAuth state doğrulanamadı",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Oturum yok/geçersiz"
+          },
+          "403": {
+            "description": "İzinsiz repo (T-79)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/installations": {
+      "get": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "List Installations",
+        "description": "Kullanıcının App kurulumları + her birinin erişebildiği repolar.\nToken ANLIK üretilir (integrations/github/app_api.py), hiçbir yerde\nsaklanmaz.",
+        "operationId": "list_installations_auth_installations_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InstallationsResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Kalici saglayici hatasi (GitHub/Gemini/Ollama)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Gecici olarak erisilemez",
+            "headers": {
+              "Retry-After": {
+                "description": "Saniye — yalniz kendiliginden duzelebilir durumlarda",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Demo istek limiti aşıldı (yalnız DEMO_MODE)",
+            "headers": {
+              "Retry-After": {
+                "description": "Saniye — pencere kayınca tekrar denenebilir",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "OAuth state doğrulanamadı",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Oturum yok/geçersiz"
+          },
+          "403": {
+            "description": "İzinsiz repo (T-79)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/repos": {
+      "get": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Get Repos",
+        "operationId": "get_repos_auth_repos_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReposResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Kalici saglayici hatasi (GitHub/Gemini/Ollama)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Gecici olarak erisilemez",
+            "headers": {
+              "Retry-After": {
+                "description": "Saniye — yalniz kendiliginden duzelebilir durumlarda",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Demo istek limiti aşıldı (yalnız DEMO_MODE)",
+            "headers": {
+              "Retry-After": {
+                "description": "Saniye — pencere kayınca tekrar denenebilir",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "OAuth state doğrulanamadı",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Oturum yok/geçersiz"
+          },
+          "403": {
+            "description": "İzinsiz repo (T-79)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Update Repos",
+        "description": "Verilen `repos` kullanıcının GERÇEKTEN erişebildiği bir kurulumda\nOLMALI — her biri CANLI GitHub'dan (bu kullanıcının installation'ları\nüzerinden) doğrulanır; değilse 403 (istemcinin gönderdiği repo'ya asla\nkörlemesine güvenilmez — T-79 brifinginin en kritik kuralı).",
+        "operationId": "update_repos_auth_repos_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReposUpdateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReposUpdateResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Kalici saglayici hatasi (GitHub/Gemini/Ollama)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Gecici olarak erisilemez",
+            "headers": {
+              "Retry-After": {
+                "description": "Saniye — yalniz kendiliginden duzelebilir durumlarda",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Demo istek limiti aşıldı (yalnız DEMO_MODE)",
+            "headers": {
+              "Retry-After": {
+                "description": "Saniye — pencere kayınca tekrar denenebilir",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "OAuth state doğrulanamadı",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Oturum yok/geçersiz"
+          },
+          "403": {
+            "description": "İzinsiz repo"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
                 }
               }
             }
@@ -2082,6 +2734,61 @@
         ],
         "title": "HealthResponse"
       },
+      "InstallUrlResponse": {
+        "properties": {
+          "url": {
+            "type": "string",
+            "title": "Url"
+          }
+        },
+        "type": "object",
+        "required": [
+          "url"
+        ],
+        "title": "InstallUrlResponse"
+      },
+      "InstallationSummary": {
+        "properties": {
+          "installation_id": {
+            "type": "string",
+            "title": "Installation Id"
+          },
+          "account_login": {
+            "type": "string",
+            "title": "Account Login"
+          },
+          "repos": {
+            "items": {
+              "$ref": "#/components/schemas/RepoSummary"
+            },
+            "type": "array",
+            "title": "Repos"
+          }
+        },
+        "type": "object",
+        "required": [
+          "installation_id",
+          "account_login",
+          "repos"
+        ],
+        "title": "InstallationSummary"
+      },
+      "InstallationsResponse": {
+        "properties": {
+          "installations": {
+            "items": {
+              "$ref": "#/components/schemas/InstallationSummary"
+            },
+            "type": "array",
+            "title": "Installations"
+          }
+        },
+        "type": "object",
+        "required": [
+          "installations"
+        ],
+        "title": "InstallationsResponse"
+      },
       "LineRange": {
         "properties": {
           "start": {
@@ -2429,6 +3136,119 @@
           "password"
         ],
         "title": "RegisterRequest"
+      },
+      "RepoSummary": {
+        "properties": {
+          "full_name": {
+            "type": "string",
+            "title": "Full Name"
+          },
+          "private": {
+            "type": "boolean",
+            "title": "Private"
+          }
+        },
+        "type": "object",
+        "required": [
+          "full_name",
+          "private"
+        ],
+        "title": "RepoSummary",
+        "description": "T-79 — `GET /auth/installations` uç sözleşmesi (brifing, birebir)."
+      },
+      "ReposResponse": {
+        "properties": {
+          "selected": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Selected"
+          },
+          "active": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Active"
+          },
+          "demo": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Demo"
+          }
+        },
+        "type": "object",
+        "required": [
+          "selected"
+        ],
+        "title": "ReposResponse",
+        "description": "T-79 — `GET /auth/repos` uç sözleşmesi (brifing, birebir)."
+      },
+      "ReposUpdateRequest": {
+        "properties": {
+          "repos": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Repos"
+          },
+          "active": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Active"
+          }
+        },
+        "type": "object",
+        "required": [
+          "repos"
+        ],
+        "title": "ReposUpdateRequest"
+      },
+      "ReposUpdateResponse": {
+        "properties": {
+          "selected": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Selected"
+          },
+          "active": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Active"
+          }
+        },
+        "type": "object",
+        "required": [
+          "selected"
+        ],
+        "title": "ReposUpdateResponse",
+        "description": "T-79 — `PUT /auth/repos` uç sözleşmesi (brifing, birebir — `demo` YOK,\nyalnız `GET /auth/repos`'ta var)."
       },
       "ScopeCurrent": {
         "properties": {

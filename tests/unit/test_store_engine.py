@@ -4,9 +4,11 @@ from unittest.mock import MagicMock
 from ensemble.config import Settings
 from ensemble.ports import EmbeddingsPort, GitHubPort
 from ensemble.store.engine import get_engine, get_session_factory, normalize_database_url
-from ensemble.store.models import Base, PresenceRow, TaskProjectionRow
+from ensemble.store.models import DEFAULT_REPO_FULL_NAME, Base, PresenceRow, TaskProjectionRow
 from ensemble.store.rebuild import rebuild_projection
 from ensemble_shared.harness import HarnessPort
+
+_REPO = DEFAULT_REPO_FULL_NAME
 
 
 def test_normalize_database_url():
@@ -41,7 +43,7 @@ def test_sqlite_engine_creation():
     session_factory = get_session_factory(engine)
     with session_factory() as session:
         # CRUD testi
-        task = TaskProjectionRow(task_id="T-1", title="Test", status="todo")
+        task = TaskProjectionRow(task_id="T-1", repo_full_name=_REPO, title="Test", status="todo")
         session.add(task)
         session.commit()
 
@@ -208,7 +210,7 @@ def test_rebuild_projection_rolls_back_on_error():
     session = session_factory()
 
     # Önceden veri ekle
-    session.add(TaskProjectionRow(task_id="T-old", title="Old"))
+    session.add(TaskProjectionRow(task_id="T-old", repo_full_name=_REPO, title="Old"))
     session.commit()
 
     mock_harness = MagicMock(spec=HarnessPort)
@@ -380,7 +382,17 @@ def test_rebuild_main_entrypoint_blocks_fake_github_port():
     
     session_factory = get_session_factory(engine)
     with session_factory() as session:
-        session.add(EventRow(id="existing", type="test", actor="user", branch="b", ts=datetime.now(timezone.utc), ref="abc"))
+        session.add(
+            EventRow(
+                id="existing",
+                repo_full_name=_REPO,
+                type="test",
+                actor="user",
+                branch="b",
+                ts=datetime.now(timezone.utc),
+                ref="abc",
+            )
+        )
         session.commit()
     
     env = os.environ.copy()
