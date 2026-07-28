@@ -1,0 +1,22 @@
+# src/frontend/Dockerfile'ın build context'i (T-307 FAZ 1, `docker
+# compose up`) — Docker `.gitignore`'a bakmaz, bu yüzden ayrı bir liste
+# gerekir. Amaç: (1) imajı lean tutmak, (2) SIR/host-özel dosyaların
+# konteynere sızmasını engellemek (`.env.local` gerçek bir Vercel OIDC
+# token'ı taşıyor — bkz. kök `.gitignore` `.env*` deseni, AYNI disiplin
+# burada da uygulanır).
+
+node_modules/
+dist/
+
+# --- Sırlar / host-özel dosyalar ---
+.env
+.env.*
+.vercel/
+
+# --- Git / OS / editör ---
+.git/
+.DS_Store
+
+# --- Docker'ın kendisi ---
+Dockerfile
+.dockerignore

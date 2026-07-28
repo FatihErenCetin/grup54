@@ -53,6 +53,18 @@ COPY src/mcp/ src/mcp/
 # tests/unit/test_harness_git.py'de).
 COPY .harness/ .harness/
 
+# T-307 FAZ 1 — yerel tek-komut kurulumu için BOŞ, ÖNCEDEN var olan dizinler:
+# SQLite DB (`data/`) + kullanıcı sağlayıcı ayarları (`.ensemble/`, bkz.
+# store/provider_settings.py). Aşağıdaki RUNTIME aşamasındaki
+# `COPY --from=builder --chown=ensemble:ensemble /app /app` bunları da
+# ensemble kullanıcısına devreder; kök `docker-compose.yml` bunların ÜSTÜNE
+# boş bir named volume mount edince Docker (yalnız İLK mount'ta) bu (zaten
+# doğru sahipli) dizin içeriğini volume'a KOPYALAR — aksi halde taze bir
+# named volume root:root 0755 ile yaratılır ve non-root `ensemble` kullanıcısı
+# SQLite/ayar dosyasını YAZAMAZ (PermissionError, üretimde değil ama yerel
+# `docker compose up`'ta ölçülür).
+RUN mkdir -p data .ensemble
+
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --locked --no-dev
 
@@ -70,9 +82,16 @@ COPY --from=builder --chown=ensemble:ensemble /app /app
 
 # alembic.ini kökte (src/backend/) — migration'lar `make migrate` (cd src/backend
 # && uv run alembic upgrade head) veya release-migrate (#187) için imajda kalır.
+#
+# `HOME=/app`: `store/provider_settings.py` (T-307 FAZ 2) `Path.home() /
+# ".ensemble" / "ayarlar.json"` kullanır — `USER ensemble` (aşağıda) ile
+# Docker'ın `HOME`'u `/etc/passwd`'den otomatik türetip türetmediği runtime'a
+# göre DEĞİŞİR; bunu BURADA açıkça sabitlemek `useradd --home-dir /app`
+# (yukarıda) ile TUTARLI, deterministik bir sonuç garantiler.
 ENV PATH=/app/.venv/bin:$PATH \
     PYTHONUNBUFFERED=1 \
-    PYTHONDONTWRITEBYTECODE=1
+    PYTHONDONTWRITEBYTECODE=1 \
+    HOME=/app
 
 USER ensemble
 

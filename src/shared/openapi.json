@@ -2259,6 +2259,353 @@
           }
         }
       }
+    },
+    "/settings/saglayici": {
+      "get": {
+        "tags": [
+          "settings"
+        ],
+        "summary": "Get Provider Settings",
+        "operationId": "get_provider_settings_settings_saglayici_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProviderSettingsResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Kalici saglayici hatasi (GitHub/Gemini/Ollama)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Gecici olarak erisilemez",
+            "headers": {
+              "Retry-After": {
+                "description": "Saniye — yalniz kendiliginden duzelebilir durumlarda",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Demo istek limiti aşıldı (yalnız DEMO_MODE)",
+            "headers": {
+              "Retry-After": {
+                "description": "Saniye — pencere kayınca tekrar denenebilir",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Yalnız local modda vardır (T-307 KURAL 1)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "settings"
+        ],
+        "summary": "Update Provider Settings",
+        "operationId": "update_provider_settings_settings_saglayici_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProviderUpdateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProviderSettingsResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Kalici saglayici hatasi (GitHub/Gemini/Ollama)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Gecici olarak erisilemez",
+            "headers": {
+              "Retry-After": {
+                "description": "Saniye — yalniz kendiliginden duzelebilir durumlarda",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Demo istek limiti aşıldı (yalnız DEMO_MODE)",
+            "headers": {
+              "Retry-After": {
+                "description": "Saniye — pencere kayınca tekrar denenebilir",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Yalnız local modda vardır (T-307 KURAL 1)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/settings/test": {
+      "post": {
+        "tags": [
+          "settings"
+        ],
+        "summary": "Test Provider",
+        "operationId": "test_provider_settings_test_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProviderTestRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProviderTestResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Kalici saglayici hatasi (GitHub/Gemini/Ollama)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Gecici olarak erisilemez",
+            "headers": {
+              "Retry-After": {
+                "description": "Saniye — yalniz kendiliginden duzelebilir durumlarda",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Demo istek limiti aşıldı (yalnız DEMO_MODE)",
+            "headers": {
+              "Retry-After": {
+                "description": "Saniye — pencere kayınca tekrar denenebilir",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Yalnız local modda vardır (T-307 KURAL 1)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/settings/mcp": {
+      "get": {
+        "tags": [
+          "settings"
+        ],
+        "summary": "Get Mcp Config",
+        "description": "T-307 FAZ 4 — hazır `.mcp.json` parçacığı, MUTLAK yol ile (kullanıcının\nkendi makinesindeki gerçek repo kökü). Sahte \"bağlandı\" durumu ÜRETMEZ —\nyalnız yapıştırılacak içeriği + hedef dosya yolunu döner; Claude Code'un\n(ya da başka bir MCP istemcisinin) bunu OKUMASI için yeniden başlatılması\nGEREKİR (bu uç bunu doğrulayamaz/garanti edemez, dürüstçe belirtir).",
+        "operationId": "get_mcp_config_settings_mcp_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/McpConfigResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Kalici saglayici hatasi (GitHub/Gemini/Ollama)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Gecici olarak erisilemez",
+            "headers": {
+              "Retry-After": {
+                "description": "Saniye — yalniz kendiliginden duzelebilir durumlarda",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Demo istek limiti aşıldı (yalnız DEMO_MODE)",
+            "headers": {
+              "Retry-After": {
+                "description": "Saniye — pencere kayınca tekrar denenebilir",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Yalnız local modda vardır (T-307 KURAL 1)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -2833,6 +3180,24 @@
         ],
         "title": "LoginRequest"
       },
+      "McpConfigResponse": {
+        "properties": {
+          "config_json": {
+            "type": "string",
+            "title": "Config Json"
+          },
+          "yol": {
+            "type": "string",
+            "title": "Yol"
+          }
+        },
+        "type": "object",
+        "required": [
+          "config_json",
+          "yol"
+        ],
+        "title": "McpConfigResponse"
+      },
       "NearestRef": {
         "properties": {
           "type": {
@@ -2995,6 +3360,145 @@
         ],
         "title": "PresenceResponse",
         "description": "GET /presence yanıt modeli."
+      },
+      "ProviderKeys": {
+        "properties": {
+          "gemini": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Gemini"
+          },
+          "groq": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Groq"
+          }
+        },
+        "type": "object",
+        "title": "ProviderKeys"
+      },
+      "ProviderSettingsResponse": {
+        "properties": {
+          "mode": {
+            "type": "string",
+            "enum": [
+              "local",
+              "hosted"
+            ],
+            "title": "Mode"
+          },
+          "saglayici": {
+            "type": "string",
+            "enum": [
+              "gemini",
+              "ollama"
+            ],
+            "title": "Saglayici"
+          },
+          "anahtarlar": {
+            "$ref": "#/components/schemas/ProviderKeys"
+          },
+          "ollama_url": {
+            "type": "string",
+            "title": "Ollama Url"
+          }
+        },
+        "type": "object",
+        "required": [
+          "mode",
+          "saglayici",
+          "anahtarlar",
+          "ollama_url"
+        ],
+        "title": "ProviderSettingsResponse"
+      },
+      "ProviderTestRequest": {
+        "properties": {
+          "saglayici": {
+            "type": "string",
+            "enum": [
+              "gemini",
+              "groq",
+              "ollama"
+            ],
+            "title": "Saglayici"
+          }
+        },
+        "type": "object",
+        "required": [
+          "saglayici"
+        ],
+        "title": "ProviderTestRequest"
+      },
+      "ProviderTestResponse": {
+        "properties": {
+          "calisiyor": {
+            "type": "boolean",
+            "title": "Calisiyor"
+          },
+          "mesaj": {
+            "type": "string",
+            "title": "Mesaj"
+          }
+        },
+        "type": "object",
+        "required": [
+          "calisiyor",
+          "mesaj"
+        ],
+        "title": "ProviderTestResponse"
+      },
+      "ProviderUpdateRequest": {
+        "properties": {
+          "saglayici": {
+            "type": "string",
+            "enum": [
+              "gemini",
+              "groq",
+              "ollama"
+            ],
+            "title": "Saglayici"
+          },
+          "anahtar": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Anahtar"
+          },
+          "ollama_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ollama Url"
+          }
+        },
+        "type": "object",
+        "required": [
+          "saglayici"
+        ],
+        "title": "ProviderUpdateRequest"
       },
       "QueryResponse": {
         "properties": {

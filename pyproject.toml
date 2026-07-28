@@ -26,6 +26,18 @@ line-length = 100
 target-version = "py312"
 
 [tool.pytest.ini_options]
+# Toplama YALNIZ `tests/` altinda yapilir.
+#
+# NEDEN (olculdu, 2026-07-28): `testpaths` tanimsizken pytest repo KOKUNDEN
+# tarar. `make paket-macos` calisinca `packaging/build-macos/dmg-stage/`
+# altinda `Applications -> /Applications` SEMBOLIK BAGI olusuyor (DMG'de
+# surukle-birak hedefi, normal ve gerekli). pytest o bagi TAKIP EDIP gercek
+# `/Applications`'i tariyor -- Xcode.app'in kendi Python test paketi dahil
+# 8000+ dosya. Sonuc: `pytest -q` bitmiyor, "gizemli takilma" gibi gorunuyor.
+#
+# Iki bagimsiz ajan bu tuzaga ayni gece dustu. `.gitignore` BU ISI GORMEZ --
+# pytest gitignore'a bakmaz.
+testpaths = ["tests"]
 markers = [
     "integration: dış servis gerektiren ve varsayılan CI'da skip edilebilen testler",
 ]
