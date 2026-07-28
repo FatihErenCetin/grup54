@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 
 from fastapi.testclient import TestClient
 
-from ensemble.api.deps import get_query_service
+from ensemble.api.deps import get_tenant_query_service
 from ensemble.app import create_app
 from ensemble.config import Settings
 from ensemble.models import Citation, NearestRef, QueryResult, SearchReceipt
@@ -31,7 +31,7 @@ class _QueryService:
 
 def test_query_router_zengin_kontrati_tasir():
     app = create_app(Settings(_env_file=None))
-    app.dependency_overrides[get_query_service] = _QueryService
+    app.dependency_overrides[get_tenant_query_service] = _QueryService
 
     response = TestClient(app).get("/query", params={"q": "Ask nedir?"})
 
@@ -44,7 +44,7 @@ def test_query_router_zengin_kontrati_tasir():
 
 def test_query_router_bos_parametreyi_422_reddeder():
     app = create_app(Settings(_env_file=None))
-    app.dependency_overrides[get_query_service] = _QueryService
+    app.dependency_overrides[get_tenant_query_service] = _QueryService
 
     response = TestClient(app).get("/query", params={"q": ""})
 

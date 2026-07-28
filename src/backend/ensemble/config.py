@@ -302,6 +302,20 @@ class Settings(BaseSettings):
         formu göstereceğini bilsin)."""
         return bool(self.AUTH_SESSION_SECRET)
 
+    @property
+    def app_auth_enabled(self) -> bool:
+        """`/auth/install-url` + `/auth/installations` (T-79 — Installation
+        picker) fail-closed açılışı için TEK kaynak. `GITHUB_OAUTH_*`'tan
+        (`auth_enabled`, kullanıcı girişi) BAĞIMSIZDIR — bunlar App'in
+        KENDİSİ adına (JWT ile) konuşur, kullanıcı-yetkilendirme akışını
+        gerektirmez. `AUTH_SESSION_SECRET` de ZORUNLU — bu uçlar oturum
+        gerektirir (kim adına kurulum yapıldığını bilmek için)."""
+        return bool(
+            self.GITHUB_APP_ID
+            and (self.GITHUB_APP_PRIVATE_KEY_PATH or self.GITHUB_APP_PRIVATE_KEY)
+            and self.AUTH_SESSION_SECRET
+        )
+
 
 @lru_cache
 def get_settings() -> Settings:

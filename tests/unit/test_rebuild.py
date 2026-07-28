@@ -11,10 +11,15 @@ from datetime import datetime
 from unittest.mock import MagicMock
 
 from ensemble.store.engine import get_engine, get_session_factory
-from ensemble.store.models import Base, TaskProjectionRow, TaskStatusEventRow
+from ensemble.store.models import DEFAULT_REPO_FULL_NAME, Base, TaskProjectionRow, TaskStatusEventRow
 from ensemble.store.rebuild import append_status_events, fold_status, rebuild_projection
 from ensemble.config import Settings
 from ensemble_shared.harness import HarnessPort
+
+# rebuild_projection() bu dosyada HEP repo_full_name'siz çağrılıyor (fonksiyon
+# varsayılanı DEFAULT_REPO_FULL_NAME'e düşer) — elle kurulan TaskStatusEventRow
+# satırları da AYNI kiracıyla etiketlenmeli, yoksa fold bunları görmez.
+_REPO = DEFAULT_REPO_FULL_NAME
 
 
 def _fresh_session():
@@ -48,6 +53,7 @@ def test_rebuild_ingest_edilmis_durumu_korur():
     event = TaskStatusEventRow(
         source_event_id="issue-258-closed",
         task_id="T-158",
+        repo_full_name=_REPO,
         status="done",
         ts=datetime(2026, 7, 25, 12, 0),
         reason="issue_closed",
@@ -79,6 +85,7 @@ def test_rebuild_projection_idempotent():
     event = TaskStatusEventRow(
         source_event_id="push-1",
         task_id="T-1",
+        repo_full_name=_REPO,
         status="in_progress",
         ts=datetime(2026, 7, 20, 9, 0),
         reason="push",
@@ -108,6 +115,7 @@ def test_yetim_gecis_kaybolmaz_ama_kart_uydurulmaz():
     event = TaskStatusEventRow(
         source_event_id="issue-999-closed",
         task_id="T-999",
+        repo_full_name=_REPO,
         status="done",
         ts=datetime(2026, 7, 25, 12, 0),
         reason="issue_closed",
@@ -134,6 +142,7 @@ def test_seed_degisse_de_fold_sonucu_korunur():
     event = TaskStatusEventRow(
         source_event_id="issue-5-closed",
         task_id="T-5",
+        repo_full_name=_REPO,
         status="done",
         ts=datetime(2026, 7, 22, 8, 0),
         reason="issue_closed",
@@ -175,11 +184,17 @@ def test_ayni_olay_iki_kez_yazilinca_cogalmaz():
     def _build_events():
         return [
             TaskStatusEventRow(
-                source_event_id="pr-99", task_id="T-10", status="in_review", ts=ts, reason="pr_opened"
+                source_event_id="pr-99",
+                task_id="T-10",
+                repo_full_name=_REPO,
+                status="in_review",
+                ts=ts,
+                reason="pr_opened",
             ),
             TaskStatusEventRow(
                 source_event_id="pr-99",
                 task_id="T-20",
+                repo_full_name=_REPO,
                 status="in_review",
                 ts=ts,
                 reason="pr_opened_closes_ref",

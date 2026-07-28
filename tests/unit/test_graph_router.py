@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 
 from fastapi.testclient import TestClient
 
-from ensemble.api.deps import get_graph_service
+from ensemble.api.deps import get_tenant_graph_service
 from ensemble.app import create_app
 from ensemble.config import Settings
 from ensemble.engine.graph import GraphService, build_touch_graph
@@ -25,7 +25,7 @@ class _FakeGraphService(GraphService):
 
 def _client() -> TestClient:
     app = create_app(Settings(_env_file=None))
-    app.dependency_overrides[get_graph_service] = _FakeGraphService
+    app.dependency_overrides[get_tenant_graph_service] = _FakeGraphService
     return TestClient(app)
 
 

@@ -74,7 +74,10 @@ def test_pgvector_index_emits_pgvector_upsert_and_query_sql():
     assert params[0]["embedding"] == "[1.0,0.0]"
     assert params[0]["meta"] == '{"path": "a.py"}'
     assert "ORDER BY embedding <=> CAST(:embedding AS vector), id" in statements[1]
-    assert params[1] == {"embedding": "[1.0,0.0]", "k": 2}
+    # T-79: repo_full_name=None (tek-kiracılı çağrı) yine de params sözlüğünde
+    # taşınır (SQL'de WHERE'siz kalsa da) — PgVectorIndex her çağrıda AYNI
+    # params şeklini üretir, yalnız SQL metni repo_full_name'e göre dallanır.
+    assert params[1] == {"embedding": "[1.0,0.0]", "k": 2, "repo_full_name": None}
     assert results == [("near", 0.99), ("also-near", 0.9)]
 
 

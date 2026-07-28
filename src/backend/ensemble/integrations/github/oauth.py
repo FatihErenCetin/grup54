@@ -71,8 +71,15 @@ def exchange_code_for_token(
 
 def fetch_github_user(
     access_token: str, *, http_client: httpx.Client | None = None
-) -> tuple[str, str | None]:
-    """`(handle, avatar_url)` — token burada kullanılıp ATILIR, saklanmaz."""
+) -> tuple[str, str | None, str]:
+    """`(handle, avatar_url, github_user_id)` — token burada kullanılıp
+    ATILIR, saklanmaz.
+
+    `github_user_id` (T-79, çok-kiracılık): GitHub'ın SAYISAL, DEĞİŞMEYEN
+    kullanıcı id'si (`body["id"]`) — `handle` (login) kullanıcı adını
+    DEĞİŞTİREBİLİR; `identities` tablosu (store/identity_store.py) bu yüzden
+    handle'a değil bu sayısal id'ye göre eşler (get-or-create'in aynı
+    kullanıcıyı ismi değişse bile TANIMASI için)."""
     http = http_client or httpx.Client(timeout=15.0)
     resp = http.get(
         USER_URL,
@@ -83,4 +90,4 @@ def fetch_github_user(
     )
     raise_for_status(resp)
     body = resp.json()
-    return body["login"], body.get("avatar_url")
+    return body["login"], body.get("avatar_url"), str(body["id"])

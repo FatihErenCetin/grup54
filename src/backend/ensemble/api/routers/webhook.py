@@ -38,6 +38,7 @@ from ensemble.integrations.github.normalize import (
 )
 from ensemble.integrations.null_harness import NullHarnessPort
 from ensemble.models import NormalizedEvent
+from ensemble.store.models import DEFAULT_REPO_FULL_NAME
 from ensemble_shared.harness import FileHarnessPort, HarnessPort
 
 logger = logging.getLogger("ensemble.webhook")
@@ -119,19 +120,16 @@ async def github_webhook(
     # T-79 (çok-kiracılık): projeksiyon satırları artık repo_full_name'e göre
     # scoped (bkz. store/models.py) — webhook payload'ının KENDİ
     # `repository.full_name`'i kullanılır (payload zaten HMAC ile doğrulandı,
-    # ayrıca bir "bilinen kiracı" kontrolüne gerek yok). Payload'da repo
-    # bağlamı yoksa (ör. bazı `ping` gövdeleri) demo repo'ya düşülür; o da
-    # yapılandırılmamışsa satır NOT NULL kısıtını ihlal etmeden dürüstçe
-    # yok sayılır (uydurma kiracı YOK).
-    repo_full_name = str((payload.get("repository") or {}).get("full_name") or "") or (
-        settings.demo_repo_full_name or ""
+    # ayrıca bir "bilinen kiracı" kontrolüne gerek yok; gerçek GitHub push/
+    # pull_request/issues payload'ları HER ZAMAN `repository` taşır). Payload'da
+    # (sentetik/eksik test payload'ı gibi) hiç repo bağlamı yoksa demo repoya,
+    # o da yapılandırılmamışsa `DEFAULT_REPO_FULL_NAME`'e düşülür — bugüne
+    # kadar zaten TEK örtük kiracı vardı, davranış değişmez.
+    repo_full_name = (
+        str((payload.get("repository") or {}).get("full_name") or "")
+        or settings.demo_repo_full_name
+        or DEFAULT_REPO_FULL_NAME
     )
-    if not repo_full_name:
-        logger.warning(
-            "webhook payload'ında repo bağlamı yok ve demo repo yapılandırılmamış — yok sayıldı: %s",
-            x_github_event,
-        )
-        return {"status": "ignored", "reason": "no_repo_context", "event": x_github_event}
 
     # `.harness/` yalnız demo reponun git ağacında yaşar (yerel disk) — başka
     # bir kiracının presence senkronu için FileHarnessPort kullanmak GRUP54'ÜN

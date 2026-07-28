@@ -195,7 +195,7 @@ def test_query_service_local_vector_indexi_fabrika_uzerinden_kuruyor(monkeypatch
     built_index = LocalVectorIndex()
     calls = []
 
-    def fake_build_vector_index(settings, *, session_factory=None):
+    def fake_build_vector_index(settings, *, session_factory=None, repo_full_name=None):
         calls.append((settings.ENSEMBLE_MODE, session_factory))
         return built_index
 

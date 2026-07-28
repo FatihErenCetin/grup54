@@ -21,7 +21,7 @@ from fastapi.testclient import TestClient
 
 from ensemble.app import create_app
 from ensemble.config import Settings
-from ensemble.store.models import Base, TaskProjectionRow
+from ensemble.store.models import DEFAULT_REPO_FULL_NAME, Base, TaskProjectionRow
 from ensemble_shared.harness import FileHarnessPort
 from scripts.harness_validate import validate_harness
 
@@ -181,7 +181,14 @@ def test_board_e2e_on_kosullari_kendisi_kurup_200_doner(tmp_path, monkeypatch):
         engine = app.state.session_factory.kw["bind"]
         Base.metadata.create_all(engine)
         with app.state.session_factory() as session:
-            session.add(TaskProjectionRow(task_id="T-242", title="e2e board", status="todo"))
+            session.add(
+                TaskProjectionRow(
+                    task_id="T-242",
+                    repo_full_name=DEFAULT_REPO_FULL_NAME,
+                    title="e2e board",
+                    status="todo",
+                )
+            )
             session.commit()
 
         response = client.get("/board")

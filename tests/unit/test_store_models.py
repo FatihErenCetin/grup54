@@ -1,7 +1,15 @@
 from datetime import datetime
 
 from ensemble.models import BoardCard, NormalizedEvent
-from ensemble.store.models import EventRow, PresenceRow, TaskProjectionRow, TaskStatusEventRow
+from ensemble.store.models import (
+    DEFAULT_REPO_FULL_NAME,
+    EventRow,
+    PresenceRow,
+    TaskProjectionRow,
+    TaskStatusEventRow,
+)
+
+_REPO = DEFAULT_REPO_FULL_NAME
 
 
 def test_event_row_roundtrip():
@@ -14,12 +22,13 @@ def test_event_row_roundtrip():
         ts=datetime(2026, 7, 10, 15, 0),
         ref="abc",
     )
-    
-    row = EventRow.from_domain(event)
+
+    row = EventRow.from_domain(event, repo_full_name=_REPO)
     assert row.id == "e1"
+    assert row.repo_full_name == _REPO
     assert row.actor == "esma6"
     assert row.files == ["test.py"]
-    
+
     restored = row.to_domain()
     assert restored == event
 
@@ -32,8 +41,9 @@ def test_task_projection_from_harness():
         "assignee": "EnesErdemT",
         "ref": "#41"
     }
-    row = TaskProjectionRow.from_harness(data)
+    row = TaskProjectionRow.from_harness(data, repo_full_name=_REPO)
     assert row.task_id == "T-41"
+    assert row.repo_full_name == _REPO
     assert row.title == "Projeksiyon deposu"
     assert row.status == "in_progress"
 
@@ -54,7 +64,7 @@ def test_task_projection_from_harness_seed_status_ayri_tutulur():
     # seed_status kalıcı olarak tohumu taşır (bkz. test_rebuild.py
     # test_seed_degisse_de_fold_sonucu_korunur).
     data = {"task_id": "T-158", "title": "Health zinciri", "status": "todo"}
-    row = TaskProjectionRow.from_harness(data)
+    row = TaskProjectionRow.from_harness(data, repo_full_name=_REPO)
     assert row.status == "todo"
     assert row.seed_status == "todo"
     assert row.last_transition_at is None
@@ -71,6 +81,7 @@ def test_task_status_event_row_alanlari():
     row = TaskStatusEventRow(
         source_event_id="issue-258-closed",
         task_id="T-158",
+        repo_full_name=_REPO,
         status="done",
         ts=datetime(2026, 7, 25, 12, 0),
         reason="issue_closed",
@@ -95,7 +106,7 @@ def test_presence_row_from_harness():
         "branch": "T-41-projeksiyon-deposu",
         "updated_at": "2026-07-11T10:00:00",
     }
-    row = PresenceRow.from_harness(data)
+    row = PresenceRow.from_harness(data, repo_full_name=_REPO)
     assert row.handle == "EnesErdemT"
     assert row.task == "T-41"
     assert row.module == "store"

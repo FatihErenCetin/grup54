@@ -8,9 +8,11 @@ from ensemble.app import create_app
 from ensemble.config import Settings
 from ensemble.engine.board import BoardService, compute_board_provenance
 from ensemble.store.engine import get_engine, get_session_factory
-from ensemble.store.models import Base, TaskProjectionRow, TaskStatusEventRow
+from ensemble.store.models import DEFAULT_REPO_FULL_NAME, Base, TaskProjectionRow, TaskStatusEventRow
 from ensemble.store.rebuild import append_status_events, rebuild_projection
 from ensemble_shared.harness import HarnessPort
+
+_REPO = DEFAULT_REPO_FULL_NAME
 
 
 def test_get_board_returns_cards_successfully(tmp_path):
@@ -23,7 +25,11 @@ def test_get_board_returns_cards_successfully(tmp_path):
         Base.metadata.create_all(engine)
 
         with app.state.session_factory() as session:
-            session.add(TaskProjectionRow(task_id="T-51", title="Board API", status="in_progress"))
+            session.add(
+                TaskProjectionRow(
+                    task_id="T-51", repo_full_name=_REPO, title="Board API", status="in_progress"
+                )
+            )
             session.commit()
 
         response = client.get("/board")
@@ -52,7 +58,11 @@ def test_get_board_provenance_seed_hic_gecis_yokken(tmp_path):
         Base.metadata.create_all(engine)
 
         with app.state.session_factory() as session:
-            session.add(TaskProjectionRow(task_id="T-51", title="Board API", status="in_progress"))
+            session.add(
+                TaskProjectionRow(
+                    task_id="T-51", repo_full_name=_REPO, title="Board API", status="in_progress"
+                )
+            )
             session.commit()
 
         response = client.get("/board")
@@ -110,6 +120,7 @@ def test_get_board_provenance_ingest_gercek_fold_sonrasi():
                 TaskStatusEventRow(
                     source_event_id="issue-258-closed",
                     task_id="T-158",
+                    repo_full_name=_REPO,
                     status="done",
                     ts=event_ts,
                     reason="issue_closed",

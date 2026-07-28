@@ -560,13 +560,21 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     register_exception_handlers(app, settings)
 
     # Router'ları bağla — ERROR_RESPONSES tek kaynaktan yayılır (spec beyanı, #54)
+    # T-79: bu altı router artık TenantDep (api/deps.py) üzerinden kiracı
+    # çözüyor — `?repo=` çağıranın izinli setinin dışındaysa 403 döner
+    # (health.py TenantDep KULLANMAZ, demo/app-genel radar_service'i okur —
+    # bu yüzden 403 yalnız bu listeye eklenir, health'e değil).
+    _tenant_responses = {
+        **ERROR_RESPONSES,
+        403: {"model": ErrorEnvelope, "description": "?repo= izinli sette değil (T-79)"},
+    }
     app.include_router(health.router, responses=ERROR_RESPONSES)
-    app.include_router(radar.router, responses=ERROR_RESPONSES)
-    app.include_router(scope.router, responses=ERROR_RESPONSES)
-    app.include_router(board.router, responses=ERROR_RESPONSES)
-    app.include_router(query.router, responses=ERROR_RESPONSES)
-    app.include_router(graph.router, responses=ERROR_RESPONSES)
-    app.include_router(events.router, responses=ERROR_RESPONSES)
+    app.include_router(radar.router, responses=_tenant_responses)
+    app.include_router(scope.router, responses=_tenant_responses)
+    app.include_router(board.router, responses=_tenant_responses)
+    app.include_router(query.router, responses=_tenant_responses)
+    app.include_router(graph.router, responses=_tenant_responses)
+    app.include_router(events.router, responses=_tenant_responses)
     # #62 hata sözleşmesi: framework HTTPException'ları da Ek D zarfını taşır
     # (errors.py::http_exception) ama bunu ERROR_RESPONSES'a genel eklemedik -
     # 400/401 diğer (GET) router'lara uymuyor. Webhook'a özel bildiriliyor ki
@@ -579,14 +587,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     }
     app.include_router(webhook.router, responses=_webhook_responses)
 
-    # #79 daraltılmış dilim: /auth/login 503 (yapılandırılmamış), /auth/callback
-    # 400 (state uyuşmazlığı) + 502/503 (GitHub hatası, ERROR_RESPONSES'tan
-    # miras), /auth/me 401 (oturum yok/geçersiz) — webhook'un 400/401 ekleme
+    # #79: /auth/login 503 (yapılandırılmamış), /auth/callback 400 (state
+    # uyuşmazlığı) + 502/503 (GitHub hatası, ERROR_RESPONSES'tan miras),
+    # /auth/me 401 (oturum yok/geçersiz) — webhook'un 400/401 ekleme
     # deseniyle AYNI (Ek D'ye genel eklenmez, GET router'lara uymuyor).
+    # T-79: Installation picker uçları (`PUT /auth/repos`) 403 EKLER —
+    # istemcinin gönderdiği repo izinli setin dışındaysa (bkz. api/deps.py::
+    # get_tenant + auth.py::update_repos, ikisi de AYNI "körlemesine
+    # güvenme" kuralını uygular).
     _auth_responses = {
         **ERROR_RESPONSES,
         400: {"model": ErrorEnvelope, "description": "OAuth state doğrulanamadı"},
         401: {"model": ErrorEnvelope, "description": "Oturum yok/geçersiz"},
+        403: {"model": ErrorEnvelope, "description": "İzinsiz repo (T-79)"},
     }
     app.include_router(auth.router, responses=_auth_responses)
 

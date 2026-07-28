@@ -5,7 +5,7 @@ from unittest.mock import MagicMock
 
 from fastapi.testclient import TestClient
 
-from ensemble.api.deps import get_event_service
+from ensemble.api.deps import get_tenant_event_service
 from ensemble.app import create_app
 from ensemble.config import Settings
 from ensemble.engine.events import EventService
@@ -94,7 +94,7 @@ def test_get_events_empty_feed_echoes_cursor():
 
 def _client(events: list[NormalizedEvent]) -> TestClient:
     app = create_app(Settings(DATABASE_URL="sqlite://"))
-    app.dependency_overrides[get_event_service] = lambda: _service(events)
+    app.dependency_overrides[get_tenant_event_service] = lambda: _service(events)
     return TestClient(app)
 
 
