@@ -1,54 +1,62 @@
 ---
 type: decision
 id: D-58
-title: "Çok-kiracılı repo seçimi (#79'un kalan dilimi) — TenantRegistry + kiracıya göre PK genişletmesi"
+title: "#79 tam yapılıyor — çok-kiracılı repo seçimi ürüne giriyor (D-23'ün son maddesi de değişti)"
 date: "2026-07-28"
 status: accepted
 ---
 
 ## Karar
 
-#79'un ikinci yarısı (Installation picker + gerçek çok-kiracılık) T-79'da
-teslim edildi. Beş temel mimari karar:
+**#79 düşürülmüyor, tam kapsamıyla yapılıyor.** Giriş yapan kullanıcı kendi
+GitHub App kurulumuyla kendi repolarını seçip içe aktarabilecek. PO: *"bu
+kesinlikle ürün içerisinde yer almalı."*
 
-1. **`repo_full_name` beş projeksiyon tablosunun (`events`, `task_projection`,
-   `presence`, `task_status_events`, `vector_index`) birincil anahtarının
-   PARÇASI** — yalnızca ek bir kolon DEĞİL. Gerekçe: PR/issue/task numaraları
-   repo başına sıfırlanır (`pr:1:...`, `T-51` her repoda ayrı bir şey
-   olabilir); yalnız kolon eklemek iki kiracının aynı `id`'yi paylaşmasına
-   (sessiz üzerine-yazma, izolasyon ihlali) yol açardı.
-2. **`TenantRegistry`** (`ensemble/tenancy.py`) — `repo_full_name ->
-   memoize edilmiş ServiceTeam`, LRU sınırlı. Demo kiracı (bugünkü tek-repo
-   kurulum) İSTİSNA: onun takımı `lifespan`de (app.py) zaten kurulan
-   singleton'ların KENDİSİDİR, yeniden kurulmaz (D-23'ün "bugünkü public demo
-   aynen çalışmaya devam etmeli" vaadi korunur).
-3. **Engine sınıflarına (RadarService/ScopeService/QueryService) SIFIR
-   DOKUNUŞ** — her kiracı, `GitHubAdapter`'ın owner/repo/installation_id'yi
-   YALNIZCA kendisine verilen `Settings`'ten okuduğu gerçeğinden yararlanılıp,
-   `Settings.model_copy(update={...})` ile klonlanmış bir ayar nesnesiyle
-   kuruldu — `integrations/github/adapter.py`/`auth.py` HİÇ değişmedi.
-   `BoardService`/`EventService`/`GraphService` (port almayan, DB'yi doğrudan
-   sorgulayan üç servis) `repo_full_name` kurucu parametresi kazandı — bu,
-   "sıfır dokunuş" ilkesinin DIŞINDA bilinçli bir istisna (bu üçü zaten port
-   soyutlaması kullanmıyordu).
-4. **`NullHarnessPort`** — `.harness/` yalnız demo reponun yerel diskinde
-   yaşar; gerçek kiracılar için scope "unavailable" (503), presence/tasks boş
-   döner. Demo reponun gerçek verisi hiçbir zaman başka bir kiracıya sızmaz.
-5. **GitHub OAuth callback artık get-or-create bir `UserRow` açıyor**
-   (`identities` tablosu üzerinden) — Installation picker bir `user_id`'ye
-   ihtiyaç duyduğu için. D-57'nin "GitHub OAuth `users`'a yazmaz" iddiasını
-   BURADA GEÇERSİZ KILAR (D-57'nin kendisi email+parola dilimine özgüydü;
-   hesap BİRLEŞTİRME hâlâ kapsam dışı — yalnızca GitHub kimliğinin KENDİ satırı
-   açılıyor, email hesabıyla otomatik birleşme YOK).
+Reddedilen iki alternatif (SM Esma'nın sunduğu):
 
-## Neden kayda geçiyor
+1. **#79'u düşürmek** — issue'nun kendi metnindeki çıkış maddesi (*"Video/cila
+   riske girerse bu issue düşer"*) bunu meşru kılıyordu.
+2. **Mevcut login'i #79'a saydırıp kapatmak** — kabul kriterleri kurulum
+   seçimi ve kiracı izolasyonu hakkında, login hakkında değil; kriterleri
+   karşılanmamış bir issue'yu "bitti" saymak yanlış beyan olurdu.
 
-Üç önceki karar (D-23, D-57, `internal/grup54_dizin_yapisi.md` §5) "users
-tablosu yok" / "GitHub OAuth kullanıcıları users'a yazmaz" gibi iddialar
-taşıyordu; T-79 bunları GENİŞLETTİ (iptal etmedi). Kayıt olmadan bu genişleme
-yapılırsa, ileride biri "D-57 GitHub OAuth users'a yazmaz diyordu, şimdi neden
-yazıyor?" diye sorduğunda cevap bulunamaz — `docs/karar-drifti-rehberi.md`'nin
-tarif ettiği drift tam budur.
+## D-23'ün son maddesi de değişti
+
+D-23 (30 Haz, "KESİN") üç şey diyordu: *kullanıcı-DB yok · login yok · hosted
+= tek no-login demo.* İlk ikisi **D-57** ile değişti. Bu kararla **üçüncüsü**
+de değişiyor: hosted artık tek repo değil, çok kiracılı.
+
+**Ama demo vaadi KORUNUYOR:** anonim ziyaretçi hiçbir şey yapmadan grup54'ün
+kendi verisini görmeye devam eder. Login duvarı YOK. Çok-kiracılılık bunun
+ÜSTÜNE gelir, yerine değil — dogfood demosu ürünün vitrini ve kaybedilmez.
+
+## Ölçülen kapsam (tahmin değil)
+
+| yüzey | veri kaynağı | kiracılaştırma |
+|---|---|---|
+| `radar` | **canlı GitHub** | adapter kiracı başına kurulmalı |
+| `board` · `events` · `graph` | DB | 5 tabloya repo anahtarı + filtre |
+| `scope` · `presence` | **`.harness/` yerel dosyalar** | kiracı reposunda o dosyalar bizde YOK |
+
+Ek olarak: hiçbir projeksiyon tablosunda repo kolonu yok, servisler
+uygulama seviyesinde tekil (`app.state.radar_service`), `GitHubAdapter`
+repo'yu açılışta `settings`'ten alıyor.
+
+## Mimari — "engine'e sıfır dokunuş" (#79 kriteri 4)
+
+Engine sınıfları port'ları kurucudan aldığı için engine'e **hiç dokunmadan**
+farklı port'lar verilebilir. `TenantRegistry`: `repo_full_name → memoize
+edilmiş servis takımı` (LRU sınırlı). Engine dosyaları değişmez.
+
+Kiracı **sunucuda** çözülür. `?repo=` parametresi kabul edilebilir ama
+çağıranın izinli setine karşı doğrulanır; izinsizse 403. **İstemcinin
+gönderdiği repoya körlemesine güvenilmez** — izolasyonun klasik kırılma yeri.
+
+## Kabul edilen açık
+
+`scope` ve `presence` kiracı repoları için **yapılandırılmamış** döner —
+`.harness/` dosyaları yerel diskte ve başkasının reposunda bizde yok. Sahte
+veri ya da demo reponun verisi DÖNDÜRÜLMEZ. GitHub'dan çekmek ayrı bir iş.
 
 ## Kapsam — ne yapılıyor, ne yapılmıyor
 
@@ -89,21 +97,21 @@ testleri (`tests/unit/test_tenant_isolation.py`).
   Zararsız (idempotent, yalnızca bir sonraki pollün maliyeti artar) ama not
   edilmeye değer.
 
-## Reddedilen seçenekler
-
-- **Her kiracı için ayrı Postgres şeması/veritabanı** — gerçek izolasyon
-  garantisi daha güçlü olurdu ama S3 zaman bütçesinde migration/ops
-  karmaşıklığı orantısız; tek şema + `repo_full_name` filtresi + mutasyon-
-  doğrulanmış testler yeterli güven veriyor.
-- **`VectorIndexPort` imzasına `repo_full_name` parametresi eklemek** —
-  QueryService/RadarService'in (engine) çağrı sitesini değiştirmeyi
-  gerektirirdi ("sıfır dokunuş" ilkesini ihlal). Bunun yerine `PgVectorIndex`
-  kiracıyı CONSTRUCTOR'da bağlıyor (`GitHubAdapter`'ın owner/repo'yu
-  bağlamasıyla AYNI desen).
-
 ## Etkilenen belgeler
 
 `internal/grup54_dizin_yapisi.md` §5'in "users/accounts/profiles tablosu
 YOK" iddiası D-57 tarafından zaten kısmen geçersiz kılınmıştı;
 `identities`/`installations`/`watched_repos` bu istisnayı GENİŞLETİR. Bu
 kayıt o güncellemeyi tetikler, kendisi yapmaz.
+
+## Neden bu risk alındı
+
+PO'ya iki uyarı yapıldı: (a) kalan iş ~8 puanlık yeni mimari, donma
+planına göre riskli (SM'in tespiti, ölçümle doğrulandı); (b) izolasyon
+testlerini aceleye getirmenin bedeli geç teslimden ağır — hata, kullanıcıların
+birbirinin verisini görmesi demek. PO ikisini de duyduktan sonra "bu gece
+bitecek" dedi. Karar kayda geçiyor ki risk sessiz kalmasın.
+
+**İzolasyon pazarlık konusu değil:** iki kiracıyla, birinin verisinin diğerine
+hiçbir uçta sızmadığı test edilecek ve her filtre tek tek kaldırılıp testin
+kırmızıya döndüğü görülecek.
