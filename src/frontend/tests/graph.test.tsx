@@ -17,10 +17,10 @@ const MOD_KEY = "grup54:graph:gorunum-modu";
 const veri: TouchGraph = {
   window_days: 14,
   nodes: [
-    { id: "fatih", type: "actor", weight: 5 },
-    { id: "enes", type: "actor", weight: 5 },
-    { id: "engine", type: "module", weight: 7 },
-    { id: "frontend", type: "module", weight: 3 },
+    { id: "fatih", type: "actor", weight: 5, actor_verified: true },
+    { id: "enes", type: "actor", weight: 5, actor_verified: true },
+    { id: "engine", type: "module", weight: 7, actor_verified: true },
+    { id: "frontend", type: "module", weight: 3, actor_verified: true },
   ],
   edges: [
     {
@@ -277,5 +277,74 @@ describe("GraphPage — treemap modül detay paneli", () => {
 
     await user.click(screen.getByRole("tab", { name: "Isı matrisi" }));
     expect(screen.queryByLabelText("Modül detayı")).not.toBeInTheDocument();
+  });
+});
+
+describe("GraphPage — GraphNode.actor_verified göstergesi (#296)", () => {
+  // PO bu hatayı grafta gördü ("Merge Simulation" 5. takım üyesi gibi
+  // göründü) - işaretleme burada da (Activity'nin yanında) çalışmalı.
+  const veriDogrulamaSiz = {
+    window_days: 14,
+    nodes: [
+      { id: "esma6", type: "actor" as const, weight: 5, actor_verified: true },
+      { id: "Merge Simulation", type: "actor" as const, weight: 2, actor_verified: false },
+      { id: "backend", type: "module" as const, weight: 7, actor_verified: true },
+    ],
+    edges: [
+      {
+        actor: "esma6",
+        module: "backend",
+        count: 5,
+        last_ts: "2026-07-20T09:00:00Z",
+        is_active_declared: false,
+      },
+      {
+        actor: "Merge Simulation",
+        module: "backend",
+        count: 2,
+        last_ts: "2026-07-19T09:00:00Z",
+        is_active_declared: false,
+      },
+    ],
+  };
+
+  beforeEach(() => {
+    mockUseGraph.mockReturnValue({
+      data: veriDogrulamaSiz,
+      error: null,
+      isLoading: false,
+      isFetching: false,
+      dataUpdatedAt: Date.now(),
+    });
+  });
+
+  it("Isı matrisi satır başlığı: yalnız eşleşmeyen aktörde rozet var", () => {
+    render(<GraphPage />);
+    const satirlar = screen.getAllByRole("row");
+    const merge = satirlar.find((r) => r.textContent?.includes("Merge Simulation"));
+    const esma = satirlar.find((r) => r.textContent?.includes("esma6"));
+    expect(merge?.querySelector('[data-testid="actor-unverified-badge"]')).not.toBeNull();
+    expect(esma?.querySelector('[data-testid="actor-unverified-badge"]')).toBeNull();
+  });
+
+  it("Dokunuş detay paneli (hücre tıklama): eşleşmeyen aktör için rozet açık", async () => {
+    const user = userEvent.setup();
+    render(<GraphPage />);
+    await user.click(screen.getByRole("button", { name: /Merge Simulation, backend: 2 dokunuş/ }));
+    const panel = screen.getByLabelText("Dokunuş detayı");
+    expect(within(panel).getByTestId("actor-unverified-badge")).toBeInTheDocument();
+  });
+
+  it("Treemap modül detay paneli: karışık aktör listesinde yalnız eşleşmeyen rozet taşır", async () => {
+    const user = userEvent.setup();
+    render(<GraphPage />);
+    await user.click(screen.getByRole("tab", { name: "Treemap" }));
+    await user.click(screen.getByTitle(/^backend: 7 dokunuş/));
+    const panel = screen.getByLabelText("Modül detayı");
+    const satirlar = within(panel).getAllByRole("listitem");
+    const merge = satirlar.find((r) => r.textContent?.includes("Merge Simulation"));
+    const esma = satirlar.find((r) => r.textContent?.includes("esma6"));
+    expect(merge?.querySelector('[data-testid="actor-unverified-badge"]')).not.toBeNull();
+    expect(esma?.querySelector('[data-testid="actor-unverified-badge"]')).toBeNull();
   });
 });

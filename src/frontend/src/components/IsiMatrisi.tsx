@@ -8,6 +8,7 @@ import { parseUtc } from "../pages/ActivityPage";
 import { ActorChip, hataMesaji } from "./ui";
 
 type GraphEdge = components["schemas"]["GraphEdge"];
+type GraphNode = components["schemas"]["GraphNode"];
 type NormalizedEvent = components["schemas"]["NormalizedEvent"];
 
 /* #105 — Radar'ın "neden" haritası: çakışma radarı "çakışma var" der, bu
@@ -98,6 +99,7 @@ function IsiMatrisiGovde() {
 
   const veri = useMemo(() => {
     const edges: GraphEdge[] = data?.edges ?? [];
+    const nodes: GraphNode[] = data?.nodes ?? [];
     const satirToplam = new Map<string, number>();
     const sutunToplam = new Map<string, number>();
     const hucre = new Map<string, Map<string, GraphEdge>>();
@@ -110,12 +112,20 @@ function IsiMatrisiGovde() {
       satir.set(e.module, e);
       if (e.count > enYogun) enYogun = e.count;
     }
+    // #296: aktör düğümünün doğrulama sinyali (bkz. GraphPage.tsx aynı
+    // desen + engine/graph.py'deki toplama kuralı gerekçesi). Yalnız
+    // type="actor" düğümleri anlamlı taşır.
+    const aktorDogrulandi = new Map<string, boolean>();
+    for (const n of nodes) {
+      if (n.type === "actor") aktorDogrulandi.set(n.id, n.actor_verified ?? true);
+    }
     const sirala = (m: Map<string, number>) =>
       [...m.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], "tr"));
     return {
       satirlar: sirala(satirToplam),
       sutunlar: sirala(sutunToplam),
       hucre,
+      aktorDogrulandi,
       enYogun,
       kenarSayisi: edges.length,
     };
@@ -198,7 +208,7 @@ function IsiMatrisiGovde() {
           {veri.satirlar.map(([aktor, toplam]) => (
             <Fragment key={aktor}>
               <div className="flex items-center gap-2 py-1">
-                <ActorChip handle={aktor} />
+                <ActorChip handle={aktor} verified={veri.aktorDogrulandi.get(aktor) ?? true} />
                 <span className="text-[10px] tabular-nums text-muted-foreground">{toplam}</span>
               </div>
               {veri.sutunlar.map(([modul]) => {
@@ -262,6 +272,7 @@ function IsiMatrisiGovde() {
           secim={secim}
           kenar={secilenKenar}
           eventsQ={eventsQ}
+          verified={veri.aktorDogrulandi.get(secim.actor) ?? true}
           onClose={() => setSecim(null)}
         />
       )}
@@ -273,11 +284,14 @@ function OlayListesi({
   secim,
   kenar,
   eventsQ,
+  verified,
   onClose,
 }: {
   secim: Secim;
   kenar: GraphEdge | null;
   eventsQ: { data?: { events: NormalizedEvent[] }; error: unknown; isLoading: boolean };
+  /** #296 — bkz. IsiMatrisiGovde'deki `veri.aktorDogrulandi`. */
+  verified: boolean;
   onClose: () => void;
 }) {
   const olaylar = useMemo(() => {
@@ -291,7 +305,7 @@ function OlayListesi({
     <div className="space-y-2 rounded-lg border border-border bg-background p-3">
       <div className="flex items-start justify-between gap-3">
         <p className="text-xs">
-          <ActorChip handle={secim.actor} /> <span aria-hidden>↳ </span>
+          <ActorChip handle={secim.actor} verified={verified} /> <span aria-hidden>↳ </span>
           <span className="font-mono">{secim.module}</span>
           {kenar && (
             <span className="ml-2 text-[11px] text-muted-foreground">

@@ -558,7 +558,14 @@ export interface components {
         };
         /**
          * GraphNode
-         * @description GET /graph düğümü (#104) — kontrat: docs/sprint2-kontratlar.md Ek A.
+         * @description GET /graph düğümü (#104) — kontrat: docs/sprint2-kontratlar.md Ek A
+         *     (S2 Ek A, #106 ile donmuş).
+         *
+         *     `actor_verified` (#296, T-296) TEK katkı: additive + varsayılanlı, aynı
+         *     desenle donmuş `NormalizedEvent`e eklenen alan gibi (bkz.
+         *     docs/sprint3-kontratlar.md Ek G). Yalnız `type="actor"` düğümlerinde
+         *     ANLAMLIDIR — `type="module"` düğümlerinde varsayılan değerde kalır
+         *     (kontrol edilmez, UI de bakmaz).
          */
         GraphNode: {
             /** Id */
@@ -570,6 +577,12 @@ export interface components {
             type: "actor" | "module";
             /** Weight */
             weight: number;
+            /**
+             * Actor Verified
+             * @description Yalnız type='actor' için anlamlı. Bu aktörün bu penceredeki olaylarından EN AZ BİRİ GERÇEK bir GitHub hesabıyla eşleşti mi? (bkz. engine/graph.py build_touch_graph - toplama kuralı ve gerekçesi orada.) False yalnızca aktörün TÜM olayları eşleşmediğinde.
+             * @default true
+             */
+            actor_verified: boolean;
         };
         /** HTTPValidationError */
         HTTPValidationError: {

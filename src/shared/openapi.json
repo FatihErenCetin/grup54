@@ -2669,6 +2669,12 @@
           "weight": {
             "type": "integer",
             "title": "Weight"
+          },
+          "actor_verified": {
+            "type": "boolean",
+            "title": "Actor Verified",
+            "description": "Yalnız type='actor' için anlamlı. Bu aktörün bu penceredeki olaylarından EN AZ BİRİ GERÇEK bir GitHub hesabıyla eşleşti mi? (bkz. engine/graph.py build_touch_graph - toplama kuralı ve gerekçesi orada.) False yalnızca aktörün TÜM olayları eşleşmediğinde.",
+            "default": true
           }
         },
         "type": "object",
@@ -2678,7 +2684,7 @@
           "weight"
         ],
         "title": "GraphNode",
-        "description": "GET /graph düğümü (#104) — kontrat: docs/sprint2-kontratlar.md Ek A."
+        "description": "GET /graph düğümü (#104) — kontrat: docs/sprint2-kontratlar.md Ek A\n(S2 Ek A, #106 ile donmuş).\n\n`actor_verified` (#296, T-296) TEK katkı: additive + varsayılanlı, aynı\ndesenle donmuş `NormalizedEvent`e eklenen alan gibi (bkz.\ndocs/sprint3-kontratlar.md Ek G). Yalnız `type=\"actor\"` düğümlerinde\nANLAMLIDIR — `type=\"module\"` düğümlerinde varsayılan değerde kalır\n(kontrol edilmez, UI de bakmaz)."
       },
       "HTTPValidationError": {
         "properties": {

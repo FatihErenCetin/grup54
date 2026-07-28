@@ -124,11 +124,28 @@ class PresenceEntry(BaseModel):
 
 
 class GraphNode(BaseModel):
-    """GET /graph düğümü (#104) — kontrat: docs/sprint2-kontratlar.md Ek A."""
+    """GET /graph düğümü (#104) — kontrat: docs/sprint2-kontratlar.md Ek A
+    (S2 Ek A, #106 ile donmuş).
+
+    `actor_verified` (#296, T-296) TEK katkı: additive + varsayılanlı, aynı
+    desenle donmuş `NormalizedEvent`e eklenen alan gibi (bkz.
+    docs/sprint3-kontratlar.md Ek G). Yalnız `type="actor"` düğümlerinde
+    ANLAMLIDIR — `type="module"` düğümlerinde varsayılan değerde kalır
+    (kontrol edilmez, UI de bakmaz).
+    """
 
     id: str
     type: Literal["actor", "module"]
     weight: int
+    actor_verified: bool = Field(
+        default=True,
+        description=(
+            "Yalnız type='actor' için anlamlı. Bu aktörün bu penceredeki "
+            "olaylarından EN AZ BİRİ GERÇEK bir GitHub hesabıyla eşleşti mi? "
+            "(bkz. engine/graph.py build_touch_graph - toplama kuralı ve "
+            "gerekçesi orada.) False yalnızca aktörün TÜM olayları eşleşmediğinde."
+        ),
+    )
 
 
 class GraphEdge(BaseModel):
