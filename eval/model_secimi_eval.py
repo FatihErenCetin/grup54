@@ -44,18 +44,21 @@ import argparse
 import json
 import sys
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
 from ensemble.config import Settings
 from ensemble.engine.radar import SEMANTIC_SIMILARITY_TASK
 from ensemble.engine.vectorstore import cosine_similarity
+from ensemble.integrations.gemini.client import ResilientGeminiClient
 from ensemble.integrations.gemini.embeddings import GeminiEmbeddingsAdapter
+from ensemble.integrations.gemini.errors import GeminiError
 from ensemble.integrations.gemini.fake import FakeJudgeAdapter
 from ensemble.integrations.gemini.gate import cheap_prejudge
 from ensemble.integrations.gemini.judge import GeminiJudgeAdapter
 from ensemble.models import Detection, NormalizedEvent
-from ensemble.ports import JudgePort
+from ensemble.ports import JudgePort, JudgeUnavailableError
 from eval.eval_runner import EvalRunner, load_backtest_corpus
 from tests.fixtures.conflict_corpus import load_conflict_corpus
 
@@ -169,12 +172,32 @@ class _LatencyTrackingJudge:
     sayilan sayi, ALTTAKI implementasyon fake ya da gercek olsun, "gercek model
     cagrisina ULASACAK vaka sayisi" ile birebir ayni — tahmin icin de, gercek
     olcum icin de tek kaynak budur).
+
+    GECIKME AYRISTIRMA (#257 bulgu 1 / #313): duvar-saati (`raw_durations`)
+    tenacity'nin retry/backoff BEKLEMESINI de icerir — 429/5xx sonrasi 3
+    denemeye kadar saniyeler suren backoff, olcumu "model hizi" degil "kota
+    geri-cekilmesi" olcer hale getirebiliyordu (repro: stub'i her cagrida 429
+    dondurecek sekilde kurup `avg_latency_s`'in ~1s'e ciktigini, gercek isin
+    sifir oldugunu gozlemledik). `retry_client` (bir `ResilientGeminiClient`)
+    verilirse, cagridan HEMEN SONRA `last_call_retry_wait_s`'i okuyup net
+    calisma suresini (`durations`) bu bekleme suresinden ARINDIRIYORUZ;
+    bekleme suresi de AYRI (`retry_wait_s`) raporlaniyor — ikisi karistirilmiyor.
+
+    HATA GORUNURLUGU (#257 bulgu 1 / #313): `judge_conflict` `JudgeUnavailableError`
+    firlatirsa (gercek modele ULASILDI ama basarisiz oldu — #252'den beri
+    `_fallback_detection` YOK, hata sessizce degere donusmuyor) `errors` sayaci
+    artar ve istisna YENIDEN firlatilir; cagiran (`run_judge_model_probe`) bunu
+    model-basina yakalayip raporda GORUNUR kilar (bkz. o fonksiyonun docstring'i).
     """
 
-    def __init__(self, inner: JudgePort) -> None:
+    def __init__(self, inner: JudgePort, *, retry_client: ResilientGeminiClient | None = None) -> None:
         self._inner = inner
+        self._retry_client = retry_client
         self.real_calls = 0
-        self.durations: list[float] = []
+        self.errors = 0
+        self.durations: list[float] = []  # NET calisma suresi — retry bekleme HARIC
+        self.retry_wait_s: list[float] = []  # yalniz retry/backoff bekleme suresi
+        self.raw_durations: list[float] = []  # duvar-saati (seffaflik icin — retry DAHIL)
 
     def judge_conflict(
         self, a: NormalizedEvent, b: NormalizedEvent, overlap: list[str], sim: float | None
@@ -185,25 +208,49 @@ class _LatencyTrackingJudge:
 
         self.real_calls += 1
         start = time.perf_counter()
-        result = self._inner.judge_conflict(a, b, overlap, sim)
-        self.durations.append(time.perf_counter() - start)
+        try:
+            result = self._inner.judge_conflict(a, b, overlap, sim)
+        except JudgeUnavailableError:
+            self.errors += 1
+            raise
+        raw_elapsed = time.perf_counter() - start
+        retry_wait = self._retry_client.last_call_retry_wait_s if self._retry_client else 0.0
+        self.raw_durations.append(raw_elapsed)
+        self.retry_wait_s.append(retry_wait)
+        self.durations.append(max(raw_elapsed - retry_wait, 0.0))
         return result
 
 
 @dataclass(frozen=True)
 class JudgeModelResult:
+    """Tek bir judge modelinin olcum sonucu.
+
+    `failed=True` ise P/R/F0.5/F1/tp/fp/fn/tn/total GECERSIZDIR (varsayilan
+    0/0.0) — bu modelin olcumu tamamlanamadi, `error` alaninda NEDEN var.
+    Eskiden (#252 oncesi) basarisiz bir model `_fallback_detection` ile
+    makul-gorunen-ama-YANLIS bir P/R/F0.5 satiri uretiyordu (#257 bulgu 1);
+    #252 bunu `JudgeUnavailableError` firlatmaya cevirdi ama bu sefer TEK bir
+    basarisiz cagri TUM olcumu (diger modeller dahil) coktoruyordu (#257 bulgu
+    4 ile ayni kok neden). Bu alan ikisinden de kacinir: basarisizlik SESSIZCE
+    degere donusmez VE olcumun geri kalanini yok etmez — raporda ACIKCA gorunur.
+    """
+
     model: str
-    precision: float
-    recall: float
-    f05: float
-    f1: float
-    tp: int
-    fp: int
-    fn: int
-    tn: int
-    total: int
-    real_calls: int
-    avg_latency_s: float
+    precision: float = 0.0
+    recall: float = 0.0
+    f05: float = 0.0
+    f1: float = 0.0
+    tp: int = 0
+    fp: int = 0
+    fn: int = 0
+    tn: int = 0
+    total: int = 0
+    real_calls: int = 0
+    avg_latency_s: float = 0.0  # NET — retry/backoff bekleme HARIC (#257 bulgu 1)
+    avg_retry_wait_s: float = 0.0  # yalniz retry/backoff bekleme suresi — AYRI raporlanir
+    error_count: int = 0  # gercek modele ULASIP basarisiz olan cagri sayisi
+    failed: bool = False
+    error: str | None = None
 
     def to_dict(self) -> dict:
         return {
@@ -219,6 +266,10 @@ class JudgeModelResult:
             "total": self.total,
             "real_calls": self.real_calls,
             "avg_latency_s": self.avg_latency_s,
+            "avg_retry_wait_s": self.avg_retry_wait_s,
+            "error_count": self.error_count,
+            "failed": self.failed,
+            "error": self.error,
         }
 
 
@@ -239,6 +290,7 @@ def run_judge_model_probe(
     *,
     settings_factory=None,
     client_factory=None,
+    on_result: Callable[[JudgeModelResult], None] | None = None,
 ) -> list[JudgeModelResult]:
     """Her aday `GEMINI_MODEL` icin TAM eval_runner koşusu — GERCEK Gemini cagrisi.
 
@@ -246,22 +298,57 @@ def run_judge_model_probe(
     testte sahte istemci enjekte etmek icin override edilebilir (bkz.
     `tests/unit/test_provider_eval.py`'daki ayni desen). Varsayilan
     `Settings(GEMINI_MODEL=model)` — diger tum alanlar (GEMINI_API_KEY
-    dahil) .env/ortamdan gelir; `client=None` ise adapter kendi
-    `ResilientGeminiClient`'ini kurar (gercek cagri).
+    dahil) .env/ortamdan gelir.
+
+    `client_factory` VERILMEZSE (gercek `--run` yolu) burada, GeminiJudgeAdapter'in
+    HER cagrida yeniden kurdugu iceriden farkli olarak, TEK bir `ResilientGeminiClient`
+    model basina kurulup TUM eval boyunca yeniden kullanilir — hem gereksiz SDK
+    client kurulumunu (per-call) onler hem de `_LatencyTrackingJudge`'in retry
+    bekleme suresini okuyabilmesi icin gereklidir (#257 bulgu 1 / #313).
+
+    MODEL-BASINA HATA YAKALAMA + ARTIMLI RAPORLAMA (#257 bulgu 4 / #313): eskiden
+    ikinci modeldeki TEK bir `JudgeUnavailableError` butun probu (birinci modelin
+    ZATEN FATURALANMIS sonuclari dahil) coktuyordu. Artik her model AYRI
+    try/except icinde kosuyor; basarisiz olan `failed=True` + `error=<mesaj>`
+    ile ACIKCA isaretlenip devam ediliyor — onceki modellerin sonucu KAYBOLMAZ.
+    `on_result` verilirse her model tamamlaninca (basarili/basarisiz FARK ETMEZ)
+    cagrilir — `main()` bunu ARTIMLI diske yazmak icin kullanir.
     """
     factory = settings_factory or (lambda model: Settings(GEMINI_MODEL=model))
     results: list[JudgeModelResult] = []
     for model in models:
         settings = factory(model)
-        client = client_factory(model) if client_factory else None
-        tracked = _LatencyTrackingJudge(GeminiJudgeAdapter(settings, client=client))
-        report = EvalRunner(judge=tracked).run_eval(use_backtest=True, use_curated=True)
-        o = report.overall
-        avg_latency = (
-            sum(tracked.durations) / len(tracked.durations) if tracked.durations else 0.0
-        )
-        results.append(
-            JudgeModelResult(
+        tracked: _LatencyTrackingJudge | None = None
+        try:
+            if client_factory:
+                client = client_factory(model)
+                retry_client = client if isinstance(client, ResilientGeminiClient) else None
+            else:
+                client = ResilientGeminiClient(settings)
+                retry_client = client
+            tracked = _LatencyTrackingJudge(
+                GeminiJudgeAdapter(settings, client=client), retry_client=retry_client
+            )
+            report = EvalRunner(judge=tracked).run_eval(use_backtest=True, use_curated=True)
+        except (JudgeUnavailableError, GeminiError) as exc:
+            result = JudgeModelResult(
+                model=model,
+                real_calls=tracked.real_calls if tracked else 0,
+                error_count=tracked.errors if tracked else 0,
+                failed=True,
+                error=str(exc),
+            )
+        else:
+            o = report.overall
+            avg_latency = (
+                sum(tracked.durations) / len(tracked.durations) if tracked.durations else 0.0
+            )
+            avg_retry_wait = (
+                sum(tracked.retry_wait_s) / len(tracked.retry_wait_s)
+                if tracked.retry_wait_s
+                else 0.0
+            )
+            result = JudgeModelResult(
                 model=model,
                 precision=o.precision,
                 recall=o.recall,
@@ -274,8 +361,13 @@ def run_judge_model_probe(
                 total=o.total,
                 real_calls=tracked.real_calls,
                 avg_latency_s=round(avg_latency, 4),
+                avg_retry_wait_s=round(avg_retry_wait, 4),
+                error_count=tracked.errors,
+                failed=False,
             )
-        )
+        results.append(result)
+        if on_result:
+            on_result(result)
     return results
 
 
@@ -284,14 +376,45 @@ def run_judge_model_probe(
 # ---------------------------------------------------------------------------
 
 
+# pgvector `Vector` struct (src/vector.h): 4B vl_len_ + 2B dim + 2B unused
+# header, ardindan boyut basina 4B float4 — pgvector'in kendi README'si
+# bunu "4 * dimensions + 8 bytes" olarak belgeler. #244'un "embedding boyutu
+# icin indeks/depolama boyutu" kabul kriteri (#257 bulgu 3 / #313): bu AGSIZ
+# hesaplanabiliyordu ama ne olculmus ne "ÖLÇÜLEMEYENLER"e yazilmisti — sessiz
+# atlanmisti. Repo icinde ANN indeksi (hnsw/ivfflat) YOK, yalniz duz
+# `vector(N)` kolonu (migrations/versions/c4f1d6a2b8e9_vector_index_table.py,
+# boyut `settings.GEMINI_EMBEDDING_DIMENSIONS` ile parametrik) — yani bu sayi
+# ayni zamanda "indeks boyutu"nun ta kendisi.
+_PGVECTOR_HEADER_BYTES = 8
+_PGVECTOR_BYTES_PER_DIM = 4
+
+
+def pgvector_storage_bytes(dimensions: int) -> int:
+    """pgvector `vector(N)` kolonunun VEKTOR BASINA depolama boyutu (bayt).
+
+    Saf fonksiyon — API anahtari YA DA ag cagrisi GEREKTIRMEZ; `--run`/
+    `GEMINI_API_KEY` olmadan da (agsiz tahmin yolunda dahi) hesaplanabilir.
+    """
+    return _PGVECTOR_HEADER_BYTES + _PGVECTOR_BYTES_PER_DIM * dimensions
+
+
 @dataclass(frozen=True)
 class EmbeddingDimResult:
+    """`failed=True` ise benzerlik/margin/gecikme GECERSIZDIR (bkz. `error`) —
+    `storage_bytes` HER ZAMAN gecerlidir (ag gerektirmeyen saf hesap, #257
+    bulgu 3 / #313). `JudgeModelResult.failed` ile ayni disiplin: model/boyut
+    basina hata SESSIZCE yutulmaz, `failed`/`error` ile ACIKCA raporlanir
+    (#257 bulgu 4 / #313)."""
+
     dimensions: int
-    mean_related_sim: float
-    mean_unrelated_sim: float
-    margin: float
-    latency_s: float
-    n_pairs: int
+    mean_related_sim: float = 0.0
+    mean_unrelated_sim: float = 0.0
+    margin: float = 0.0
+    latency_s: float = 0.0
+    n_pairs: int = 0
+    storage_bytes: int = 0
+    failed: bool = False
+    error: str | None = None
 
     def to_dict(self) -> dict:
         return {
@@ -301,6 +424,9 @@ class EmbeddingDimResult:
             "margin": self.margin,
             "latency_s": self.latency_s,
             "n_pairs": self.n_pairs,
+            "storage_bytes": self.storage_bytes,
+            "failed": self.failed,
+            "error": self.error,
         }
 
 
@@ -321,12 +447,22 @@ def run_embedding_dimension_probe(
     settings_factory=None,
     client_factory=None,
     pairs: tuple[EmbeddingPair, ...] = EMBEDDING_SAMPLE,
+    on_result: Callable[[EmbeddingDimResult], None] | None = None,
 ) -> list[EmbeddingDimResult]:
     """Her aday boyut icin sentetik orneklemi embed eder — GERCEK Gemini cagrisi.
 
     Her boyut TEK bir batch cagrisi kullanir (essiz metinler tek `embed()`
     cagrisinda gonderilir) — cagri sayisi = `len(dims)`. `client_factory(dim)`
     testte sahte istemci enjekte etmek icin override edilebilir.
+
+    BOYUT-BASINA HATA YAKALAMA + ARTIMLI RAPORLAMA (#257 bulgu 4 / #313): bir
+    boyutun Gemini cagrisi basarisiz olursa (`GeminiError` ailesi — ag/kota/5xx)
+    o boyut `failed=True` ile isaretlenip devam edilir; ONCEKI boyutlarin ZATEN
+    FATURALANMIS sonuclari KAYBOLMAZ. `ValueError` (adapter essiz metin sayisi
+    kadar vektor DONDURMEDI) BILEREK yakalanmiyor — bu dis bir API hatasi degil,
+    adapter'in kendi SOZLESME ihlali/programlama hatasi; sessizce "bu boyut
+    basarisiz" satirina indirgenirse gercek bir kod kusuru gizlenir (bkz.
+    `tests/unit/test_model_secimi_eval.py::test_run_embedding_dimension_probe_raises_on_vector_count_mismatch`).
     """
     factory = settings_factory or (lambda dim: Settings(GEMINI_EMBEDDING_DIMENSIONS=dim))
     unique_texts = _unique_sample_texts(pairs)
@@ -337,7 +473,19 @@ def run_embedding_dimension_probe(
         client = client_factory(dim) if client_factory else None
         adapter = GeminiEmbeddingsAdapter(settings, client=client)
         start = time.perf_counter()
-        vectors = adapter.embed(unique_texts, SEMANTIC_SIMILARITY_TASK)
+        try:
+            vectors = adapter.embed(unique_texts, SEMANTIC_SIMILARITY_TASK)
+        except GeminiError as exc:
+            result = EmbeddingDimResult(
+                dimensions=dim,
+                storage_bytes=pgvector_storage_bytes(dim),
+                failed=True,
+                error=str(exc),
+            )
+            results.append(result)
+            if on_result:
+                on_result(result)
+            continue
         latency = time.perf_counter() - start
         if len(vectors) != len(unique_texts):
             raise ValueError("embedding adapter essiz metin sayisi kadar vektor dondurmedi")
@@ -347,16 +495,19 @@ def run_embedding_dimension_probe(
         mean_related = sum(related_sims) / len(related_sims) if related_sims else 0.0
         mean_unrelated = sum(unrelated_sims) / len(unrelated_sims) if unrelated_sims else 0.0
 
-        results.append(
-            EmbeddingDimResult(
-                dimensions=dim,
-                mean_related_sim=round(mean_related, 4),
-                mean_unrelated_sim=round(mean_unrelated, 4),
-                margin=round(mean_related - mean_unrelated, 4),
-                latency_s=round(latency, 4),
-                n_pairs=len(pairs),
-            )
+        result = EmbeddingDimResult(
+            dimensions=dim,
+            mean_related_sim=round(mean_related, 4),
+            mean_unrelated_sim=round(mean_unrelated, 4),
+            margin=round(mean_related - mean_unrelated, 4),
+            latency_s=round(latency, 4),
+            n_pairs=len(pairs),
+            storage_bytes=pgvector_storage_bytes(dim),
+            failed=False,
         )
+        results.append(result)
+        if on_result:
+            on_result(result)
     return results
 
 
@@ -373,22 +524,39 @@ class CallEstimate:
     judge_call_total: int
     embedding_call_total: int
     grand_total: int
+    max_retries: int  # Settings.GEMINI_MAX_RETRIES — worst-case carpani (#257 bulgu 2)
+    worst_case_http_requests: int  # grand_total x max_retries — bkz. estimate_total_calls docstring
 
 
 def estimate_total_calls(
-    judge_models: tuple[str, ...], embedding_dims: tuple[int, ...]
+    judge_models: tuple[str, ...],
+    embedding_dims: tuple[int, ...],
+    *,
+    max_retries: int | None = None,
 ) -> CallEstimate:
+    """`grand_total` MANTIKSAL (judge/embedding) cagriyi sayar, GERCEK HTTP
+    istegini DEGIL (#257 bulgu 2 / #313). `ResilientGeminiClient` 429/5xx'te
+    `GEMINI_MAX_RETRIES`'a (varsayilan 3) kadar tekrar dener — yani `--max-calls`
+    tavani MANTIKSAL cagriyi sinirlar ama GERCEK istek sayisi bunun katina kadar
+    cikabilir (olculdu: 8 mantiksal cagri -> 24 gercek istek, tam GEMINI_MAX_RETRIES
+    kati). `worst_case_http_requests` bu ust siniri ACIKCA hesaplar — kullanici
+    hangi sayiya imza attigini bilsin.
+    """
     real_calls_per_config = estimate_real_judge_calls()
     judge_total = real_calls_per_config * len(judge_models)
     # Essiz metinler TEK batch cagrisinda gonderilir -> boyut basina 1 cagri.
     embedding_total = len(embedding_dims)
+    grand_total = judge_total + embedding_total
+    retries = max_retries if max_retries is not None else Settings().GEMINI_MAX_RETRIES
     return CallEstimate(
         judge_models=judge_models,
         embedding_dims=embedding_dims,
         real_calls_per_judge_config=real_calls_per_config,
         judge_call_total=judge_total,
         embedding_call_total=embedding_total,
-        grand_total=judge_total + embedding_total,
+        grand_total=grand_total,
+        max_retries=retries,
+        worst_case_http_requests=grand_total * retries,
     )
 
 
@@ -415,7 +583,18 @@ def _print_estimate(estimate: CallEstimate, max_calls: int) -> None:
           f"({len(_unique_sample_texts())} essiz metin, sentetik — datasets/fixtures'a dokunulmadi)")
     print(f"  Tahmini embedding cagrisi : {len(estimate.embedding_dims)} boyut x 1 batch"
           f" = {estimate.embedding_call_total}")
+    # #257 bulgu 3 / #313: depolama/indeks boyutu API anahtari GEREKTIRMEZ —
+    # bu yuzden agsiz tahmin yolunda (key olmadan da) burada yazdiriliyor.
+    storage_line = ", ".join(
+        f"{dim}={pgvector_storage_bytes(dim)}bayt" for dim in estimate.embedding_dims
+    )
+    print(f"  Embedding depolama/indeks (agsiz, pgvector formulu) : {storage_line}")
     print(f"  TOPLAM tahmini cagri    : {estimate.grand_total}  (limit: {max_calls})")
+    print(f"  EN KOTU DURUM (retry dahil, #257 bulgu 2) : {estimate.grand_total} x "
+          f"GEMINI_MAX_RETRIES={estimate.max_retries} = {estimate.worst_case_http_requests} "
+          "gercek HTTP istegi — 'TOPLAM tahmini cagri' MANTIKSAL sayidir, --max-calls")
+    print("  bunu SINIRLAR ama 429/5xx retry'lari gercek istegi bu kata kadar cikarabilir "
+          "(olculdu: 8 mantiksal -> 24 gercek, bkz. eval/model-secimi-raporu.md §2).")
     print()
 
 
@@ -470,35 +649,65 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     print("  GEMINI_API_KEY bulundu + --run verildi — GERCEK Gemini cagrisi baslatiliyor...\n")
-    judge_results = run_judge_model_probe(judge_models)
-    embedding_results = run_embedding_dimension_probe(embedding_dims)
 
-    print("  Judge yapilandirma sonuclari:")
-    for r in judge_results:
-        print(
-            f"    {r.model}: precision={r.precision:.4f} recall={r.recall:.4f} "
-            f"f05={r.f05:.4f} gecikme_ort={r.avg_latency_s:.3f}s "
-            f"(gercek_cagri={r.real_calls})"
+    # ARTIMLI YAZIM (#257 bulgu 4 / #313): her model/boyut TAMAMLANIR
+    # TAMAMLANMAZ payload'a eklenip diske YAZILIR — sureç ikinci probda
+    # coksa (ya da kesilse) bile ONCEKI, ZATEN FATURALANMIS sonuclar
+    # `model-secimi-sonuclar.json`'da kalir, TUMDEN kaybolmaz.
+    payload: dict = {"judge_models": [], "embedding_dims": []}
+
+    def _persist() -> None:
+        _RESULTS_PATH.write_text(
+            json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8"
         )
 
-    print("\n  Embedding boyutu sonuclari:")
-    for r in embedding_results:
-        print(
-            f"    dim={r.dimensions}: ilgili_sim_ort={r.mean_related_sim:.4f} "
-            f"ilgisiz_sim_ort={r.mean_unrelated_sim:.4f} margin={r.margin:.4f} "
-            f"gecikme={r.latency_s:.3f}s"
-        )
+    print("  Judge yapilandirma sonuclari (tamamlandikca yaziliyor):")
 
-    payload = {
-        "judge_models": [r.to_dict() for r in judge_results],
-        "embedding_dims": [r.to_dict() for r in embedding_results],
-    }
-    _RESULTS_PATH.write_text(
-        json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8"
+    def _on_judge_result(r: JudgeModelResult) -> None:
+        payload["judge_models"].append(r.to_dict())
+        _persist()
+        if r.failed:
+            print(f"    {r.model}: BASARISIZ — {r.error} (gercek_cagri={r.real_calls})")
+        else:
+            print(
+                f"    {r.model}: precision={r.precision:.4f} recall={r.recall:.4f} "
+                f"f05={r.f05:.4f} gecikme_ort={r.avg_latency_s:.3f}s "
+                f"(retry_bekleme_ort={r.avg_retry_wait_s:.3f}s, hata={r.error_count}) "
+                f"(gercek_cagri={r.real_calls})"
+            )
+
+    judge_results = run_judge_model_probe(judge_models, on_result=_on_judge_result)
+
+    print("\n  Embedding boyutu sonuclari (tamamlandikca yaziliyor):")
+
+    def _on_embedding_result(r: EmbeddingDimResult) -> None:
+        payload["embedding_dims"].append(r.to_dict())
+        _persist()
+        if r.failed:
+            print(f"    dim={r.dimensions}: BASARISIZ — {r.error}")
+        else:
+            print(
+                f"    dim={r.dimensions}: ilgili_sim_ort={r.mean_related_sim:.4f} "
+                f"ilgisiz_sim_ort={r.mean_unrelated_sim:.4f} margin={r.margin:.4f} "
+                f"gecikme={r.latency_s:.3f}s depolama={r.storage_bytes}bayt/vektor"
+            )
+
+    embedding_results = run_embedding_dimension_probe(
+        embedding_dims, on_result=_on_embedding_result
     )
+
     print(f"\n  Sonuclar yazildi: {_RESULTS_PATH.relative_to(_REPO_ROOT)}")
+
+    n_failed = sum(1 for r in judge_results if r.failed) + sum(
+        1 for r in embedding_results if r.failed
+    )
+    if n_failed:
+        print(
+            f"  UYARI: {n_failed} prob BASARISIZ oldu (yukarida BASARISIZ satirlarina bak) — "
+            "raporu bu durumu GORUNUR kilacak sekilde guncelle, basarisiz satiri sessizce atlama."
+        )
     print("  eval/model-secimi-raporu.md dosyasini bu sayilarla GUNCELLE.")
-    return 0
+    return 2 if n_failed else 0
 
 
 if __name__ == "__main__":

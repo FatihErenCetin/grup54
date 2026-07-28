@@ -105,6 +105,18 @@ class ResilientGeminiClient:
             api_key=settings.GEMINI_API_KEY,
             http_options=HttpOptions(timeout=int(settings.GEMINI_TIMEOUT_S * 1000)),
         )
+        # Son BAŞARILI çağrının retry istatistiği — tenacity'nin `idle_for`'u
+        # (bkz. `_call_with_retry`/`_embed_with_retry`) SADECE backoff'ta
+        # geçen bekleme süresidir, gerçek iş süresini içermez. Üst katmanlar
+        # (örn. `eval/model_secimi_eval.py::_LatencyTrackingJudge`, #257 bulgu
+        # 1 / #313) duvar-saati ölçümünden bunu düşerek "model gerçekten ne
+        # kadar sürdü" ile "kota geri-çekilmesi ne kadar sürdü"yü AYIRIR —
+        # eskiden ikisi karışıyordu (bkz. eval/model-secimi-raporu.md §2).
+        # Tek-thread sıralı kullanım varsayılır (eval script'i); eşzamanlı
+        # çağrılarda son çağrınınkiyle üzerine yazılır — production `/radar`
+        # yolunda bu alan hiç okunmuyor, zararsız.
+        self.last_call_attempts: int = 0
+        self.last_call_retry_wait_s: float = 0.0
 
     def generate_content(
         self, prompt: str, *, response_schema: type[BaseModel] | None = None
@@ -132,6 +144,21 @@ class ResilientGeminiClient:
             parca = texts[bas : bas + _EMBED_BATCH_CAP]
             vektorler.extend(self._embed_with_retry(parca, task_type=task_type))
         return vektorler
+
+    def _record_retry_stats(self, attempt_fn) -> None:
+        """`_attempt`'in tenacity `.statistics`'ini `last_call_*`'a kopyalar.
+
+        `@retry` dekoratörü her `_call_with_retry`/`_embed_with_retry`
+        çağrısında `_attempt`'i TAZE dekore eder (bkz. tenacity `wraps()`:
+        `wrapped_f.statistics = copy.statistics`) — yani bu HER ZAMAN son
+        çağrının istatistiğidir, birikmiş/kirlenmiş değil. `idle_for` yalnız
+        retry ÖNCESİ backoff'ta harcanan süredir (tenacity kaynağı: `next_action`
+        içinde `self.statistics["idle_for"] += sleep`), gerçek deneme işini
+        İÇERMEZ — bu yüzden "retry bekleme süresi" için doğru kaynak budur.
+        """
+        stats = getattr(attempt_fn, "statistics", None) or {}
+        self.last_call_attempts = stats.get("attempt_number", 1)
+        self.last_call_retry_wait_s = stats.get("idle_for", 0.0)
 
     def _call_with_retry(
         self, prompt: str, *, response_schema: type[BaseModel] | None
@@ -166,7 +193,9 @@ class ResilientGeminiClient:
                 raise GeminiTransientError(str(exc)) from exc
             return response.text or ""
 
-        return _attempt()
+        result = _attempt()
+        self._record_retry_stats(_attempt)
+        return result
 
     def _embed_with_retry(self, texts: list[str], *, task_type: str) -> list[list[float]]:
         config = EmbedContentConfig(
@@ -207,4 +236,6 @@ class ResilientGeminiClient:
                 )
             return vectors
 
-        return _attempt()
+        result = _attempt()
+        self._record_retry_stats(_attempt)
+        return result

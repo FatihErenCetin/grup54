@@ -257,3 +257,33 @@ def test_client_permanent_error_not_retried(monkeypatch):
     with pytest.raises(GeminiPermanentError):
         client.generate_content("prompt")
     assert fake_models.calls == 1
+
+
+# ---------------------------------------------------------------------------
+# last_call_attempts / last_call_retry_wait_s — retry-bekleme ayrıştırma
+# (#257 bulgu 1 / #313): eval/model_secimi_eval.py::_LatencyTrackingJudge bu
+# alanları okuyup duvar-saati gecikmesinden retry/backoff beklemesini ARINDIRIR.
+# tenacity `idle_for` istatistiği YALNIZ backoff'ta harcanan süredir, gerçek
+# deneme işini İÇERMEZ — bu testler o ayrımın DOĞRU kaynaktan geldiğini kilitler.
+# ---------------------------------------------------------------------------
+
+
+def test_client_no_retry_records_zero_wait_and_one_attempt(monkeypatch):
+    fake_models = _FakeModels(fail_times=0, fail_code=503)
+    _patch_genai_client(monkeypatch, fake_models)
+    client = ResilientGeminiClient(Settings(_env_file=None, GEMINI_API_KEY="k", GEMINI_MAX_RETRIES=5))
+    client.generate_content("prompt")
+    assert client.last_call_attempts == 1
+    assert client.last_call_retry_wait_s == 0.0
+
+
+def test_client_retry_records_wait_time_and_attempt_count(monkeypatch):
+    fake_models = _FakeModels(fail_times=1, fail_code=503)
+    _patch_genai_client(monkeypatch, fake_models)
+    client = ResilientGeminiClient(Settings(_env_file=None, GEMINI_API_KEY="k", GEMINI_MAX_RETRIES=5))
+    client.generate_content("prompt")
+    assert fake_models.calls == 2
+    assert client.last_call_attempts == 2
+    # idle_for backoff'ta GERCEKTEN beklenen suredir (sifir degil) — mutasyon:
+    # `_record_retry_stats` kaldirilirsa bu her zaman 0.0 kalir.
+    assert client.last_call_retry_wait_s > 0.0
