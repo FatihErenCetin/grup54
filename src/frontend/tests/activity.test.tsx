@@ -95,6 +95,13 @@ describe("ActivityPage — dört durum dalı", () => {
     expect(screen.queryByRole("alert")).toBeNull();
   });
 
+  it("başlık Title Case (#316/A5): 'Olay Akışı', 'Olay akışı' DEĞİL", () => {
+    // MUTASYON KİLİDİ: h1'i eski "Olay akışı"ya geri çevir -> bu test kırılır.
+    ayarla({ data: { events: [], latest_ts: null } });
+    render(<ActivityPage />, { wrapper });
+    expect(screen.getByRole("heading", { name: "Olay Akışı" })).toBeTruthy();
+  });
+
   it("veri varken geçici poll hatası listeyi GİZLEMEZ", () => {
     ayarla({ data: { events: [ev("e1", "esma", "2026-07-27T09:00:00")] }, error: "geçici" });
     render(<ActivityPage />, { wrapper });
