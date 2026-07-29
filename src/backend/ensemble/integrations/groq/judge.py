@@ -10,14 +10,14 @@ ayni-actor durumlari saglayiciya HIC gitmez. Yedek saglayicinin kotasini da
 korumak icin gecit ONCE uygulanir.
 """
 
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel
 
 from ensemble.config import Settings
 from ensemble.integrations.gemini.gate import cheap_prejudge
 from ensemble.integrations.gemini.judge import _build_prompt
 from ensemble.integrations.groq.client import GroqClient
 from ensemble.integrations.groq.errors import GroqError
-from ensemble.models import Detection, NormalizedEvent
+from ensemble.models import Detection, NormalizedEvent, severity_normalize
 from ensemble.ports import JudgeUnavailableError
 
 
@@ -52,7 +52,7 @@ class GroqJudgeAdapter:
                 actors=sorted({a.actor, b.actor}),
                 branches=sorted({x for x in (a.branch, b.branch) if x}),
                 files=sorted(set(overlap)),
-                severity=verdict.severity,
+                severity=severity_normalize(verdict.severity),
                 confidence=verdict.confidence,
                 rationale=verdict.rationale,
             )
@@ -61,7 +61,12 @@ class GroqJudgeAdapter:
         # ihlali burada gercekci bir yol ve o da sahte tespite DONUSTURULMEZ.
         except GroqError as exc:
             raise JudgeUnavailableError(f"{a.id}-{b.id}: Groq cagrisi basarisiz: {exc}") from exc
-        except ValidationError as exc:
+        # `ValueError` (yalniz `ValidationError` DEGIL): pydantic'in
+        # ValidationError'i ValueError alt sinifidir, yani bu tek cumle HEM
+        # sema ihlalini HEM de severity_normalize'in "taninmayan severity"
+        # hatasini yakalar (#327). Ikisi de ayni sonuca varir: yargi
+        # UYDURULMAZ, cift degerlendirilememis sayilir.
+        except ValueError as exc:
             raise JudgeUnavailableError(
                 f"{a.id}-{b.id}: Groq yaniti semaya uymuyor: {exc}"
             ) from exc
