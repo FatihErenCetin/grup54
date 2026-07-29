@@ -184,3 +184,45 @@ def test_harness_mounti_SALT_OKUNUR_ve_dizin_uydurmaz():
         f".harness mount'unda create_host_path=false yok: {m} — Docker eksik "
         "dizini boş olarak yaratır ve board sessizce boş kalır"
     )
+
+
+def test_radar_ayar_dugmeleri_compose_da_yasar():
+    """#324 — radar'in uc ayar dugmesi compose `environment:`inde OLMALI.
+
+    Neden kilitli: bu ayarlar 2026-07-29'a kadar SUNUCUDAKI
+    `/etc/ensemble/ensemble.env` icinde yasiyordu ve orada kimse goremiyordu.
+    Olculen sonuc: uretimde `RADAR_WINDOW_DAYS=2` + `GITHUB_BACKFILL_LIMIT=10`
+    ile `GET /radar` 0 tespit donuyordu — `degraded: null` oldugu icin de
+    "hata yok" gibi gorunuyordu. Aslinda judge'a hic cift gitmiyordu (DB:
+    toplam 6 yargi, 6'si da "cakisma var" — dedektor calisiyor, ona soru
+    sorulmuyordu).
+
+    Sir olmayan bir AYARIN gitmeyen bir yerde yasamasi, "urun bozuk mu, ayar
+    mi kisik" sorusunu cevaplanamaz kiliyordu. Bu test onlari commit'li
+    dosyaya cakiyor: biri env dosyasina geri taşırsa CI kirmizi olur.
+
+    Mutasyon kaniti: uc satiri da compose'dan gecici olarak sildim -> test
+    kirmizi (KeyError yerine acik mesajla); geri alinca yesil.
+    """
+    api_env = _load_compose()["services"]["api"]["environment"]
+    for anahtar in ("RADAR_WINDOW_DAYS", "GITHUB_BACKFILL_LIMIT", "RADAR_JUDGE_CONCURRENCY"):
+        assert anahtar in api_env, (
+            f"{anahtar} compose `api.environment` icinde yok. Sunucudaki env "
+            "dosyasina geri tasindiysa geri al: sir degil, AYAR — commit'li "
+            "olmali (bkz. #324 ve docs/deploy-runbook.md §env tablosu)."
+        )
+        # Deger STRING olmali: YAML `7`'yi int'e cevirir, Compose ise
+        # `environment:` degerlerinde string bekler (int verilirse Compose
+        # surumune gore uyari/hata). Tirnak kaybi sessizce kaymasin.
+        assert isinstance(api_env[anahtar], str), (
+            f"{anahtar} tirnak icinde (string) yazilmali — YAML tirnaksiz "
+            f"sayiyi int yapar. Gercek tip: {type(api_env[anahtar]).__name__}"
+        )
+
+    # Pencere 2'de KALMAMALI: asil darbogaz oydu. Uste sinir kod
+    # varsayilani (14) — asmak kotayi gereksiz yakar.
+    pencere = int(api_env["RADAR_WINDOW_DAYS"])
+    assert 3 <= pencere <= 14, (
+        f"RADAR_WINDOW_DAYS={pencere}. 2 (eski deger) cift olusturmuyordu; "
+        "14 kod varsayilani ve pratik ust sinir."
+    )

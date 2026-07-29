@@ -210,6 +210,42 @@ services:
       ENSEMBLE_MODE: hosted
       PORT: "8000"
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      # --- RADAR AYAR DUGMELERI (#324) -----------------------------------
+      # NEDEN BURADA, env dosyasinda DEGIL: bunlar sir degil, AYAR. Runbook'un
+      # kendi taksonomisi (docs/deploy-runbook.md §env tablosu) "compose
+      # `environment:` = calisma-zamani ama sir degil, commit'li" diyor.
+      # Sunucudaki /etc/ensemble/ensemble.env'de durduklari surece degisiklik
+      # review edilemiyor, denetlenemiyor ve sunucu yeniden kurulunca
+      # kayboluyordu. Compose `environment:` `env_file:`i EZER -> buradaki
+      # degerler kazanir (env dosyasindaki eski satirlar zararsiz kalir;
+      # temizligi ayri adim).
+      #
+      # OLCULEN SORUN (2026-07-29, uretim): GET /radar -> 0 tespit,
+      # `degraded: null`, 11.2 sn. `degraded: null` "judge saglikli" demek —
+      # hata yok ama DENEME de yok. DB dogruladi: judge'a sorulan 6 ciftin
+      # 6'sinda da "cakisma var" denmis (judge_verdicts, 2026-07-27). Yani
+      # dedektor calisiyor, ona soru sorulmuyordu. Uc kat kisitlama vardi:
+      # RADAR_WINDOW_DAYS=2 · GITHUB_BACKFILL_LIMIT=10 · CONCURRENCY=1.
+      # 2 gunluk pencerede 10 olay icinde iki aktorun ayni dosyaya dokunma
+      # ihtimali ~0 -> aday cift hic olusmuyordu.
+      #
+      # Kademeli aciyoruz (tek adimda kod varsayilanlarina gitmek olcmeyi
+      # imkansiz kilar): 1. adim asagidaki degerler, deploy sonrasi tespit
+      # sayisi + sure + `degraded` olculur, gerekirse 2. adim (14 / 40).
+      #
+      # KOTA: Groq yedegi bagli (judge_verdicts.model =
+      # "gemini:gemini-2.5-flash+groq:llama-3.3-70b-versatile") — Gemini'nin
+      # gunluk 20 generate_content limiti dolunca Groq devralir. Yargilar
+      # kalici yazilir (TTL varsayilani None), yani ayni cift ikinci kez
+      # modele gitmez: isinma maliyeti TEK SEFERLIK.
+      #
+      # Asil darbogaz. 2 gun -> 7 gun (kod varsayilani 14).
+      RADAR_WINDOW_DAYS: "7"
+      # config.py:114 yorumu: "50 olay zaten ~90 aday demek". 25 -> ~40 aday.
+      GITHUB_BACKFILL_LIMIT: "25"
+      # Seri judge (1) yuzunden /radar 11.2 sn suruyordu. 4 paralel Groq'un
+      # RPM'ini zorlamaz; kod varsayilani 8'e cikmadan once olcelim.
+      RADAR_JUDGE_CONCURRENCY: "4"
     ports:
       # SOL taraf host, SAG taraf konteyner. "127.0.0.1:" on eki KRITIK —
       # silinirse Docker portu 0.0.0.0'a acar ve ufw'yi ATLAR.
