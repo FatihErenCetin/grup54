@@ -23,20 +23,43 @@ def retrieve_scope_candidates(
     *,
     embeddings_port: EmbeddingsPort | None,
     top_k: int,
-) -> list[ScopeCandidate]:
+) -> tuple[list[ScopeCandidate], str | None]:
+    """(adaylar, düşüş sebebi) — sebep `None` ise semantik katman çalıştı.
+
+    #330: sağlayıcı (kota/ağ) düşünce eskiden TÜM `check_scope` iptal olup
+    503 dönüyordu. Oysa bir satır aşağıdaki leksikal vektör her koşulda
+    hesaplanıyor ve skorlama `semantic=None`'ı ZATEN destekliyor — yani
+    çalışan bir yol hazır dururken sonuç hiç üretilmiyordu.
+    Düşüş SESSİZ değildir: sebep çağırana döner, `ScopeVerdict.degraded`
+    olarak yanıta işlenir ve kullanıcıya gösterilir.
+    """
     lexical = [_lexical_similarity(subject, item.quote) for item in items]
     semantic: list[float] | None = None
+    degraded: str | None = None
     if embeddings_port is not None:
-        vectors = embeddings_port.embed(
-            [subject, *(item.quote for item in items)],
-            SCOPE_RETRIEVAL_TASK,
-        )
-        if len(vectors) != len(items) + 1:
-            raise ValueError("embeddings must return one vector per scope text")
-        semantic = [
-            (cosine_similarity(vectors[0], vector) + 1.0) / 2.0
-            for vector in vectors[1:]
-        ]
+        try:
+            vectors = embeddings_port.embed(
+                [subject, *(item.quote for item in items)],
+                SCOPE_RETRIEVAL_TASK,
+            )
+        except Exception as exc:  # noqa: BLE001
+            # Yalnız ÇAĞRININ KENDİSİ sarılı: sağlayıcı arızası (kota/ağ) burada
+            # yakalanır ve leksikal yola düşülür. Hata YUTULMUYOR — `degraded`
+            # ile kullanıcıya kadar taşınıyor ("fallback okuma yolunda meşru,
+            # yıkıcı yazma yolunda asla").
+            degraded = f"semantik retrieval kullanılamadı ({type(exc).__name__}: {exc})"
+        else:
+            # Vektör ADEDİ kontrolü BİLEREK try'ın DIŞINDA: yanlış adet bir
+            # sağlayıcı kesintisi değil, adapter SÖZLEŞME İHLALİdir. Onu
+            # "degraded" nota çevirmek gerçek bir bug'ı yumuşak bir dipnota
+            # gömerdi — bu yol `test_hatalı_embedding_adedi_sessizce_devam_etmez`
+            # ile kilitli ve öyle kalmalı.
+            if len(vectors) != len(items) + 1:
+                raise ValueError("embeddings must return one vector per scope text")
+            semantic = [
+                (cosine_similarity(vectors[0], vector) + 1.0) / 2.0
+                for vector in vectors[1:]
+            ]
 
     scored = [
         ScopeCandidate(
@@ -65,7 +88,7 @@ def retrieve_scope_candidates(
             )
             if best is not None:
                 selected.append(best)
-    return selected
+    return selected, degraded
 
 
 def cheap_scope_prejudge(

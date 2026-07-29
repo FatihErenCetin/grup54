@@ -98,6 +98,13 @@ class ScopeVerdict(BaseModel):
     match_none: bool = False
     judged_at: datetime | None = None
     signals: "Signals | None" = None
+    # #330: bu karar TAM yetenekle mi üretildi? `None` = evet. Dolu ise
+    # semantik retrieval kullanılamadı ve aday seçimi YALNIZ leksikal
+    # eşleşmeyle yapıldı — karar hâlâ gerçek ama zemini dar. Eskiden bu
+    # durumda uç 503 dönüyordu (hiç karar yok); şimdi karar üretiliyor ama
+    # eksiklik SESSİZ GEÇMİYOR (radar `degraded` şeridiyle aynı ilke —
+    # "temiz" ile "temiz diyemiyoruz" karıştırılmaz).
+    degraded: str | None = None
 
 
 class ScopeItemRef(BaseModel):

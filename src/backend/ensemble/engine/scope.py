@@ -74,7 +74,7 @@ class ScopeService:
             default_sprint=self.sprint,
         )
         scope = self._read_scope(subject.sprint or self.sprint)
-        candidates = retrieve_scope_candidates(
+        candidates, degraded = retrieve_scope_candidates(
             subject.text,
             scope_items(scope),
             embeddings_port=self.embeddings_port,
@@ -96,6 +96,7 @@ class ScopeService:
                 files=subject.files,
                 matched_text=None if judgement.verdict == "drift" else evidence.quote,
             ),
+            degraded=degraded,
         )
         with self._verdicts_lock:
             self._verdicts.append(verdict)
