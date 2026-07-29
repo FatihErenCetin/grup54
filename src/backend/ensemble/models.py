@@ -253,6 +253,13 @@ class QueryResult(BaseModel):
     status: Literal["answered", "not_found"]
     searched: list[SearchReceipt]
     nearest: list[NearestRef]
+    # #330: bu cevap TAM yetenekle mi üretildi? `None` = evet. Dolu ise
+    # semantik retrieval kullanılamadı ve belge seçimi YALNIZ leksikal
+    # eşleşmeyle yapıldı. Eskiden bu durumda uç 503 dönüyordu (hiç cevap
+    # yok — canlıda 29 Tem'de üç örnek sorunun üçü de böyleydi); şimdi cevap
+    # üretiliyor ama zeminin dar olduğu SESSİZ GEÇMİYOR. `ScopeVerdict.degraded`
+    # ve `RadarResponse.degraded` ile aynı sözleşme.
+    degraded: str | None = None
 
 
 class QueryDocument(BaseModel):

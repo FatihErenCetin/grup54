@@ -871,6 +871,8 @@ export interface components {
             searched: components["schemas"]["SearchReceipt"][];
             /** Nearest */
             nearest: components["schemas"]["NearestRef"][];
+            /** Degraded */
+            degraded?: string | null;
         };
         /**
          * RadarDegraded
@@ -998,6 +1000,8 @@ export interface components {
             /** Judged At */
             judged_at?: string | null;
             signals?: components["schemas"]["Signals"] | null;
+            /** Degraded */
+            degraded?: string | null;
         };
         /** ScopeVerdictCounts */
         ScopeVerdictCounts: {

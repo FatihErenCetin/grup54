@@ -110,7 +110,7 @@ class QueryService:
         if not documents:
             return _not_found(corpus.last_commit, now, window, searched, [])
 
-        scored = self._retrieve(clean_question, documents)
+        scored, degraded = self._retrieve(clean_question, documents)
         nearest = _nearest_refs(scored, self.top_k)
         relevant = [
             item
@@ -118,7 +118,7 @@ class QueryService:
             if item.lexical_score > 0.0 or item.semantic_score >= self.min_semantic_score
         ][: self.top_k]
         if not relevant:
-            return _not_found(corpus.last_commit, now, window, searched, nearest)
+            return _not_found(corpus.last_commit, now, window, searched, nearest, degraded)
 
         evidence = [item.document for item in relevant]
         judgement = self.judge_port.answer_query(clean_question, evidence)
@@ -133,10 +133,24 @@ class QueryService:
             status="answered",
             searched=searched,
             nearest=nearest,
+            degraded=degraded,
         )
 
-    def _retrieve(self, question: str, documents: list[QueryDocument]) -> list[_ScoredDocument]:
+    def _retrieve(
+        self, question: str, documents: list[QueryDocument]
+    ) -> tuple[list[_ScoredDocument], str | None]:
+        """(skorlanmış belgeler, düşüş sebebi) — sebep `None` ise semantik çalıştı.
+
+        #330: sağlayıcı (kota/ağ) düşünce eskiden TÜM `/query` 503 dönüyordu.
+        Oysa `_ScoredDocument` hem `semantic_score` hem `lexical_score` taşıyor
+        ve `ask()`'ın seçimi `lexical_score > 0.0` ile TEK BAŞINA çalışıyor —
+        yani cevap üretebilecek bir yol hazır dururken hiç cevap verilmiyordu.
+        Düşüş SESSİZ değildir: sebep `QueryResult.degraded` ile kullanıcıya
+        kadar taşınır.
+        """
         by_id = {document.id: document for document in documents}
+        degraded: str | None = None
+        vector_results: list[tuple[str, float]] = []
         try:
             with self._index_lock:
                 self._index_documents(documents)
@@ -146,9 +160,14 @@ class QueryService:
                 result_limit = max(len(self._indexed_hashes), self.top_k)
                 vector_results = self.vector_index.query(query_vectors[0], result_limit)
         except QueryRetrievalError:
+            # Sözleşme ihlali (vektör adedi) — bu bir sağlayıcı kesintisi DEĞİL,
+            # kendi kodumuzun/adapter'ın hatası. Leksikale düşüp "degraded" notu
+            # bırakmak gerçek bir bug'ı yumuşak bir dipnota gömerdi. Patlar.
             raise
-        except Exception as exc:
-            raise QueryRetrievalError("vector retrieval tamamlanamadı") from exc
+        except Exception as exc:  # noqa: BLE001
+            # Sağlayıcı arızası: leksikal skorlarla devam et. Hata YUTULMUYOR —
+            # `degraded` ile yanıta işlenip kullanıcıya gösteriliyor.
+            degraded = f"semantik retrieval kullanılamadı ({type(exc).__name__}: {exc})"
 
         semantic_by_id = {
             document_id: float(score)
@@ -164,14 +183,17 @@ class QueryService:
             )
             for document in documents
         ]
-        return sorted(
-            scored,
-            key=lambda item: (
-                -max(item.semantic_score, item.lexical_score),
-                -item.lexical_score,
-                -item.semantic_score,
-                item.document.id,
+        return (
+            sorted(
+                scored,
+                key=lambda item: (
+                    -max(item.semantic_score, item.lexical_score),
+                    -item.lexical_score,
+                    -item.semantic_score,
+                    item.document.id,
+                ),
             ),
+            degraded,
         )
 
     def _index_documents(self, documents: list[QueryDocument]) -> None:
@@ -290,6 +312,7 @@ def _not_found(
     window: str | None,
     searched: list[SearchReceipt],
     nearest: list[NearestRef],
+    degraded: str | None = None,
 ) -> QueryResult:
     return QueryResult(
         answer="Bu soru için kanonik proje bağlamında yeterli kanıt bulunamadı.",
@@ -301,6 +324,7 @@ def _not_found(
         status="not_found",
         searched=searched,
         nearest=nearest,
+        degraded=degraded,
     )
 
 

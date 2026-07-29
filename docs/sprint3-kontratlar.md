@@ -131,6 +131,11 @@ GET /query?q=<nl>  →  QueryResponse                             # S2 Ek B4 zen
 - Tek-atım (SSE streaming S3'te YOK — S2 Ek B6, sahte-canlılık yasak D-34). `status="not_found"` = dürüst red (`searched`/`nearest` fişleri).
 - **Sahibi:** AI (Semih) · **Tüketicisi:** Ask sayfası (#33).
 
+> **🆕 Kontrat değişti (30 Tem, #330 — additive):** `QueryResponse`'a ve `ScopeVerdict`'e `degraded: str | None = null` eklendi. Donmuş alanların hiçbiri **değişmedi**; ek alan varsayılanlı ve geriye-uyumlu (S2 Ek B4/B3 şekilleri korunuyor).
+> **Neden:** 29 Tem canlı ölçümünde `/query`'nin üç örnek sorusu da `503 query_retrieval_unavailable`, `/scope/check` ise `503 gemini_unavailable` dönüyordu — Gemini ücretsiz kotası (ölçüldü: **20 istek/gün**) bitince embeddings çağrısı tüm isteği iptal ediyordu. Oysa her iki motorda da **leksikal yol her koşulda hesaplanıyor** ve skorlama onu tek başına taşıyabiliyor.
+> **Sözleşme:** `degraded == null` → sonuç TAM yetenekle üretildi. Dolu ise semantik retrieval kullanılamadı, seçim yalnız leksikal eşleşmeyle yapıldı; sonuç gerçek ama zemini dar. İstemci bunu **göstermek zorundadır** — `RadarResponse.degraded` ile aynı ilke (*"temiz" ile "temiz diyemiyoruz" karıştırılmaz*, D-53).
+> **Sınır:** düşüş yalnız **sağlayıcı arızasında** olur. Adapter sözleşme ihlali (vektör adedi yanlış) ve corpus'un hiç okunamaması **hâlâ hata fırlatır** — onları `degraded` notuna çevirmek gerçek bir bug'ı yumuşak bir dipnota gömerdi.
+
 ### B4 · `GET /scope/*` (#59 → #31 wiring) — 🔒 scope-drift verdict
 
 ```
