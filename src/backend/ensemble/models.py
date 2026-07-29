@@ -36,13 +36,56 @@ class NormalizedEvent(BaseModel):
     )
 
 
+Severity = Literal["low", "med", "high"]
+
+# Modelin yazdigi metin -> bizim kelime dagarciğimiz. YALNIZ yazim/es-anlam
+# farklari; anlam esnetilmez.
+#
+# NEDEN VAR (uretimde olculdu, 2026-07-29 — #327): judge `"High"` donduruyordu,
+# `Detection.severity` ise `Literal["low","med","high"]` bekliyor. Pydantic
+# reddediyor -> `JudgeUnavailableError` -> UC ardisik boyle hata devre kesiciyi
+# aciyor -> kalan cifTLER hic DENENMEDEN dusuyor. Olculen bilanco:
+#
+#     degraded: {"judge_unavailable": 1509, "evaluated": 11}
+#
+# Yani tek bir harf buyuklugu farki tespit kapasitesinin ~%99'unu goturdu.
+# Sistem yanlis davranmadi (yargiyi UYDURMADI, #252 sozlesmesi) — ama hatanin
+# dogru ele alinmasi, hatanin olmamasindan ucuz degil.
+_SEVERITY_ES_ANLAM: dict[str, Severity] = {
+    "low": "low",
+    "med": "med",
+    # "medium" modelin DOGAL kelimesi; bizim kisaltmamiz "med". Prompt artik
+    # dagarciği acikca yaziyor ama es-anlami burada da karsiliyoruz.
+    "medium": "med",
+    "high": "high",
+}
+
+
+def severity_normalize(ham: str) -> Severity:
+    """Judge'in yazdigi severity metnini kanonik kelime dagarciğina cevirir.
+
+    BILINMEYEN DEGER VARSAYILANA DUSMEZ — `ValueError` firlatir ve cagiran
+    bunu `JudgeUnavailableError`'a cevirir. "Anlamadim" ile "dusuk oncelikli"
+    ayni sey degil; `low`'a dusmek #252'de bilerek kaldirilan
+    `_fallback_detection` fail-open'inin aynisi olurdu: degerlendirilememis
+    bir cift, degerlendirilmis ve zararsiz bulunmus gibi gorunurdu.
+    """
+    anahtar = ham.strip().lower()
+    if anahtar not in _SEVERITY_ES_ANLAM:
+        raise ValueError(
+            f"judge taninmayan severity yazdi: {ham!r} "
+            f"(beklenen: {sorted(_SEVERITY_ES_ANLAM)})"
+        )
+    return _SEVERITY_ES_ANLAM[anahtar]
+
+
 class Detection(BaseModel):
     id: str
     kind: Literal["conflict"] = "conflict"
     actors: list[str]
     branches: list[str]
     files: list[str]
-    severity: Literal["low", "med", "high"]
+    severity: Severity
     confidence: float
     rationale: str
 

@@ -5,18 +5,24 @@ Gemini'ye sormadan önce `cheap_prejudge` ile bilinen sınır durumlar (aynı ac
 yalnızca gürültü-dosyası overlap'i) elenir — maliyet kontrolü.
 """
 
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel
 
 from ensemble.config import Settings
 from ensemble.integrations.gemini.client import ResilientGeminiClient
 from ensemble.integrations.gemini.errors import GeminiError
 from ensemble.integrations.gemini.gate import cheap_prejudge
-from ensemble.models import Detection, NormalizedEvent
+from ensemble.models import Detection, NormalizedEvent, Severity, severity_normalize
 from ensemble.ports import JudgeUnavailableError
 
 
 class _JudgeVerdict(BaseModel):
-    severity: str
+    # `str` DEGIL, `Severity` (#327): `response_schema` Gemini'ye gonderilen
+    # yapisal cikti semasidir. `str` yazdigimizda API'ye "severity herhangi
+    # bir metin olabilir" demis oluyorduk ve model `"High"` uretiyordu.
+    # Literal, kisiti URETIM anina tasir — ayristirmada yakalamaktan iyidir.
+    # Yine de `severity_normalize` savunma katmani olarak duruyor: Groq'un
+    # `response_format`'i semayi ZORLAMAZ (bkz. groq/judge.py yorumu).
+    severity: Severity
     confidence: float
     rationale: str
 
@@ -38,7 +44,12 @@ def _build_prompt(a: NormalizedEvent, b: NormalizedEvent, overlap: list[str], si
         "2) İkisi de kod DAVRANIŞINI mı etkiliyor, yoksa biri biçimlendirme/yeniden "
         "adlandırma gibi mekanik bir değişiklik mi?\n"
         "3) Biri yalnızca üretilmiş/kilit dosyası gibi gürültü mü?\n"
-        "Yukarıdaki kriterlere göre muhafazakar ol — emin değilsen düşük güven ver.\n\n"
+        "Yukarıdaki kriterlere göre muhafazakar ol — emin değilsen düşük güven ver.\n"
+        # #327: dagarciği ACIKCA yaz. Eskiden yalniz `response_schema`ya
+        # guveniliyordu ve o sema `severity: str` oldugu icin model serbest
+        # kaliyordu -> uretimde `"High"` yazdi, 1509 cift degerlendirilemedi.
+        "severity alanı TAM OLARAK şu üç değerden biri olmalı (küçük harf): "
+        "low, med, high.\n\n"
         f"Olay A: actor={a.actor}, files={a.files}\n"
         f"Olay B: actor={b.actor}, files={b.files}\n"
         f"Kesişen dosyalar: {overlap}\n"
@@ -71,13 +82,18 @@ class GeminiJudgeAdapter:
                 actors=sorted({a.actor, b.actor}),
                 branches=sorted({x for x in (a.branch, b.branch) if x}),
                 files=sorted(set(overlap)),
-                severity=verdict.severity,
+                severity=severity_normalize(verdict.severity),
                 confidence=verdict.confidence,
                 rationale=verdict.rationale,
             )
         except GeminiError as exc:
             raise JudgeUnavailableError(f"{a.id}-{b.id}: Gemini çağrısı başarısız: {exc}") from exc
-        except ValidationError as exc:
+        # `ValueError` (yalniz `ValidationError` DEGIL): pydantic'in
+        # ValidationError'i ValueError alt sinifidir, yani bu tek cumle HEM
+        # sema ihlalini HEM de severity_normalize'in "taninmayan severity"
+        # hatasini yakalar (#327). Ikisi de ayni sonuca varir: yargi
+        # UYDURULMAZ, cift degerlendirilememis sayilir.
+        except ValueError as exc:
             raise JudgeUnavailableError(
                 f"{a.id}-{b.id}: Gemini yanıtı şemaya uymuyor: {exc}"
             ) from exc
