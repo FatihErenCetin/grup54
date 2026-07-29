@@ -239,13 +239,49 @@ services:
       # kalici yazilir (TTL varsayilani None), yani ayni cift ikinci kez
       # modele gitmez: isinma maliyeti TEK SEFERLIK.
       #
-      # Asil darbogaz. 2 gun -> 7 gun (kod varsayilani 14).
-      RADAR_WINDOW_DAYS: "7"
-      # config.py:114 yorumu: "50 olay zaten ~90 aday demek". 25 -> ~40 aday.
-      GITHUB_BACKFILL_LIMIT: "25"
-      # Seri judge (1) yuzunden /radar 11.2 sn suruyordu. 4 paralel Groq'un
-      # RPM'ini zorlamaz; kod varsayilani 8'e cikmadan once olcelim.
-      RADAR_JUDGE_CONCURRENCY: "4"
+      # --- 2. ADIM (#324): pencere degil, DERINLIK sorunmus ----------------
+      # 1. adim (2->7 gun, 10->25 olay, 1->4 paralel) olculdu: 0 -> 2 tespit,
+      # `degraded` bos, 27.6 sn. AMA iki tespit de TEK AKTORLU (FatihErenCetin)
+      # ve guven 0.05 -> radar sayfasi hala "yuksek/orta seviyede tespit yok"
+      # diyordu. Yani teknik olarak calisti, urun olarak degismedi.
+      #
+      # KOK NEDEN (DB'den olculdu, tahmin degil): GITHUB_BACKFILL_LIMIT
+      # "en YENI N olay"i alir. En yeni olaylarin aktor dagilimi:
+      #
+      #     en yeni  25 olay -> 1 farkli aktor  (yalniz FatihErenCetin)
+      #     en yeni  40 olay -> 1
+      #     en yeni  60 olay -> 1
+      #     en yeni 100 olay -> 2  (+ github-actions[bot])
+      #     en yeni 150 olay -> 4  (+ esma6, Merge Simulation)
+      #     en yeni 250 olay -> 5  (+ EnesErdemT)
+      #
+      # 2026-07-28/29 gecesi tek kisi (PO) 4 PR + onlarca commit uretti; en
+      # yeni 60 olayin TAMAMI ona ait. Cakisma iki AKTOR ister -> ne kadar
+      # genis pencere acarsak acalim, 25-60 derinlikte ikinci aktor YOK.
+      # Pencereyi buyutmek tek basina bu yuzden ise yaramadi.
+      #
+      # 14 gunluk pencerede cok-aktorlu ortusme BOL (DB'den):
+      #     src/backend/ensemble/app.py     5 aktor / 46 dokunus
+      #     src/backend/ensemble/config.py  5 aktor / 37 dokunus
+      #     src/shared/openapi.json         4 aktor / 53 dokunus
+      # Yani veri var; mercek hem dar hem SIGDI.
+      #
+      # MALIYET OLCULDU, TAHMIN EDILMEDI: limit 25 kosusu judge_verdicts'i
+      # 6'dan 8'e cikardi — 25 olaydan yalniz 2 aday cift judge'a ulasti.
+      # Deterministik on-filtre (ayni dosya + zaman ortusmesi) cok sikı;
+      # config.py:114'teki "50 olay ~ 90 aday" tahmini pratikte fazla
+      # karamsar. 27.6 saniyenin cogu judge degil, GitHub'dan olay+diff
+      # cekmekti (bu LINEER buyur, judge gibi kare degil).
+      #
+      # Kod varsayilani 50; 150 bilincli olarak USTUNDE cunku ekip verisi o
+      # derinlikte basliyor. Guvenlik agi: Groq yedegi + yargilarin kalici
+      # yazilmasi (TTL None, put_verdict/commit HER yargidan sonra -> isinma
+      # yarida kesilse bile o ana kadarki is kalir).
+      RADAR_WINDOW_DAYS: "14"
+      GITHUB_BACKFILL_LIMIT: "150"
+      # 4 -> 8 (kod varsayilani): derinlik 6 kat artiyor, aday cift sayisi da
+      # artacak; latency'yi dengede tutar.
+      RADAR_JUDGE_CONCURRENCY: "8"
     ports:
       # SOL taraf host, SAG taraf konteyner. "127.0.0.1:" on eki KRITIK —
       # silinirse Docker portu 0.0.0.0'a acar ve ufw'yi ATLAR.
