@@ -57,11 +57,12 @@ class HarnessEventQuerySource:
             *self._task_documents(),
             *self._decision_documents(),
         ]
-        event_documents, event_last_commit = self._event_documents()
+        event_documents, event_last_commit, events_truncated = self._event_documents()
         documents.extend(event_documents)
         return QueryCorpus(
             documents=documents,
             last_commit=event_last_commit or self._git_commit() or "unavailable",
+            events_truncated=events_truncated,
         )
 
     def _scope_documents(self) -> list[QueryDocument]:
@@ -208,9 +209,16 @@ class HarnessEventQuerySource:
             return None
         return f"https://github.com/{self.github_owner}/{self.github_repo}/blob/main/{path}"
 
-    def _event_documents(self) -> tuple[list[QueryDocument], str | None]:
+    def _event_documents(self) -> tuple[list[QueryDocument], str | None, bool]:
+        """(belgeler, son commit ref'i, `event_limit`'e DAYANILDI mı).
+
+        Üçüncü değer (#322 review, Semih): `limit(event_limit)` tam dolduysa
+        DB'de daha eski olaylar KALMIŞ olabilir — bunu yalnız burası bilir,
+        çağıran (`QueryService.scan`) corpus'a bakarak ayırt EDEMEZ. "Tam 200
+        olay vardı" ile "200'de kesildi" aynı listeyi üretir; fark yalnız
+        buradan taşınabilir."""
         if self.session_factory is None or self.event_limit == 0:
-            return [], None
+            return [], None, False
         try:
             with self.session_factory() as session:
                 rows = (
@@ -221,7 +229,8 @@ class HarnessEventQuerySource:
                     .all()
                 )
         except SQLAlchemyError:
-            return [], None
+            return [], None, False
+        events_truncated = len(rows) >= self.event_limit
 
         documents: list[QueryDocument] = []
         last_commit: str | None = None
@@ -251,7 +260,7 @@ class HarnessEventQuerySource:
                     occurred_at=event.ts,
                 )
             )
-        return documents, last_commit
+        return documents, last_commit, events_truncated
 
     def _issue_url(self, ref: str) -> str | None:
         match = _TASK_ID_RE.match(ref)

@@ -75,6 +75,7 @@ const TEMEL_SCAN = {
   ],
   recent_events: 5,
   recent_event_window_hours: 48,
+  recent_events_capped: false,
 };
 
 function ayarlaAsk(yeni: Partial<typeof askDurum>) {
@@ -167,10 +168,40 @@ describe("AskPage — Tarandı şeridi (#319, sıfır-LLM ön-izleme)", () => {
     ayarlaScan({ data: TEMEL_SCAN });
     render(<AskPage />);
 
-    // Yalnız ŞERİDİN içine bakıyoruz: sayfanın boş-durum açıklaması ayrıca
-    // "karar günlüğü" kelimesini geçirir (o metin başka bir amaca hizmet
-    // eder) — bu test SADECE `TaramaSeridi`'nin içeriğini kilitler.
     expect(within(screen.getByTestId("tarama-seridi")).queryByText(/karar/i)).toBeNull();
+  });
+
+  it("olay sayısı kesinken düz basılır — gereksiz '+' yok", () => {
+    ayarlaScan({ data: TEMEL_SCAN });
+    render(<AskPage />);
+
+    expect(screen.getByTestId("tarama-olay-sayisi").textContent).toBe("5");
+  });
+
+  it("olay çekimi kaynakta sınıra dayandıysa sayı ALT SINIR olarak basılır ('5+')", () => {
+    // MUTASYON KİLİDİ (#322 review, Semih): `recent_events_capped` render'da
+    // yok sayılırsa bu kırılır. Corpus `event_limit`'e dayandığında pencerede
+    // daha fazla olay olabilir; düz "5" basmak EKSİK sayıyı kesinmiş gibi
+    // gösterir — tam olarak review'da bildirilen hata.
+    ayarlaScan({ data: { ...TEMEL_SCAN, recent_events_capped: true } });
+    render(<AskPage />);
+
+    const sayi = screen.getByTestId("tarama-olay-sayisi");
+    expect(sayi.textContent).toBe("5+");
+    expect(sayi.getAttribute("title")).toMatch(/alt sınır/i);
+  });
+
+  it("boş durum, ARANMAYAN 'karar günlüğü'nü aranıyormuş gibi vaat etmez", () => {
+    // MUTASYON KİLİDİ (#322 review, Semih): açıklamaya "karar günlüğü" geri
+    // eklenirse kırılır. Corpus `.harness/decisions/` okumuyor — şerit decision
+    // sayısını zaten gate'liyor; metnin aksini söylemesi aynı sayfa içinde
+    // kendi kendine çelişkiydi.
+    ayarlaScan({ data: TEMEL_SCAN });
+    render(<AskPage />);
+
+    const aciklama = screen.getByText(/üzerinde aranır/);
+    expect(aciklama.textContent).not.toMatch(/karar günlüğü/i);
+    expect(aciklama.textContent).toMatch(/olay\/PR geçmişi/);
   });
 
   it("scan verisi yokken (yükleniyor/hata) şerit hiç basılmaz", () => {

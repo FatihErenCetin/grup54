@@ -4923,6 +4923,11 @@
             "type": "integer",
             "minimum": 1.0,
             "title": "Recent Event Window Hours"
+          },
+          "recent_events_capped": {
+            "type": "boolean",
+            "title": "Recent Events Capped",
+            "default": false
           }
         },
         "type": "object",

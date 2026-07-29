@@ -1296,6 +1296,11 @@ export interface components {
             recent_events: number;
             /** Recent Event Window Hours */
             recent_event_window_hours: number;
+            /**
+             * Recent Events Capped
+             * @default false
+             */
+            recent_events_capped: boolean;
         };
         /**
          * RadarDegraded

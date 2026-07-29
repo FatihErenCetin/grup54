@@ -375,7 +375,24 @@ function TaramaSeridi({ scan }: { scan: QueryScanResponse | undefined }) {
       <span className="tabular-nums">{say("task")}</span> görev <span aria-hidden>✓</span>
       <span aria-hidden> · </span>
       son <span className="tabular-nums">{scan.recent_event_window_hours}</span> saatte{" "}
-      <span className="tabular-nums">{scan.recent_events}</span> olay <span aria-hidden>✓</span>
+      {/* `recent_events_capped` (#322 review, Semih): olay listesi kaynakta
+          `event_limit`'e dayandıysa pencerede DAHA FAZLA olay olabilir —
+          sayı bir ALT SINIR. "200" basmak eksik sayıyı kesinmiş gibi
+          gösterirdi; "200+" belirsizliği görünür kılar (decision gate'iyle
+          aynı ilke: uydurma yerine dürüst işaret). */}
+      <span
+        className="tabular-nums"
+        data-testid="tarama-olay-sayisi"
+        title={
+          scan.recent_events_capped
+            ? `Olay listesi kaynakta sınıra dayandı — son ${scan.recent_event_window_hours} saatte daha fazla olay olabilir; gösterilen sayı bir alt sınırdır.`
+            : undefined
+        }
+      >
+        {scan.recent_events}
+        {scan.recent_events_capped ? "+" : ""}
+      </span>{" "}
+      olay <span aria-hidden>✓</span>
       {/* "karar" bilinçli GATE'Lİ: backend corpus'u .harness/decisions/ okumuyor
           (ölçüldü — ensemble.models.QueryScanResult docstring'i), yani sayı
           HER ZAMAN 0 gelirdi; "0 karar" basmak "karar yok" gibi okunur ve bu
@@ -674,10 +691,15 @@ export default function AskPage() {
 
       <section aria-live="polite" aria-busy={isLoading}>
         {soru === "" ? (
-          // Henüz sorulmadı — bu "boş sonuç" değil, davetkâr başlangıç durumu
+          // Henüz sorulmadı — bu "boş sonuç" değil, davetkâr başlangıç durumu.
+          // `description`'dan "karar günlüğü" BİLEREK çıkarıldı (#322 review,
+          // Semih): corpus `.harness/decisions/`'ı okumuyor (ölçüldü —
+          // QueryScanResult docstring'i), yani orada arama YAPILMIYOR. Şerit
+          // decision sayısını zaten gate'liyordu ama bu metin hâlâ aranıyormuş
+          // gibi söz veriyordu — aynı PR içinde kendi kendine çelişki.
           <EmptyState
             title="Doğal dille sor, kaynak alıntılı cevap al"
-            description="Soru; dondurulmuş kapsam, görev dosyaları, karar günlüğü ve PR geçmişi üzerinde aranır. Her cevap dayandığı alıntılarla birlikte gelir — kaynaksız cümle göstermiyoruz."
+            description="Soru; dondurulmuş kapsam, görev dosyaları ve olay/PR geçmişi üzerinde aranır. Her cevap dayandığı alıntılarla birlikte gelir — kaynaksız cümle göstermiyoruz."
             items={[
               "Cevap kanonik .harness kayıtlarından üretilir",
               "Her iddia bir alıntıya bağlanır — bağlanamazsa cevap verilmez",

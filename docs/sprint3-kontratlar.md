@@ -140,6 +140,20 @@ GET /query?q=<nl>  →  QueryResponse                             # S2 Ek B4 zen
 > **Sözleşme:** `degraded == null` → sonuç TAM yetenekle üretildi. Dolu ise semantik retrieval kullanılamadı, seçim yalnız leksikal eşleşmeyle yapıldı; sonuç gerçek ama zemini dar. İstemci bunu **göstermek zorundadır** — `RadarResponse.degraded` ile aynı ilke (*"temiz" ile "temiz diyemiyoruz" karıştırılmaz*, D-53).
 > **Sınır:** düşüş yalnız **sağlayıcı arızasında** olur. Adapter sözleşme ihlali (vektör adedi yanlış) ve corpus'un hiç okunamaması **hâlâ hata fırlatır** — onları `degraded` notuna çevirmek gerçek bir bug'ı yumuşak bir dipnota gömerdi.
 
+### B3.1 · `GET /query/scan` (#319, Ask "Tarandı" şeridi) — 🆕 sıfır-LLM ön-izleme
+
+> **🆕 Kontrat EKLENDİ (29 Tem, #322 review madde 3 — Semih):** B3 donduğunda bu uç yoktu; #319 ile eklendi ve bu belgeye işlenmesi atlanmıştı. "Kontrat değişirse buraya PR aç + daily'de duyur" kuralı gereği kayda geçiyor. **B3 imzası DEĞİŞMEDİ** — bu ayrı, ek bir route.
+
+```
+GET /query/scan  →  QueryScanResponse                            # `q` YOK — soru sorulmadan ÖNCE çağrılır
+#   { as_of, last_commit, searched[]: SearchReceipt,
+#     recent_events, recent_event_window_hours, recent_events_capped }
+```
+- **B3'ten bilinçli farkı:** embeddings/judge'a **HİÇ** gitmez (`QueryService.scan()` yalnız `load_query_corpus()` + sayım) → kota/maliyet sıfır, bu yüzden `/radar`·`/board` gibi **projeksiyon** sayılıp poll'lanır (10 sn). `SearchReceipt` şekli `QueryResponse.searched` ile **AYNI** (S2 Ek B4) — yeni model YOK.
+- **`recent_events` = son `recent_event_window_hours` (48) saatteki event+pr belge sayısı**, corpus'un tamamı değil.
+- 🔒 **Dürüstlük kuralı (uydurma sayı yasak):** iki alan bilinçli olarak "sayı yerine işaret" taşır — (1) `searched` içindeki **decision sayısı HER ZAMAN 0**'dır çünkü corpus `.harness/decisions/`'ı okumaz; istemci bu alanı **göstermez** (0 basmak "karar yok" diye okunurdu). (2) `recent_events_capped=true` ise olay çekimi kaynakta `event_limit`'e dayanmıştır ve pencerede daha fazla olay olabilir → sayı bir **alt sınırdır**, istemci `N+` basar. `false` iken sayı **kesindir** (corpus'ta pencereden eski bir olay var → `ts DESC` çekim pencereyi tam kapsamış).
+- **Sahibi:** backend/frontend (Fatih) · **Tüketicisi:** Ask sayfası `TaramaSeridi` (`useQueryScan`).
+
 ### B4 · `GET /scope/*` (#59 → #31 wiring) — 🔒 scope-drift verdict
 
 ```

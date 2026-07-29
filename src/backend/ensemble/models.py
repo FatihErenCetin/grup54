@@ -288,6 +288,14 @@ class QueryScanResult(BaseModel):
     # burada da AYNI 48 saatlik kesme uygulanır (iddia ile sayım eşleşsin).
     recent_events: int = Field(ge=0)
     recent_event_window_hours: int = Field(ge=1)
+    # `recent_events` bir ALT SINIR mı? (#322 review, Semih) — corpus
+    # `event_limit` ile kesildiyse VE kesilen kümede pencereden eski hiç olay
+    # yoksa, pencerede daha fazla olay olabilir ama biz onları hiç ÇEKMEDİK.
+    # O durumda sayı "en az N" demektir; istemci `N+` basar. `False` iken sayı
+    # KESİN (kanıt: corpus'ta pencereden eski bir olay var → pencere tam
+    # kapsanmış, çünkü olaylar `ts DESC` çekiliyor). "Sayıyı büyüt" değil
+    # "belirsizliği görünür kıl" — decision sayısındaki gate'in aynı ilkesi.
+    recent_events_capped: bool = False
 
 
 class QueryDocument(BaseModel):
@@ -304,6 +312,12 @@ class QueryDocument(BaseModel):
 class QueryCorpus(BaseModel):
     documents: list[QueryDocument]
     last_commit: str
+    # Olay belgeleri kaynakta `event_limit`'e DAYANDI mı (#322 review, Semih):
+    # `True` ise DB'de daha eski olaylar var ama corpus'a alınmadı. Kaynak
+    # bunu bilir, `QueryService` bilemez — bu yüzden veriyle birlikte taşınır.
+    # `scan()` bunu tek başına DEĞİL, "pencereden eski olay gördüm mü" ile
+    # BİRLİKTE değerlendirir (bkz. `QueryScanResult.recent_events_capped`).
+    events_truncated: bool = False
 
 
 class QueryJudgement(BaseModel):

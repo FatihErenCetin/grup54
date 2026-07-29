@@ -10,8 +10,14 @@ from ensemble.models import QueryCorpus, QueryDocument, QueryJudgement
 
 
 class _Source:
-    def __init__(self, documents: list[QueryDocument]) -> None:
-        self.corpus = QueryCorpus(documents=documents, last_commit="abc1234")
+    def __init__(
+        self, documents: list[QueryDocument], *, events_truncated: bool = False
+    ) -> None:
+        self.corpus = QueryCorpus(
+            documents=documents,
+            last_commit="abc1234",
+            events_truncated=events_truncated,
+        )
 
     def load_query_corpus(self) -> QueryCorpus:
         return self.corpus
@@ -67,12 +73,13 @@ def _service(
     documents: list[QueryDocument],
     *,
     judge: _Judge | None = None,
+    events_truncated: bool = False,
 ) -> tuple[QueryService, _Judge, _TokenEmbeddings]:
     actual_judge = judge or _Judge()
     embeddings = _TokenEmbeddings()
     return (
         QueryService(
-            _Source(documents),
+            _Source(documents, events_truncated=events_truncated),
             embeddings,
             InMemoryVectorIndex(),
             actual_judge,
@@ -350,6 +357,73 @@ def test_scan_recent_events_yalniz_pencere_icindeki_event_pr_sayar():
     assert result.recent_event_window_hours == 48
     assert judge.calls == []
     assert embeddings.calls == []
+
+
+# ── #322 review (Semih): kesilmiş corpus'ta "son 48 saatte N olay" ALT SINIR ──
+# Sorun: corpus `event_limit`(200) ile kesiliyor; pencerede daha fazla olay
+# varsa kullanıcıya EKSİK sayı kesinmiş gibi gösteriliyordu. Düzeltme "limiti
+# büyüt" değil "belirsizliği görünür kıl": `recent_events_capped`.
+
+
+def _olay(saat_once: float, *, id: str, now: datetime) -> QueryDocument:
+    return _document(
+        id=id,
+        type="event",
+        ref=id,
+        quote=id,
+        text="olay",
+        occurred_at=now - timedelta(hours=saat_once),
+    )
+
+
+def test_scan_kesme_var_ve_tum_olaylar_pencerede_ise_sayi_alt_sinir():
+    """Kaynak limite dayandı VE pencereden eski olay YOK → sayı alt sınır.
+
+    MUTASYON KİLİDİ: `recent_events_capped` sabit `False` yapılırsa (ya da
+    `corpus.events_truncated` okuması düşerse) bu test kırılır — kullanıcı
+    yine eksik sayıyı kesinmiş gibi görürdü, yani tam olarak Semih'in
+    bildirdiği hata geri gelir."""
+    now = datetime.now(timezone.utc)
+    olaylar = [_olay(1, id="event:a", now=now), _olay(2, id="event:b", now=now)]
+
+    service, _, _ = _service(olaylar, events_truncated=True)
+    result = service.scan()
+
+    assert result.recent_events == 2
+    assert result.recent_events_capped is True
+
+
+def test_scan_kesme_var_ama_pencereden_eski_olay_gorulduyse_sayi_kesin():
+    """Kesme VAR ama pencere tam kapsanmış → sayı KESİN, `+` basılmamalı.
+
+    MUTASYON KİLİDİ: `recent_events_capped` yalnız `corpus.events_truncated`'a
+    bağlanırsa (yani `pencere_tam_kapsandi` koşulu düşerse) bu test kırılır.
+    Olaylar `ts DESC` çekildiği için pencereden ESKİ bir olay görmek, pencere
+    içindeki her olayın corpus'a girdiğinin kanıtıdır — orada `+` basmak
+    gereksiz belirsizlik üretir (200 olayın hepsi eskiyse sayı zaten kesin)."""
+    now = datetime.now(timezone.utc)
+    olaylar = [
+        _olay(1, id="event:a", now=now),
+        _olay(72, id="event:eski", now=now),  # pencere DIŞI → pencere kapsandı
+    ]
+
+    service, _, _ = _service(olaylar, events_truncated=True)
+    result = service.scan()
+
+    assert result.recent_events == 1
+    assert result.recent_events_capped is False
+
+
+def test_scan_kesme_yoksa_alt_sinir_isareti_yok():
+    """Kaynak limite hiç dayanmadıysa sayı her hâlükârda kesindir."""
+    now = datetime.now(timezone.utc)
+    olaylar = [_olay(1, id="event:a", now=now)]
+
+    service, _, _ = _service(olaylar, events_truncated=False)
+    result = service.scan()
+
+    assert result.recent_events == 1
+    assert result.recent_events_capped is False
 
 
 def test_scan_corpus_okuma_hatasi_gizlenmez():
