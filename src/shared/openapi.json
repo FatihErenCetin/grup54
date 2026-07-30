@@ -2606,6 +2606,725 @@
           }
         }
       }
+    },
+    "/onboarding/durum": {
+      "get": {
+        "tags": [
+          "onboarding"
+        ],
+        "summary": "Durum",
+        "operationId": "durum_onboarding_durum_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OnboardingDurum"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Kalici saglayici hatasi (GitHub/Gemini/Ollama)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Gecici olarak erisilemez",
+            "headers": {
+              "Retry-After": {
+                "description": "Saniye — yalniz kendiliginden duzelebilir durumlarda",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Demo istek limiti aşıldı (yalnız DEMO_MODE)",
+            "headers": {
+              "Retry-After": {
+                "description": "Saniye — pencere kayınca tekrar denenebilir",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Kapasite tutarsız",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "İnsan onayı yok (K6)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Yazma yalnız local modda vardır",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Hedef dosyalar zaten var",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/onboarding/sorular": {
+      "post": {
+        "tags": [
+          "onboarding"
+        ],
+        "summary": "Sorular",
+        "description": "Sıradaki hedefli sorular — **LLM YOK** (bkz. `intake.py` başlığı).",
+        "operationId": "sorular_onboarding_sorular_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SorularIstegi"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SorularYaniti"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Kalici saglayici hatasi (GitHub/Gemini/Ollama)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Gecici olarak erisilemez",
+            "headers": {
+              "Retry-After": {
+                "description": "Saniye — yalniz kendiliginden duzelebilir durumlarda",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Demo istek limiti aşıldı (yalnız DEMO_MODE)",
+            "headers": {
+              "Retry-After": {
+                "description": "Saniye — pencere kayınca tekrar denenebilir",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Kapasite tutarsız",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "İnsan onayı yok (K6)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Yazma yalnız local modda vardır",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Hedef dosyalar zaten var",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/onboarding/brief": {
+      "post": {
+        "tags": [
+          "onboarding"
+        ],
+        "summary": "Brief Uret",
+        "description": "Sabit şemayı doldurur. LLM YALNIZCA gerekiyorsa çağrılır.\n\n* `kendim`      -> hiç LLM yok; gelen brief doğrulanır.\n* `soru_cevap`  -> cevaplar mekanik olarak şemaya oturur (LLM yok).\n* `anlat`       -> serbest metinden yapı çıkarmak için 1 çağrı.\n* `varsayimlarla_doldur=true` + boşluk varsa -> 1 çağrı (aynı çağrıya\n  birleşir: \"anlat\" modunda tek istek hem çıkarır hem doldurur).",
+        "operationId": "brief_uret_onboarding_brief_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BriefIstegi"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BriefYaniti"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Kalici saglayici hatasi (GitHub/Gemini/Ollama)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Gecici olarak erisilemez",
+            "headers": {
+              "Retry-After": {
+                "description": "Saniye — yalniz kendiliginden duzelebilir durumlarda",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Demo istek limiti aşıldı (yalnız DEMO_MODE)",
+            "headers": {
+              "Retry-After": {
+                "description": "Saniye — pencere kayınca tekrar denenebilir",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Kapasite tutarsız",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "İnsan onayı yok (K6)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Yazma yalnız local modda vardır",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Hedef dosyalar zaten var",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/onboarding/taslak": {
+      "post": {
+        "tags": [
+          "onboarding"
+        ],
+        "summary": "Taslak Uret",
+        "description": "Brief -> epic -> user story + kabul kriteri + puan (§8.5 adım 2).",
+        "operationId": "taslak_uret_onboarding_taslak_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TaslakIstegi"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaslakYaniti"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Kalici saglayici hatasi (GitHub/Gemini/Ollama)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Gecici olarak erisilemez",
+            "headers": {
+              "Retry-After": {
+                "description": "Saniye — yalniz kendiliginden duzelebilir durumlarda",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Demo istek limiti aşıldı (yalnız DEMO_MODE)",
+            "headers": {
+              "Retry-After": {
+                "description": "Saniye — pencere kayınca tekrar denenebilir",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Kapasite tutarsız",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "İnsan onayı yok (K6)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Yazma yalnız local modda vardır",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Hedef dosyalar zaten var",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/onboarding/plan": {
+      "post": {
+        "tags": [
+          "onboarding"
+        ],
+        "summary": "Plan Uret",
+        "description": "Kapasiteye göre sprint dağıtımı — **deterministik, LLM YOK**.",
+        "operationId": "plan_uret_onboarding_plan_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlanIstegi"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SprintPlani"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Kalici saglayici hatasi (GitHub/Gemini/Ollama)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Gecici olarak erisilemez",
+            "headers": {
+              "Retry-After": {
+                "description": "Saniye — yalniz kendiliginden duzelebilir durumlarda",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Demo istek limiti aşıldı (yalnız DEMO_MODE)",
+            "headers": {
+              "Retry-After": {
+                "description": "Saniye — pencere kayınca tekrar denenebilir",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Kapasite tutarsız (müsaitlik listesi uzunluğu)"
+          },
+          "403": {
+            "description": "İnsan onayı yok (K6)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Yazma yalnız local modda vardır",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Hedef dosyalar zaten var",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/onboarding/uygula": {
+      "post": {
+        "tags": [
+          "onboarding"
+        ],
+        "summary": "Uygula",
+        "description": "Onaylanmış taslağı `.harness/`'e yazar. **K6 kapısı `apply.py`'de.**",
+        "operationId": "uygula_onboarding_uygula_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UygulaIstegi"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/YazmaSonucu"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Kalici saglayici hatasi (GitHub/Gemini/Ollama)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Gecici olarak erisilemez",
+            "headers": {
+              "Retry-After": {
+                "description": "Saniye — yalniz kendiliginden duzelebilir durumlarda",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Demo istek limiti aşıldı (yalnız DEMO_MODE)",
+            "headers": {
+              "Retry-After": {
+                "description": "Saniye — pencere kayınca tekrar denenebilir",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Kapasite tutarsız",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "İnsan onayı yok (K6)"
+          },
+          "404": {
+            "description": "Yazma yalnız local modda vardır"
+          },
+          "409": {
+            "description": "Hedef dosyalar zaten var — üzerine yazılmadı"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -2792,6 +3511,136 @@
         ],
         "title": "BoardResponse"
       },
+      "Brief": {
+        "properties": {
+          "urun_tek_cumle": {
+            "type": "string",
+            "title": "Urun Tek Cumle",
+            "default": ""
+          },
+          "hedef_kullanicilar": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Hedef Kullanicilar"
+          },
+          "cekirdek_ozellikler": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Cekirdek Ozellikler"
+          },
+          "kapsam_disi": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Kapsam Disi"
+          },
+          "kisitlar": {
+            "$ref": "#/components/schemas/Kisitlar"
+          },
+          "basari_hedefi": {
+            "type": "string",
+            "title": "Basari Hedefi",
+            "default": ""
+          },
+          "varsayimlar": {
+            "items": {
+              "$ref": "#/components/schemas/Varsayim"
+            },
+            "type": "array",
+            "title": "Varsayimlar"
+          }
+        },
+        "type": "object",
+        "title": "Brief",
+        "description": "SABİT hedef şema (§8.5) — sihirbazın topladığı bilginin TAMAMI.\n\nTüm alanlar varsayılanlı: yarım bir brief geçerli bir nesnedir. Eksiklik\nbir doğrulama HATASI değil, raporlanan bir DURUMDUR (`eksik_alanlar`) —\naksi halde kullanıcı ilk adımda 422 duvarına toslardı ve \"her an bununla\ndevam et diyebilir\" vaadi imkânsız olurdu."
+      },
+      "BriefIstegi": {
+        "properties": {
+          "mod": {
+            "type": "string",
+            "enum": [
+              "anlat",
+              "soru_cevap",
+              "kendim"
+            ],
+            "title": "Mod"
+          },
+          "serbest_metin": {
+            "type": "string",
+            "maxLength": 8000,
+            "title": "Serbest Metin",
+            "default": ""
+          },
+          "cevaplar": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Cevaplar"
+          },
+          "brief": {
+            "$ref": "#/components/schemas/Brief"
+          },
+          "varsayimlarla_doldur": {
+            "type": "boolean",
+            "title": "Varsayimlarla Doldur",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "mod"
+        ],
+        "title": "BriefIstegi"
+      },
+      "BriefYaniti": {
+        "properties": {
+          "brief": {
+            "$ref": "#/components/schemas/Brief"
+          },
+          "eksikler": {
+            "items": {
+              "$ref": "#/components/schemas/Eksik"
+            },
+            "type": "array",
+            "title": "Eksikler"
+          },
+          "uyarilar": {
+            "items": {
+              "$ref": "#/components/schemas/Uyari"
+            },
+            "type": "array",
+            "title": "Uyarilar"
+          },
+          "ai_kullanildi": {
+            "type": "boolean",
+            "title": "Ai Kullanildi"
+          },
+          "degraded": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OnboardingDegraded"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "brief",
+          "eksikler",
+          "uyarilar",
+          "ai_kullanildi"
+        ],
+        "title": "BriefYaniti"
+      },
       "Citation": {
         "properties": {
           "type": {
@@ -2917,6 +3766,76 @@
           "rationale"
         ],
         "title": "Detection"
+      },
+      "DusenStory": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "neden": {
+            "type": "string",
+            "title": "Neden"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "neden"
+        ],
+        "title": "DusenStory",
+        "description": "Elenen/düzeltilen bir öğe — sebebiyle birlikte (sessiz düşüş yasağı)."
+      },
+      "Eksik": {
+        "properties": {
+          "alan": {
+            "type": "string",
+            "title": "Alan"
+          },
+          "neden": {
+            "type": "string",
+            "enum": [
+              "bos",
+              "yetersiz"
+            ],
+            "title": "Neden"
+          },
+          "aciklama": {
+            "type": "string",
+            "title": "Aciklama"
+          }
+        },
+        "type": "object",
+        "required": [
+          "alan",
+          "neden",
+          "aciklama"
+        ],
+        "title": "Eksik",
+        "description": "Bir alanın neden \"hazır değil\" sayıldığı — sebep TAŞINIR, gizlenmez."
+      },
+      "Epic": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "baslik": {
+            "type": "string",
+            "title": "Baslik"
+          },
+          "aciklama": {
+            "type": "string",
+            "title": "Aciklama",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "baslik"
+        ],
+        "title": "Epic"
       },
       "ErrorEnvelope": {
         "properties": {
@@ -3141,6 +4060,104 @@
           "installations"
         ],
         "title": "InstallationsResponse"
+      },
+      "Kapasite": {
+        "properties": {
+          "ekip_buyuklugu": {
+            "type": "integer",
+            "maximum": 100.0,
+            "minimum": 1.0,
+            "title": "Ekip Buyuklugu"
+          },
+          "sprint_sayisi": {
+            "type": "integer",
+            "maximum": 20.0,
+            "minimum": 1.0,
+            "title": "Sprint Sayisi"
+          },
+          "musaitlik": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Musaitlik"
+          }
+        },
+        "type": "object",
+        "required": [
+          "ekip_buyuklugu",
+          "sprint_sayisi"
+        ],
+        "title": "Kapasite",
+        "description": "Sprint dağıtımının TEK girdisi — brief'in `kisitlar` alanından türer."
+      },
+      "Kisitlar": {
+        "properties": {
+          "ekip_buyuklugu": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ekip Buyuklugu"
+          },
+          "yetkinlikler": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Yetkinlikler"
+          },
+          "sprint_sayisi": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sprint Sayisi"
+          },
+          "sprint_gun": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sprint Gun"
+          },
+          "teknolojiler": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Teknolojiler"
+          },
+          "entegrasyonlar": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Entegrasyonlar"
+          }
+        },
+        "type": "object",
+        "title": "Kisitlar",
+        "description": "§8.5 \"Kısıtlar\" alanı — tek bir alan ama içi yapılı.\n\nSprint dağıtımı (`sprint_plan.py`) `ekip_buyuklugu` + `sprint_sayisi`\nolmadan bütçe hesaplayamaz; bu yüzden bu ikisi alanın \"dolu\" sayılması\niçin ZORUNLU (bkz. `_kisit_durumu`). Diğerleri bağlam bilgisidir."
       },
       "LineRange": {
         "properties": {
@@ -3370,6 +4387,130 @@
         ],
         "title": "NormalizedEvent",
         "description": "Ingest çıktısı (S2 §1, GATE 2 #14 ile dondu) — `actor_verified` (#296,\nT-296) TEK katkı: additive + varsayılanlı, donuk modele dokunmaz (bkz.\ndocs/sprint3-kontratlar.md Ek G).\n\nVarsayılan `True` (\"doğrulanmış\") BİLİNÇLİ seçim: bu alanı hiç set\netmeyen eski/başka üretim yolları (fixtures, `fake.py`, henüz\ngüncellenmemiş bir adapter) sessizce \"şüpheli\" görünmesin — yalnızca\nGERÇEKTEN eşleşmediği bilinen yollar (bkz. integrations/github/normalize.py)\n`False` yazar."
+      },
+      "OnayKaydi": {
+        "properties": {
+          "onaylandi": {
+            "type": "boolean",
+            "title": "Onaylandi",
+            "default": false
+          },
+          "onaylayan": {
+            "type": "string",
+            "title": "Onaylayan",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "title": "OnayKaydi",
+        "description": "İnsan onayının kaydı. `onaylandi` tek başına yeterli DEĞİL: kimin\nonayladığı da yazılır — `.harness/` bir denetim (audit) yüzeyidir ve\n\"bu kapsamı kim dondurdu\" sorusunun cevabı dosyada durmalı."
+      },
+      "OnboardingDegraded": {
+        "properties": {
+          "asama": {
+            "type": "string",
+            "enum": [
+              "brief",
+              "story"
+            ],
+            "title": "Asama"
+          },
+          "saglayici": {
+            "type": "string",
+            "title": "Saglayici"
+          },
+          "neden": {
+            "type": "string",
+            "title": "Neden"
+          }
+        },
+        "type": "object",
+        "required": [
+          "asama",
+          "saglayici",
+          "neden"
+        ],
+        "title": "OnboardingDegraded",
+        "description": "Bu turda ÜRETİLEMEYEN taslak — `RadarResponse.degraded` deseni (#252).\n\nVarlığı \"sonuç eksik\" demektir. İstemci bunu taslak gibi göstermemeli,\n\"üretilemedi + neden\" uyarısı olarak göstermelidir. `neden` sağlayıcı\nhatasının ÖZETİDİR (anahtar/sır taşımaz — hata metinleri sağlayıcı\nistemcilerinde zaten sırdan arındırılmış geliyor)."
+      },
+      "OnboardingDurum": {
+        "properties": {
+          "mode": {
+            "type": "string",
+            "enum": [
+              "local",
+              "hosted"
+            ],
+            "title": "Mode"
+          },
+          "yazma_mumkun": {
+            "type": "boolean",
+            "title": "Yazma Mumkun"
+          },
+          "yazma_kok": {
+            "type": "string",
+            "title": "Yazma Kok"
+          },
+          "yazma_engeli": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Yazma Engeli"
+          },
+          "harness_var": {
+            "type": "boolean",
+            "title": "Harness Var"
+          },
+          "saglayici": {
+            "type": "string",
+            "title": "Saglayici"
+          },
+          "ai_kullanilabilir": {
+            "type": "boolean",
+            "title": "Ai Kullanilabilir"
+          },
+          "maks_bosluk_turu": {
+            "type": "integer",
+            "title": "Maks Bosluk Turu",
+            "default": 2
+          }
+        },
+        "type": "object",
+        "required": [
+          "mode",
+          "yazma_mumkun",
+          "yazma_kok",
+          "harness_var",
+          "saglayici",
+          "ai_kullanilabilir"
+        ],
+        "title": "OnboardingDurum",
+        "description": "Sihirbaz bu kurulumda ne yapabilir — kullanıcı TIKLAMADAN ÖNCE bilsin.\n\n\"İş yapmayan buton basmıyoruz\" (D-34) ilkesinin onboarding karşılığı:\nhosted demoda `uygula` adımı yoktur (yazma yalnız local), sağlayıcı yoksa\n\"anlat\" modu taslak üretemez. İkisi de sayfada ÖNCEDEN söylenir."
+      },
+      "PlanIstegi": {
+        "properties": {
+          "storyler": {
+            "items": {
+              "$ref": "#/components/schemas/UserStory"
+            },
+            "type": "array",
+            "title": "Storyler"
+          },
+          "kapasite": {
+            "$ref": "#/components/schemas/Kapasite"
+          }
+        },
+        "type": "object",
+        "required": [
+          "storyler",
+          "kapasite"
+        ],
+        "title": "PlanIstegi"
       },
       "PresenceEntry": {
         "properties": {
@@ -4152,6 +5293,216 @@
         ],
         "title": "Signals"
       },
+      "Soru": {
+        "properties": {
+          "alan": {
+            "type": "string",
+            "title": "Alan"
+          },
+          "metin": {
+            "type": "string",
+            "title": "Metin"
+          },
+          "ipucu": {
+            "type": "string",
+            "title": "Ipucu"
+          },
+          "coklu": {
+            "type": "boolean",
+            "title": "Coklu",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "alan",
+          "metin",
+          "ipucu"
+        ],
+        "title": "Soru",
+        "description": "Tek bir hedefli soru. `coklu=True` -> cevap satır satır listeye ayrılır."
+      },
+      "SorularIstegi": {
+        "properties": {
+          "mod": {
+            "type": "string",
+            "enum": [
+              "anlat",
+              "soru_cevap",
+              "kendim"
+            ],
+            "title": "Mod"
+          },
+          "tur": {
+            "type": "integer",
+            "maximum": 10.0,
+            "minimum": 1.0,
+            "title": "Tur",
+            "default": 1
+          },
+          "brief": {
+            "$ref": "#/components/schemas/Brief"
+          }
+        },
+        "type": "object",
+        "required": [
+          "mod"
+        ],
+        "title": "SorularIstegi"
+      },
+      "SorularYaniti": {
+        "properties": {
+          "sorular": {
+            "items": {
+              "$ref": "#/components/schemas/Soru"
+            },
+            "type": "array",
+            "title": "Sorular"
+          },
+          "tur": {
+            "type": "integer",
+            "title": "Tur"
+          },
+          "tur_bitti": {
+            "type": "boolean",
+            "title": "Tur Bitti"
+          },
+          "eksikler": {
+            "items": {
+              "$ref": "#/components/schemas/Eksik"
+            },
+            "type": "array",
+            "title": "Eksikler"
+          }
+        },
+        "type": "object",
+        "required": [
+          "sorular",
+          "tur",
+          "tur_bitti",
+          "eksikler"
+        ],
+        "title": "SorularYaniti"
+      },
+      "SprintDilimi": {
+        "properties": {
+          "sprint": {
+            "type": "integer",
+            "title": "Sprint"
+          },
+          "butce": {
+            "type": "integer",
+            "title": "Butce"
+          },
+          "yuk": {
+            "type": "integer",
+            "title": "Yuk"
+          },
+          "story_idler": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Story Idler"
+          }
+        },
+        "type": "object",
+        "required": [
+          "sprint",
+          "butce",
+          "yuk"
+        ],
+        "title": "SprintDilimi"
+      },
+      "SprintPlani": {
+        "properties": {
+          "dilimler": {
+            "items": {
+              "$ref": "#/components/schemas/SprintDilimi"
+            },
+            "type": "array",
+            "title": "Dilimler"
+          },
+          "toplam_puan": {
+            "type": "integer",
+            "title": "Toplam Puan"
+          },
+          "uyarilar": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Uyarilar"
+          }
+        },
+        "type": "object",
+        "required": [
+          "dilimler",
+          "toplam_puan"
+        ],
+        "title": "SprintPlani"
+      },
+      "StoryTaslagi": {
+        "properties": {
+          "epicler": {
+            "items": {
+              "$ref": "#/components/schemas/Epic"
+            },
+            "type": "array",
+            "title": "Epicler"
+          },
+          "storyler": {
+            "items": {
+              "$ref": "#/components/schemas/UserStory"
+            },
+            "type": "array",
+            "title": "Storyler"
+          },
+          "dusenler": {
+            "items": {
+              "$ref": "#/components/schemas/DusenStory"
+            },
+            "type": "array",
+            "title": "Dusenler"
+          }
+        },
+        "type": "object",
+        "title": "StoryTaslagi"
+      },
+      "TaslakIstegi": {
+        "properties": {
+          "brief": {
+            "$ref": "#/components/schemas/Brief"
+          }
+        },
+        "type": "object",
+        "required": [
+          "brief"
+        ],
+        "title": "TaslakIstegi"
+      },
+      "TaslakYaniti": {
+        "properties": {
+          "taslak": {
+            "$ref": "#/components/schemas/StoryTaslagi"
+          },
+          "degraded": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OnboardingDegraded"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "taslak"
+        ],
+        "title": "TaslakYaniti"
+      },
       "TouchGraph": {
         "properties": {
           "window_days": {
@@ -4181,6 +5532,113 @@
         ],
         "title": "TouchGraph",
         "description": "GET /graph çıktısı (#104) — sıfır LLM, saf NormalizedEvent + active/ aggregation."
+      },
+      "UserStory": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "epic_id": {
+            "type": "string",
+            "title": "Epic Id"
+          },
+          "rol": {
+            "type": "string",
+            "title": "Rol"
+          },
+          "istek": {
+            "type": "string",
+            "title": "Istek"
+          },
+          "fayda": {
+            "type": "string",
+            "title": "Fayda"
+          },
+          "kabul_kriterleri": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Kabul Kriterleri"
+          },
+          "puan": {
+            "type": "integer",
+            "title": "Puan"
+          },
+          "oncelik": {
+            "type": "integer",
+            "title": "Oncelik",
+            "default": 3
+          },
+          "bagimliliklar": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Bagimliliklar"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "epic_id",
+          "rol",
+          "istek",
+          "fayda",
+          "puan"
+        ],
+        "title": "UserStory",
+        "description": "Kanonik user-story formu (§8.5) — cümle PARÇALARI ayrı tutulur.\n\nNeden tek bir `cumle: str` değil: sprint dağıtımı `puan`a, board `rol`e,\nscope kontrolü `istek`e bakar. Tek metne sıkıştırılsaydı her tüketici\nkendi ayrıştırıcısını yazardı. Cümle `olarak_cumle()` ile TEK yerde\nkurulur (drift yok)."
+      },
+      "Uyari": {
+        "properties": {
+          "alan": {
+            "type": "string",
+            "title": "Alan"
+          },
+          "aciklama": {
+            "type": "string",
+            "title": "Aciklama"
+          }
+        },
+        "type": "object",
+        "required": [
+          "alan",
+          "aciklama"
+        ],
+        "title": "Uyari",
+        "description": "Engelleyici olmayan gözlem (ör. 7'den fazla çekirdek özellik)."
+      },
+      "UygulaIstegi": {
+        "properties": {
+          "onay": {
+            "$ref": "#/components/schemas/OnayKaydi"
+          },
+          "brief": {
+            "$ref": "#/components/schemas/Brief"
+          },
+          "taslak": {
+            "$ref": "#/components/schemas/StoryTaslagi"
+          },
+          "plan": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SprintPlani"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "onay",
+          "brief",
+          "taslak"
+        ],
+        "title": "UygulaIstegi"
       },
       "ValidationError": {
         "properties": {
@@ -4221,6 +5679,62 @@
           "type"
         ],
         "title": "ValidationError"
+      },
+      "Varsayim": {
+        "properties": {
+          "alan": {
+            "type": "string",
+            "title": "Alan"
+          },
+          "deger_ozeti": {
+            "type": "string",
+            "title": "Deger Ozeti"
+          },
+          "gerekce": {
+            "type": "string",
+            "title": "Gerekce"
+          }
+        },
+        "type": "object",
+        "required": [
+          "alan",
+          "deger_ozeti",
+          "gerekce"
+        ],
+        "title": "Varsayim",
+        "description": "AI'nın kullanıcı adına doldurduğu bir alan — DEĞER değil, İŞARET.\n\n\"Bununla devam et\" dendiğinde üretilir. UI bunu ayrı bir renkte/rozette\ngösterir ki kullanıcı neyi onayladığını bilsin (K6: insan onaylar)."
+      },
+      "YazmaSonucu": {
+        "properties": {
+          "yazilan": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Yazilan"
+          },
+          "sprint_dosyalari": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Sprint Dosyalari"
+          },
+          "task_dosyalari": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Task Dosyalari"
+          },
+          "kok": {
+            "type": "string",
+            "title": "Kok",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "title": "YazmaSonucu"
       }
     }
   }
