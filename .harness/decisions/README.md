@@ -63,3 +63,4 @@ migrasyon notunu bırakıyor.
 | [D-59](D-59-events-presence-kontrat-sapmasi.md) | 2026-07-28 | `/events`+`/presence` kontrat sapması — dokümanı gerçeğe uydur (has_more/filtreler/presence-304 uygulanmıyor) |
 | [D-60](D-60-board-kart-kumesi-github-issue.md) | 2026-07-30 | Board kart kümesi `.harness/tasks/` ile sınırlı değil — GitHub issue'ları da kart üretir (çakışmada `.harness` kazanır) |
 | [D-62](D-62-kapsam-metni-turkce-tipografi.md) | 2026-07-29 | Donmuş `sprint-3.md` kapsam metni Türkçe karaktersizdi — tipografik düzeltme (#317) |
+| [D-61](D-61-agentic-github-yazma-yolu.md) | 2026-07-30 | Ürün ilk kez DIŞARIYA yazıyor — radar high-severity → PR'a uyarı yorumu (fail-closed, iki bayrak, idempotent); "MCP write-back" non-goal'undan farkı |

@@ -29,6 +29,27 @@ DEFAULT_JUDGE_CONCURRENCY = 8
 
 
 @dataclass(frozen=True)
+class DetectionPair:
+    """Bir tespit + ONU URETEN iki olay (#339).
+
+    `Detection` yalnizca `actors`/`branches`/`files` tasir — HANGI PR'a ait
+    oldugunu tasimaz. Radar bunu okumak icin `Detection.id`'yi parcalamak
+    (kirilgan) ya da olaylari ikinci kez uretmek (judge'i tekrar yakmak)
+    gerekirdi; bunun yerine kaniti dogdugu yerde tasiyoruz.
+
+    `RadarResult.detections` KAMUYA acik gorunumdur (API sozlesmesi,
+    `RadarResponse`) ve DEGISMEDI; `pairs` yalnizca surec-ici tuketiciler
+    icindir (bugun tek tuketici: `engine/agentic.py` — yorumun HANGI PR'a
+    yazilacagini buradan cozer).
+    """
+
+    detection: Detection
+    a: NormalizedEvent
+    b: NormalizedEvent
+    overlap: list[str]
+
+
+@dataclass(frozen=True)
 class RadarResult:
     """Bir `/radar` turunun sonucu — tespitler VE değerlendirilemeyenlerin sayısı.
 
@@ -47,6 +68,10 @@ class RadarResult:
     detections: list[Detection] = field(default_factory=list)
     evaluated: int = 0
     judge_unavailable: int = 0
+    # `detections` ile AYNI sirada, AYNI elemanlar (bkz. DetectionPair).
+    # Varsayilan bos: `RadarResult()`i elle kuran mevcut testler/cagiranlar
+    # kirilmasin (additive alan, donuk `detections` sozlesmesine dokunulmadi).
+    pairs: list[DetectionPair] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -268,9 +293,18 @@ class RadarService:
             min_similarity=self.min_similarity,
         )
 
-        detections: list[Detection] = []
+        # (aday, tespit) ikilisi BIRLIKTE tasinir: tespitin hangi olaylardan
+        # dogdugu bilgisi (#339, DetectionPair) burada kaybolursa bir daha
+        # geri getirilemez. `detections` listesinin uretilme kurali —
+        # filtre + siralama — AYNEN korundu.
+        judged: list[tuple[SemanticHunkCandidate, Detection]] = []
         unavailable = 0
-        for verdict in self._judge_all(semantic_candidates):
+        # `strict=True`: `_judge_all` aday basina TEK sonuc dondurmeyi taahhut
+        # eder (girdi sirasinda). Taahhut bir gun bozulursa `zip` sessizce
+        # KIRPMASIN — tespitler ile onlari ureten olaylar birbirine kayardi.
+        for candidate, verdict in zip(
+            semantic_candidates, self._judge_all(semantic_candidates), strict=True
+        ):
             if isinstance(verdict, JudgeUnavailableError):
                 # #252: değerlendirilemeyen çift TESPİT DEĞİLDİR. Listeye
                 # girmez ama sayılır — ham hata yalnızca log'da kalır;
@@ -278,25 +312,33 @@ class RadarService:
                 unavailable += 1
                 logger.warning("judge değerlendiremedi: %s", verdict)
             else:
-                detections.append(verdict)
+                judged.append((candidate, verdict))
 
-        evaluated = len(detections)
+        evaluated = len(judged)
         if not self.include_low_severity:
-            detections = [
-                detection for detection in detections if detection.severity in {"med", "high"}
-            ]
+            judged = [item for item in judged if item[1].severity in {"med", "high"}]
+
+        judged.sort(
+            key=lambda item: (
+                _severity_rank(item[1].severity),
+                -item[1].confidence,
+                item[1].id,
+            )
+        )
 
         return RadarResult(
-            detections=sorted(
-                detections,
-                key=lambda detection: (
-                    _severity_rank(detection.severity),
-                    -detection.confidence,
-                    detection.id,
-                ),
-            ),
+            detections=[detection for _, detection in judged],
             evaluated=evaluated,
             judge_unavailable=unavailable,
+            pairs=[
+                DetectionPair(
+                    detection=detection,
+                    a=candidate.a,
+                    b=candidate.b,
+                    overlap=list(candidate.overlap),
+                )
+                for candidate, detection in judged
+            ],
         )
 
     def _current_events(self) -> list[NormalizedEvent]:

@@ -6,13 +6,14 @@ from ensemble.integrations.github.auth import InstallationTokenCache
 from ensemble.integrations.github.client import GitHubRestClient
 from ensemble.integrations.github.errors import GitHubConfigError, GitHubNotFoundError
 from ensemble.integrations.github.normalize import commit_to_event, issue_to_event, pr_to_event
+from ensemble.integrations.github.write import GitHubWriteMixin
 from ensemble.models import NormalizedEvent, ScopeSubject
 from ensemble.ports import BackfillResources, ScopeSubjectNotFoundError
 
 _PR_REF_RE = re.compile(r"(?:^PR[-# ]?|/pull/|^#)(\d+)$", re.IGNORECASE)
 
 
-class GitHubAdapter:
+class GitHubAdapter(GitHubWriteMixin):
     """`GitHubPort` kontratinin gercek GitHub REST implementasyonu.
 
     Idempotency: instance-level `_seen_ids` seti - ayni process'te ayni

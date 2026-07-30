@@ -84,7 +84,7 @@ Bu dosya `T-190-deploy-runbook` dalının kendisi. Bağımlı/ilişkili işlerin
 
 ## 2. Env → platform eşleme tablosu
 
-`.env.example`'daki **51 anahtarın tamamı** aşağıda (**50'i düz `ANAHTAR=` satırı, 1'i — `CORS_ORIGINS` — yalnız yorum-satırı örneği; ikisi de sayılır**). Bu sayı, T-190 ilk taslağının iddia ettiği 38'den **10 fazla** — aradaki fark `main`'e bu dal yazıldıktan sonra inen `#252/#254/#255` (Groq yedek judge + judge paralelleştirme) ile `.env.example`'a eklenen `GROQ_API_KEY` · `GROQ_MODEL` · `RADAR_JUDGE_CONCURRENCY` `#218` ile eklenen `ENSEMBLE_ALLOW_FAKE_SEED` `#259` ile eklenen `VERDICT_TTL_DAYS` `#79` ile eklenen beş auth anahtarı (`GITHUB_OAUTH_*`, `AUTH_*`) `#280` ile eklenen `GITHUB_HISTORY_LIMIT` `#283` takibiyle eklenen `GEMINI_RETRY_AFTER_CAP_S` ve T-307 ile eklenen `ENSEMBLE_SERVE_FRONTEND`. *(38 değil 48 — bu PR'ın kendi drift-kilidi test'i bu farkı yakaladığı için yeniden sayıldı, uydurulmadı.)*
+`.env.example`'daki **54 anahtarın tamamı** aşağıda (**53'ü düz `ANAHTAR=` satırı, 1'i — `CORS_ORIGINS` — yalnız yorum-satırı örneği; ikisi de sayılır**). Bu sayı, T-190 ilk taslağının iddia ettiği 38'den **16 fazla** — aradaki fark `#339` ile eklenen üç agentic bayrağı (`AGENTIC_ACTIONS_*`, D-61 — ürünün dışarıya ilk yazma yolu) `main`'e bu dal yazıldıktan sonra inen `#252/#254/#255` (Groq yedek judge + judge paralelleştirme) ile `.env.example`'a eklenen `GROQ_API_KEY` · `GROQ_MODEL` · `RADAR_JUDGE_CONCURRENCY` `#218` ile eklenen `ENSEMBLE_ALLOW_FAKE_SEED` `#259` ile eklenen `VERDICT_TTL_DAYS` `#79` ile eklenen beş auth anahtarı (`GITHUB_OAUTH_*`, `AUTH_*`) `#280` ile eklenen `GITHUB_HISTORY_LIMIT` `#283` takibiyle eklenen `GEMINI_RETRY_AFTER_CAP_S` ve T-307 ile eklenen `ENSEMBLE_SERVE_FRONTEND`. *(38 değil 48 — bu PR'ın kendi drift-kilidi test'i bu farkı yakaladığı için yeniden sayıldı, uydurulmadı.)*
 
 Dört sınıf — Fly döneminden **isim değişti**, kavram aynı:
 
@@ -143,6 +143,9 @@ Dört sınıf — Fly döneminden **isim değişti**, kavram aynı:
 | 42 | `RADAR_WINDOW_DAYS` | sunucu env dosyası (opsiyonel) | — | kalibrasyon çıktısı (#18); kod default `14` |
 | 43 | `RADAR_MIN_JACCARD` | sunucu env dosyası (opsiyonel) | — | kod default `0.0` (kalibrasyon sonucu, placeholder değil) |
 | 44 | `RADAR_MIN_SIMILARITY` | sunucu env dosyası (opsiyonel) | — | kod default `0.0` |
+| 44a | `AGENTIC_ACTIONS_ENABLED` | sunucu env dosyası (opsiyonel) | — | 🆕 `#339`/D-61 — kod default **`false`**. Ürünün dışarıya **ilk yazma yolunun** ana şalteri: `false` iken tek bir GitHub çağrısı bile yapılmaz. Açmak **tek başına yetmez** (aşağıdaki satır) |
+| 44b | `AGENTIC_ACTIONS_DRY_RUN` | sunucu env dosyası (opsiyonel) | — | 🆕 `#339`/D-61 — kod default **`true`**. `true` iken ne yazacağını **loglar**, yazmaz. **Gerçek yazma = `ENABLED=true` VE `DRY_RUN=false`** — tek bir bayrağı yanlışlıkla açmak yeterli değil, iki bağımsız kasıt gerekir. Ayrıca GitHub App'in `Pull requests: write` izni **şart**; izinsiz denemede 403 → `GitHubAuthError` (sessiz başarı yok) |
+| 44c | `AGENTIC_ACTIONS_MAX_PER_RUN` | sunucu env dosyası (opsiyonel) | — | 🆕 `#339`/D-61 — kod default `3`, en az `1` (`0` açılışta reddedilir; kapatmak için `ENABLED=false` kullan). Tur başına yazılabilecek en fazla yorum; aşılan kısım **loglanır ve rapora girer**, sessizce kesilmez |
 | 45 | `DATABASE_URL` | compose `environment:` (**türetilir**, sunucu env dosyasına YAZILMAZ) | `docker-compose.prod.yml`: `postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}` | ⚠️ **tuzak** — aşağıdaki kutuya bak; Fly'daki `grup54-db.internal` yerine artık compose ağındaki `db` servis adı |
 | 46 | `VITE_API_BASE_URL` | **Vercel env** (build-time) | Vercel dashboard → *Environment Variables* → Production | `= https://api.recommend2me.com`; **yalnız origin (+ opsiyonel path öneki)** — query/hash `lib/config.ts` tarafından reddedilir; değişince **redeploy şart** (build-time gömülür, "Save" yetmez) |
 | 47 | `VITE_MOCK` | yalnız-local; Vercel'de **BOŞ** | — | yalnız `"1"` mock açar; prod'da tanımlarsan `vite.config.ts` build'i **kendi kırar** (#188 guard) |
@@ -465,6 +468,54 @@ Rollback **geçicidir**. `main` düzelmeden bir sonraki yeşil CI aynı bozuk s�
 - Rotasyon prosedürü: GitHub App → Settings → Private keys → **yeni üret** → `/etc/ensemble/ensemble.env`'i güncelle → `docker compose up -d --build` (yeniden başlat) → **eskisini sil**. Webhook secret'ı da aynı mantıkla rotate edilir (D-35).
 - `gitleaks` CI'ı (`.github/workflows/ci.yml`) zaten her PR'da sır taraması yapıyor — bu runbook'a yeni bir secret-tarama adımı **eklenmez**, mevcut kapı yeterli.
 - Fly'dan devralınan hiçbir secret/token **yok** — rotasyon listesi yalnızca yukarıdakiler.
+
+---
+
+## 10. Agentic aksiyon — ürünün dışarıya YAZDIĞI tek yol (`#339`, D-61)
+
+Radar `severity=high` bir çakışma bulunca ilgili **açık PR'a** gerekçeli uyarı
+yorumu bırakır. Bu, ürünün bugüne kadarki **ilk yazma yolu** — açmak üç ayrı
+kasıt ister ve hiçbiri kendiliğinden gelmez.
+
+**1) GitHub App izni** — App ayarlarından `Pull requests: **Read & write**`.
+İzin gelmeden `ENABLED=true, DRY_RUN=false` denenirse GitHub 403 döner ve
+`GitHubAuthError` yükselir; "yazdım" diye raporlanmaz (kanıt:
+`tests/unit/test_agentic_action.py::test_adapter_izin_yoksa_403_YUKARI_yayilir`).
+
+**2) İki bayrak** — `/etc/ensemble/ensemble.env` içine (§2 tablosu 44a–44c):
+
+```ini
+AGENTIC_ACTIONS_ENABLED=true
+AGENTIC_ACTIONS_DRY_RUN=false     # önce true ile dene, log'da gövdeyi oku
+AGENTIC_ACTIONS_MAX_PER_RUN=3
+```
+
+Ardından `cd /opt/ensemble && docker compose up -d` (env dosyası
+`env_file:` ile konteynere enjekte edilir; **yeniden başlatma şart** —
+`Settings` süreç açılışında okunur).
+
+**3) Çalıştırma** — istek üzerine (ya da bir cron/systemd timer ile):
+
+```bash
+ssh fatih@2.59.181.226
+cd /opt/ensemble && docker compose exec api python -m ensemble.agentic_cli --kuru-calisma   # önce KURU
+cd /opt/ensemble && docker compose exec api python -m ensemble.agentic_cli                  # sonra gerçek
+```
+
+> ⚠️ **`make agentic` DEĞİL.** Prod imajı `Makefile`'ı **hiç kopyalamaz**
+> (`COPY --from=builder /app /app`) ve `make`/`uv` ikilileri runtime katmanında
+> **yoktur**; `python` doğrudan çalışır çünkü `ENV PATH=/app/.venv/bin:$PATH`.
+> `make agentic` yalnızca **yerel** geliştirme reçetesidir.
+> `--kuru-calisma` bayrağı yalnız **güvenli** yönde etki eder: kuru çalışmayı
+> açabilir, asla kapatamaz.
+
+Çıkış kodu: `0` temiz · `1` en az bir yazma/okuma hatası (cron bunu görür) ·
+`2` fail-closed ret (gerçek GitHub App yok, `FakeGitHubAdapter`'a düşülmüş —
+sahteye yazıp "yazdım" demektense reddedilir, D-51 kapısının aynı ruhu).
+
+Rapor `stdout`'a basılır: yazılan · kuru çalışma · hata · sınır nedeniyle
+atlanan + her (tespit, PR) için tek satır. Aynı tespit için **ikinci yorum
+asla** yazılmaz (yorum gövdesine gömülü makine-okunur işaret taranır).
 
 ---
 

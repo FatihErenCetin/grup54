@@ -346,6 +346,41 @@ class GraphNode(BaseModel):      # S2 Ek A (#106 ile donmuş)
 
 ---
 
+## Ek H (30 Tem) — Agentic aksiyon (#339, D-61): `GitHubPort`'un YAZMA yüzeyi
+
+> **Additive.** Donmuş hiçbir imza değişmedi; `GET /radar` şeması dahil **hiçbir HTTP sözleşmesi dokunulmadı** (`make openapi` çıktısı bit-bit aynı — bu yüzden `schema.d.ts` regen'i de gerekmedi). Bu ek, `GitHubPort` protokolüne **eklenen** üç metodu ve üç yeni env anahtarını kayda geçirir.
+
+`GitHubPort` bu ekten önce **%100 salt-okunurdu** (ölçüldü 29 Tem: adapter'da tek POST/PATCH yok). Eklenen yüzey:
+
+```python
+class GitHubPort(Protocol):
+    ...                                                    # mevcut dört metod AYNEN
+    def pull_request_open(self, number: int) -> bool: ...              # 🆕 #339
+    def list_pull_request_comment_bodies(self, number: int) -> list[str]: ...  # 🆕
+    def create_pull_request_comment(self, number: int, body: str) -> str: ...  # 🆕
+```
+
+- **Üç ayrı metod, tek "yorum at" değil:** "yazabilir miyim" ve "zaten yazdım mı" kararları yazmanın KENDİSİNDEN önce ve ondan bağımsız alınır — tek metod olsaydı guard'lar adapter'ın içine gömülür ve engine'den test edilemezdi.
+- **Hiçbiri "bilemedim"i bir değere çökertmez.** PR durumu okunamıyorsa `False` (=kapalı) değil **istisna** beklenir (`JudgeUnavailableError` ile aynı ders, #252): "kapalı" bir olgu, "bilmiyorum" olgunun yokluğu.
+- **Uygulamalar:** gerçek → `integrations/github/write.py::GitHubWriteMixin` (`GitHubAdapter` miras alır) · fake → `integrations/github/fake.py::FakeGitHubAdapter` (ağa çıkmayan, bellekte biriken ikiz).
+- **GitHub ucu KİLİTLİ:** yorum `POST /repos/{o}/{r}/**issues**/{n}/comments`'a gider. `/pulls/{n}/comments` başka bir şeydir (satır-içi review yorumu; `commit_id`+`path`+`line` ister) — yanlış uç, testler yeşilken canlıda 422 demek olurdu. Kilit: `tests/unit/test_agentic_action.py::test_adapter_yorumu_ISSUES_ucuna_POSTlar`.
+
+**Tüketici (bugün tek):** `engine/agentic.py::AgenticActionService` — `RadarResult.pairs`'teki `severity=high` tespitler için ilgili açık PR'lara gerekçeli uyarı yorumu bırakır. Çalıştırma: `python -m ensemble.agentic_cli` (üretimde `docker compose exec api ...`; `docs/deploy-runbook.md` §10).
+
+**`RadarResult` (engine-içi, HTTP şeması DEĞİL) additive alan:** `pairs: list[DetectionPair]` — `detections` ile aynı sıra/aynı küme, ek olarak tespiti üreten iki `NormalizedEvent` + kesişen dosyalar. Varsayılanı boş liste; `RadarResult()`i elle kuran mevcut çağıranlar etkilenmez. `RadarResponse` (API) **değişmedi**.
+
+**Yeni env anahtarları** (tam tablo: `docs/deploy-runbook.md` §2, satır 44a–44c):
+
+| anahtar | default | anlamı |
+|---|---|---|
+| `AGENTIC_ACTIONS_ENABLED` | `false` | ana şalter; kapalıyken tek bir GitHub çağrısı bile yok |
+| `AGENTIC_ACTIONS_DRY_RUN` | `true` | ne yazacağını loglar, yazmaz |
+| `AGENTIC_ACTIONS_MAX_PER_RUN` | `3` (min 1) | tur başına yazma tavanı; aşan kısım loglanır + rapora girer |
+
+Gerçek yazma = `ENABLED=true` **ve** `DRY_RUN=false` **ve** App'in `Pull requests: write` izni. Gerekçe, kapsam ayrımı ("MCP write-back" non-goal'undan farkı) ve kabul edilen riskler: `.harness/decisions/D-61-agentic-github-yazma-yolu.md`.
+
+---
+
 ## Pratik: S3 paralel çalışma reçetesi
 
 - **Sprint başı (bugün):** bu dosya (Ek A–E) donar → herkes kendi diliminde mock/fixture ile başlar.

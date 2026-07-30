@@ -50,6 +50,22 @@ class GitHubPort(Protocol):
     def compare(self, base: str, head: str) -> list[str]: ...
     def get_diff(self, base: str, head: str) -> dict[str, str]: ...
 
+    # --- YAZMA yuzeyi (#339) — urunun dis dunyaya ILK yazma yolu ------------
+    # Bu satirlara kadar `GitHubPort` %100 SALT-OKUNURDU (olculdu 2026-07-29:
+    # adapter'da tek bir POST/PATCH yoktu). Uc metodun ayri ayri durmasi
+    # bilincli: "yazabilir miyim" (pull_request_open) ve "zaten yazdim mi"
+    # (list_pull_request_comment_bodies) KARARLARI, yazmanin KENDISINDEN
+    # (create_pull_request_comment) once ve ondan BAGIMSIZ olarak alinir —
+    # tek bir "yorum at" metodu olsaydi guard'lar adapter'in icine gomulur
+    # ve engine tarafindan test edilemezdi.
+    #
+    # HICBIRI "bilemedim"i bir degere COKERTMEZ: PR durumu okunamiyorsa
+    # `False` (=kapali) DEGIL, istisna beklenir — "kapali" ile "bilmiyorum"
+    # ayni sey degil (JudgeUnavailableError ile ayni ders, #252).
+    def pull_request_open(self, number: int) -> bool: ...
+    def list_pull_request_comment_bodies(self, number: int) -> list[str]: ...
+    def create_pull_request_comment(self, number: int, body: str) -> str: ...
+
 
 class EmbeddingsPort(Protocol):
     def embed(self, texts: list[str], task_type: str) -> list[list[float]]: ...
