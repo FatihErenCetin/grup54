@@ -262,3 +262,120 @@ def test_embeddings_saglamken_query_dusus_beyani_YOK():
     result = service.ask("Scope drift sprintte var mı?")
 
     assert result.degraded is None
+
+
+# ── #355: parmak izi kalıcılığı — "her restart tüm korpusu yeniden gömme" ────
+
+
+def _belge(i: int) -> QueryDocument:
+    return QueryDocument(
+        id=f"scope:s{i}",
+        type="scope",
+        ref=f"sprint-3.md#IS-{i}",
+        quote=f"scope drift maddesi {i}",
+        text=f"scope drift maddesi {i}",
+    )
+
+
+def _servis(kaynak, gomme, indeks):
+    return QueryService(
+        source_port=kaynak,
+        embeddings_port=gomme,
+        vector_index=indeks,
+        judge_port=_Judge(
+            QueryJudgement(
+                answer="cevap [cite:sprint-3.md#IS-0]",
+                citation_refs=["sprint-3.md#IS-0"],
+                confidence="low",
+            )
+        ),
+    )
+
+
+def _gomulen_belge_sayisi(gomme) -> int:
+    """Yalnız BELGE gömmeleri (soru gömmesi her sorguda 1 tane, o hariç)."""
+    return sum(len(texts) for texts, task in gomme.calls if task == "RETRIEVAL_DOCUMENT")
+
+
+def test_yeniden_baslatmada_korpus_TEKRAR_gomulmez():
+    """#355 — süreç yeniden başlayınca değişmemiş belgeler yeniden gömülMEZ.
+
+    Canlıda ölçülen etki (30 Tem 2026): `_indexed_hashes` bellekte, vektörler
+    kalıcıydı. Her deploy TÜM korpusu (~236 belge) yeniden gömüyordu; Gemini'nin
+    ücretsiz günlük embed kotası 1000 olduğu için birkaç deploy onu bitiriyor ve
+    Ask günün geri kalanında semantik aramasız kalıyordu — üç örnek sorunun
+    ikisi `not_found` döndü.
+
+    Burada "yeniden başlatma" = AYNI kalıcı indeksle YENİ bir QueryService.
+
+    MUTASYON KİLİDİ: `_index_documents`'tan `self._parmak_izlerini_yukle()`
+    çağrısını sil -> ikinci servis her şeyi yeniden gömer, bu test kırılır.
+    """
+    belgeler = [_belge(i) for i in range(4)]
+    kaynak = _Source(belgeler)
+    indeks = InMemoryVectorIndex()  # süreçler ARASI kalıcılığı temsil eder
+
+    ilk_gomme = _TokenEmbeddings()
+    _servis(kaynak, ilk_gomme, indeks).ask("scope drift")
+    assert _gomulen_belge_sayisi(ilk_gomme) == 4
+
+    # --- süreç yeniden başladı: yeni servis, AYNI indeks ---
+    ikinci_gomme = _TokenEmbeddings()
+    _servis(kaynak, ikinci_gomme, indeks).ask("scope drift")
+    assert _gomulen_belge_sayisi(ikinci_gomme) == 0, (
+        "değişmemiş belgeler yeniden gömüldü — kota boşa yanıyor"
+    )
+
+
+def test_DEGISEN_belge_yeniden_baslatmadan_sonra_da_gomulur():
+    """Kalıcılık, değişikliği KAÇIRMA pahasına gelmemeli.
+
+    MUTASYON KİLİDİ: `upsert`'teki `"fingerprint": fingerprint` alanını sil ->
+    hiçbir parmak izi kaydedilmez, ilk test kırılır; parmak izini SABİT bir
+    değere çevir -> bu test kırılır.
+    """
+    belgeler = [_belge(0), _belge(1)]
+    kaynak = _Source(belgeler)
+    indeks = InMemoryVectorIndex()
+    _servis(kaynak, _TokenEmbeddings(), indeks).ask("scope drift")
+
+    # Belgenin METNİ değişti (aynı id, yeni içerik)
+    kaynak.corpus.documents[1] = QueryDocument(
+        id="scope:s1",
+        type="scope",
+        ref="sprint-3.md#IS-1",
+        quote="postgres deploy maddesi",
+        text="postgres deploy maddesi",
+    )
+    gomme = _TokenEmbeddings()
+    _servis(kaynak, gomme, indeks).ask("scope drift")
+    assert _gomulen_belge_sayisi(gomme) == 1
+
+
+class _ParmakIziPatlayanIndeks(InMemoryVectorIndex):
+    def fingerprints(self) -> dict[str, str]:
+        raise RuntimeError("indeks okunamadı")
+
+
+def test_parmak_izi_okunamazsa_SEMANTIK_DUSMUS_gibi_raporlanmaz():
+    """Parmak izi bir OPTİMİZASYONdur, doğruluk kaynağı değil.
+
+    İnce ayrım ve testin ASIL konusu: parmak izi okunamadığında semantik
+    retrieval HÂLÂ ÇALIŞIYOR (yalnız fazladan gömme yapılır). Bu hatayı
+    yukarı kaçırırsak `_retrieve`'in genel `except`'ine düşer ve kullanıcıya
+    "semantik retrieval kullanılamadı" diye YANLIŞ bir düşüş bildirilir —
+    doğru çalışan bir yolu bozuk gösteren bir teşhis, hiç teşhis
+    koymamaktan kötüdür.
+
+    (İlk yazdığım hâli `status in (...)` kontrol ediyordu ve mutasyonla
+    kırılmadı: hata zaten yakalanıp cevap üretiliyordu. Ayrım `degraded`de.)
+
+    MUTASYON KİLİDİ: `_parmak_izlerini_yukle`'deki `except Exception`'ı
+    daralt (ör. `except ZeroDivisionError`) -> RuntimeError yukarı kaçar,
+    `degraded` dolar, bu test kırılır.
+    """
+    kaynak = _Source([_belge(0)])
+    sonuc = _servis(kaynak, _TokenEmbeddings(), _ParmakIziPatlayanIndeks()).ask("scope drift")
+    assert sonuc.degraded is None, (
+        "parmak izi okuma hatası, çalışan semantik retrieval'ı düşmüş gösteriyor"
+    )

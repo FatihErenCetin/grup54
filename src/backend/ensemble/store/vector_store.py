@@ -49,6 +49,15 @@ class FaissVectorIndex:
         self._meta[id] = dict(meta)
         self._rebuild()
 
+    def fingerprints(self) -> dict[str, str]:
+        """Bkz. `VectorIndexPort.fingerprints`. FAISS indeksi süreçle birlikte
+        yaşar; parmak izleri de öyle — tutarlı ve dürüst."""
+        return {
+            id: str(meta["fingerprint"])
+            for id, meta in self._meta.items()
+            if meta.get("fingerprint")
+        }
+
     def query(self, vec: list[float], k: int) -> list[tuple[str, float]]:
         if k <= 0:
             return []
@@ -185,6 +194,29 @@ class PgVectorIndex:
             session.execute(stmt, params)
             session.commit()
 
+    def fingerprints(self) -> dict[str, str]:
+        """Bkz. `VectorIndexPort.fingerprints` — TEK sorguda tüm parmak izleri.
+
+        `meta->>'fingerprint'` NULL olan satırlar atlanır: bunlar alan
+        eklenmeden ÖNCE yazılmış eski satırlardır. Onları "parmak izi yok"
+        saymak, ilk turda bir kez yeniden gömülmelerine yol açar ve sonrası
+        kalıcı olur — uydurma bir parmak izi atamaktan (hep taze sanılır,
+        değişiklik BİR DAHA hiç yakalanmaz) çok daha güvenli yönde yanılma.
+        """
+        where_clause = (
+            "WHERE repo_full_name = :repo_full_name" if self.repo_full_name is not None else ""
+        )
+        stmt = text(
+            f"""
+            SELECT id, meta->>'fingerprint' AS fingerprint
+            FROM {self.table_name}
+            {where_clause}
+            """
+        )
+        with self.session_factory() as session:
+            rows = session.execute(stmt, {"repo_full_name": self.repo_full_name}).all()
+        return {row[0]: row[1] for row in rows if row[1]}
+
     def query(self, vec: list[float], k: int) -> list[tuple[str, float]]:
         if k <= 0:
             return []
@@ -296,12 +328,22 @@ def build_vector_index(
     *,
     session_factory: Callable[[], Session] | None = None,
     repo_full_name: str | None = None,
+    table_name: str = "vector_index",
 ) -> VectorIndexPort:
     """`repo_full_name` verilirse (T-79) hosted `PgVectorIndex` o kiracıya
     SABİTLENİR (bkz. `PgVectorIndex` docstring'i); local `LocalVectorIndex`
     zaten her kiracı için AYRI bir Python nesnesi olduğundan (bkz.
     ensemble/tenancy.py) ek bir parametreye ihtiyaç duymaz — bellek-içi
-    izolasyon kendiliğinden sağlanır."""
+    izolasyon kendiliğinden sağlanır.
+
+    `table_name` (#355): radar ile Ask AYRI tablo kullanır. Paylaştıklarında
+    radar'ın `replace_all()`'ı (sözleşmesi gereği "hepsini değiştir") Ask'ın
+    scope/task/decision vektörlerini her rebuild'de siliyordu — ve
+    `_indexed_hashes` bellekte olduğu için Ask bunu FARK ETMİYOR, istisna
+    fırlamadığı için `degraded` de dolmuyordu. Gerekçenin tamamı
+    `migrations/versions/e5b8d2c71a09_query_vector_index.py` başlığında.
+    Local modda ayrım zaten bedava: her çağrı AYRI bir `LocalVectorIndex`
+    nesnesi döndürür."""
     if settings.ENSEMBLE_MODE == "hosted":
         if session_factory is None:
             raise ValueError("session_factory is required for hosted vector index")
@@ -309,9 +351,14 @@ def build_vector_index(
             session_factory,
             dimensions=settings.GEMINI_EMBEDDING_DIMENSIONS,
             repo_full_name=repo_full_name,
+            table_name=table_name,
         )
 
     return LocalVectorIndex()
+
+
+#: Ask korpusunun vektör tablosu — radar'ınkinden AYRI (#355).
+QUERY_VECTOR_TABLE = "query_vector_index"
 
 
 def _validate_vector_record(id: str, vec: list[float]) -> None:

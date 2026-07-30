@@ -63,7 +63,7 @@ from ensemble.ports import (
     ScopeJudgePort,
     VectorIndexPort,
 )
-from ensemble.store.vector_store import build_vector_index
+from ensemble.store.vector_store import QUERY_VECTOR_TABLE, build_vector_index
 from ensemble_shared.harness import HarnessPort
 
 logger = logging.getLogger("ensemble.tenancy")
@@ -213,6 +213,17 @@ class TenantRegistry:
             ),
             repo_full_name=tenant.repo_full_name,
         )
+        # #355 — Ask'ın vektörleri radar'ınkinden AYRI tabloda. `app.py`'deki
+        # demo kiracı takımıyla AYNI ayrım: burada atlarsak hata demo'da
+        # kapanır, gerçek kiracılarda sessizce yaşamaya devam ederdi.
+        query_vector_index: VectorIndexPort = build_vector_index(
+            self._settings,
+            session_factory=(
+                self._session_factory if self._settings.ENSEMBLE_MODE == "hosted" else None
+            ),
+            repo_full_name=tenant.repo_full_name,
+            table_name=QUERY_VECTOR_TABLE,
+        )
 
         radar_service = RadarService(
             github_port=github_port,
@@ -253,7 +264,7 @@ class TenantRegistry:
         query_service = QueryService(
             source_port=query_source,
             embeddings_port=self._embeddings_port,
-            vector_index=vector_index,
+            vector_index=query_vector_index,
             judge_port=self._query_judge_port,
         )
 

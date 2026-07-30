@@ -24,6 +24,8 @@ class HarnessPort(Protocol):
 
     def read_active(self) -> list[dict[str, Any]]: ...
 
+    def read_decisions(self) -> list[dict[str, Any]]: ...
+
     def verify_dir_readable(self, folder: str) -> None: ...
 
     def write_active(self, handle: str, decl: dict[str, Any]) -> None: ...
@@ -120,6 +122,23 @@ class FileHarnessPort:
     def read_active(self) -> list[dict[str, Any]]:
         """Read every active declaration from .harness/active/."""
         return [doc.as_dict(self.root) for doc in self._read_many("active", "active")]
+
+    def read_decisions(self) -> list[dict[str, Any]]:
+        """Read every decision record from .harness/decisions/ (D-NN).
+
+        Neden bu okuyucu #354'e kadar YOKTU ve neden eksikliği görünmedi:
+        çevresindeki her şey hazırdı — `NON_DATA_FILENAMES["decisions"]`,
+        `decision.schema.json`, `/query`'nin `_CITATION_TYPES`'ında ilan
+        edilmiş `"decision"` tipi, hatta `AskPage`'in "karar günlüğü üzerinde
+        aranır" yazan metni. Yalnız ORTADAKİ halka eksikti, o yüzden hiçbir
+        şey hata vermedi; arama makbuzu sessizce `decision: 0` bastı.
+
+        Sonucu ölçüldü (canlı, 30 Tem): "Hosted demo kararı neydi?" sorusuna
+        ürün eski bir görev metninden "Fly backend" cevabı verdi — oysa Fly
+        terk edilmişti. Kurum hafızası diske yazılıydı ama ürün onu
+        okuyamadığı için KENDİ kararıyla çelişti.
+        """
+        return [doc.as_dict(self.root) for doc in self._read_many("decisions", "decision")]
 
     def verify_dir_readable(self, folder: str) -> None:
         """Fail-closed varlık kontrolü: `.harness/<folder>/` dizini HİÇ YOK ya

@@ -9,6 +9,7 @@ from ensemble.ports import VectorIndexPort
 from ensemble.store.vector_store import (
     FaissVectorIndex,
     LocalVectorIndex,
+    QUERY_VECTOR_TABLE,
     PgVectorIndex,
     _to_pgvector_literal,
     build_vector_index,
@@ -145,3 +146,54 @@ class FakeResult:
 
     def all(self):
         return self._rows
+
+
+def test_replace_all_YALNIZ_kendi_tablosuna_dokunur():
+    """#355 — radar'ın rebuild'i Ask'ın vektörlerini silmemeli.
+
+    Canlıda ölçülen sessiz hata (30 Tem 2026): radar ile Ask AYNI
+    `vector_index` tablosunu paylaşıyordu. Radar'ın rebuild'i
+    `replace_all()` çağırır ve sözleşmesi gereği tabloyu KOMPLE siler —
+    Ask'ın scope/task/decision vektörleri her rebuild'de yok oluyordu.
+
+    Sessiz olmasının sebebi `QueryService._indexed_hashes`'in bellekte
+    olması: süreç "zaten gömdüm" sanıp yeniden gömmüyor, vektör sorgusu
+    yalnız olay id'leri dönüyor, Ask korpusuna filtrelenince boş kalıyor
+    ve İSTİSNA FIRLAMADIĞI için `degraded` de dolmuyordu.
+
+    Ölçüm: `vector_index` 661 satır (378 commit + 149 pr + 134 issue),
+    Ask korpusundan (`task:`/`scope:`/`decision:`) 0 satır.
+
+    MUTASYON KİLİDİ: `replace_all`/`clear`'daki `{self.table_name}`'i sabit
+    `vector_index`e çevir -> bu test kırılır.
+    """
+    ask_sessions = FakeSessionFactory()
+    ask = PgVectorIndex(
+        ask_sessions, dimensions=2, table_name="query_vector_index", repo_full_name="o/r"
+    )
+    ask.replace_all([("decision:D-46", [1.0, 0.0], {"type": "decision"})])
+
+    ifadeler = " ".join(call.sql for call in ask_sessions.calls)
+    assert "query_vector_index" in ifadeler
+    # Radar'ın tablosuna TEK BİR ifade bile gitmemeli
+    assert "FROM vector_index" not in ifadeler
+    assert "TRUNCATE vector_index" not in ifadeler
+    assert "INTO vector_index" not in ifadeler
+
+
+def test_build_vector_index_ask_tablosunu_ayri_kurar():
+    """Fabrika `table_name`'i GEÇİRİR — DI'da ayrım burada başlıyor.
+
+    MUTASYON KİLİDİ: `build_vector_index`'te `table_name=table_name`
+    argümanını sil -> Ask yine radar'ın tablosuna yazar, bu test kırılır.
+    """
+    sessions = FakeSessionFactory()
+    settings = Settings(ENSEMBLE_MODE="hosted", GEMINI_EMBEDDING_DIMENSIONS=2)
+    radar = build_vector_index(settings, session_factory=sessions)
+    ask = build_vector_index(
+        settings, session_factory=sessions, table_name=QUERY_VECTOR_TABLE
+    )
+    assert isinstance(radar, PgVectorIndex) and isinstance(ask, PgVectorIndex)
+    assert radar.table_name == "vector_index"
+    assert ask.table_name == "query_vector_index"
+    assert radar.table_name != ask.table_name

@@ -420,6 +420,25 @@ function KararSatiri({ verdict }: { verdict: ScopeVerdict }) {
         </blockquote>
       )}
 
+      {/* #355 — `ScopeVerdict.degraded` sözleşmede vardı ama bu sayfa onu HİÇ
+          basmıyordu (AskPage ile aynı boşluk; RadarPage tek başına basıyordu).
+          "Asla sessizce düşme" kuralı arayüzde de geçerli: madde eşleştirmesi
+          yalnız kelime benzerliğiyle yapıldıysa karar EKSİK dayanaklı olabilir
+          ve kullanıcı bunu bilmeli. */}
+      {verdict.degraded && (
+        <p
+          role="status"
+          className="rounded border border-severity-med/40 bg-severity-med/10 px-2 py-1.5 text-[11px] leading-relaxed"
+          title={verdict.degraded}
+        >
+          <span aria-hidden className="text-severity-med">
+            ⚠{" "}
+          </span>
+          Zemin dar: kapsam maddeleri semantik olarak taranamadı, eşleşme yalnız
+          kelime benzerliğine dayanıyor — bu karar eksik dayanaklı olabilir.
+        </p>
+      )}
+
       <div className="flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
         {verdict.match_none && (
           <span>⊘ eşleşen kapsam maddesi yok</span>

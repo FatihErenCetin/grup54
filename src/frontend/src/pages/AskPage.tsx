@@ -202,6 +202,44 @@ const CITE_RE = /\[cite:([^\]\s]+)\]/g;
     _CITATION_RE + _validated_citations: placeholder'lar citations ile birebir
     eşleşmezse backend zaten hata veriyor). Onları okunur `[1]` numarasına
     çevirip ilgili alıntıya bağlıyoruz — ref bilinmiyorsa ham ref basılır. */
+/* `QueryResult.degraded` (#330) API'de vardı ama bu sayfa onu HİÇ BASMIYORDU
+   (#355'te ölçüldü: RadarPage'de 9 referans + özel şerit bileşeni, AskPage'de
+   sıfır). Yani sözleşme "asla sessizce düşme" diyordu, arayüz düşüşü yutuyordu:
+   kullanıcı, semantik arama çalışmadan üretilmiş bir cevabı tam yetenekle
+   üretilmiş sanıyordu. Radar'ın `EksikSonucSeridi`'yle AYNI dil ve aynı
+   `role="status"`.
+
+   Sebep metni SAĞLAYICI hatasının ham gövdesini taşıyabilir (Gemini 429
+   cevabı ~1 KB JSON). Ekrana kırpılmış basılır ama TAMAMI `title`'da
+   kalır — teşhis kaybolmasın, arayüz de kusmasın. */
+function DarZeminSeridi({ sebep }: { sebep: string }) {
+  const KISA = 160;
+  const kisa = sebep.length > KISA ? `${sebep.slice(0, KISA - 1)}…` : sebep;
+  return (
+    <div
+      role="status"
+      className="flex items-start gap-3 rounded-lg border border-severity-med/40 bg-severity-med/10 p-4"
+    >
+      <span aria-hidden className="mt-0.5 shrink-0 text-severity-med">
+        ⚠
+      </span>
+      <div className="min-w-0 space-y-1">
+        <p className="text-sm font-medium">Zemin dar — semantik arama kullanılamadı</p>
+        <p className="text-xs leading-relaxed text-muted-foreground">
+          Bu cevap yalnız <span className="font-medium text-foreground">kelime eşleşmesiyle</span>{" "}
+          seçilmiş belgelere dayanıyor; anlamca yakın ama farklı kelimelerle yazılmış
+          kayıtlar bu turda hiç değerlendirilemedi. Cevap yanlış olmayabilir ama{" "}
+          <span className="font-medium text-foreground">eksik olabilir</span> — kaynak
+          listesini eksiksiz sayma.
+        </p>
+        <p className="font-mono text-[11px] break-words text-muted-foreground" title={sebep}>
+          {kisa}
+        </p>
+      </div>
+    </div>
+  );
+}
+
 function CevapMetni({ answer, refSirasi }: { answer: string; refSirasi: Map<string, number> }) {
   const parcalar: ReactNode[] = [];
   let imlec = 0;
@@ -316,6 +354,7 @@ function CevapBloku({ data }: { data: QueryResponse }) {
 
   return (
     <div className="space-y-4">
+      {data.degraded && <DarZeminSeridi sebep={data.degraded} />}
       <div className="rounded-lg border border-border bg-card p-4">
         {bulunamadi ? (
           // not_found HATA DEĞİL: "aradım, bulamadım" dürüst bir cevaptır
