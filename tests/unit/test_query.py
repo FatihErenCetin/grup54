@@ -10,8 +10,14 @@ from ensemble.models import QueryCorpus, QueryDocument, QueryJudgement
 
 
 class _Source:
-    def __init__(self, documents: list[QueryDocument]) -> None:
-        self.corpus = QueryCorpus(documents=documents, last_commit="abc1234")
+    def __init__(
+        self, documents: list[QueryDocument], *, events_truncated: bool = False
+    ) -> None:
+        self.corpus = QueryCorpus(
+            documents=documents,
+            last_commit="abc1234",
+            events_truncated=events_truncated,
+        )
 
     def load_query_corpus(self) -> QueryCorpus:
         return self.corpus
@@ -67,12 +73,13 @@ def _service(
     documents: list[QueryDocument],
     *,
     judge: _Judge | None = None,
+    events_truncated: bool = False,
 ) -> tuple[QueryService, _Judge, _TokenEmbeddings]:
     actual_judge = judge or _Judge()
     embeddings = _TokenEmbeddings()
     return (
         QueryService(
-            _Source(documents),
+            _Source(documents, events_truncated=events_truncated),
             embeddings,
             InMemoryVectorIndex(),
             actual_judge,
@@ -262,6 +269,173 @@ def test_embeddings_saglamken_query_dusus_beyani_YOK():
     result = service.ask("Scope drift sprintte var mı?")
 
     assert result.degraded is None
+
+# ── #319 — QueryService.scan() (AskPage "Tarandı" şeridi, sıfır LLM) ────────
+
+
+def test_scan_tum_tipleri_sifir_dahil_sayar():
+    service, judge, embeddings = _service(
+        [
+            _document(),
+            _document(id="task:T-1", type="task", ref="T-1", quote="t", text="t"),
+            _document(id="task:T-2", type="task", ref="T-2", quote="t2", text="t2"),
+        ]
+    )
+
+    result = service.scan()
+
+    counts = {item.type: item.count for item in result.searched}
+    assert counts == {"scope": 1, "task": 2, "decision": 0, "event": 0, "pr": 0}
+    assert result.last_commit == "abc1234"
+    # decision HER ZAMAN 0 çıkar (HarnessEventQuerySource decision okumuyor,
+    # bkz. QueryScanResult docstring'i) — bu satır o olgunun regresyon kilidi:
+    # biri corpus'a decision belgesi eklerse bu sayı artar ve test kırılır,
+    # o zaman UI tarafındaki gate de gözden geçirilmeli.
+    assert judge.calls == []
+    assert embeddings.calls == []
+
+
+def test_scan_embeddings_ve_judge_cagirmaz():
+    # MUTASYON KİLİDİ: scan() içine yanlışlıkla self._retrieve(...)/judge_port
+    # çağrısı eklenirse (örn. ask()'tan kopyala-yapıştır hatası) bu test kırılır
+    # — scan LLM/embedding kotası YAKMAMALI (sayfa her açılışta çağrılabilir).
+    service, judge, embeddings = _service([_document()])
+
+    service.scan()
+
+    assert judge.calls == []
+    assert embeddings.calls == []
+
+
+def test_scan_recent_events_yalniz_pencere_icindeki_event_pr_sayar():
+    now = datetime.now(timezone.utc)
+    recent_event = _document(
+        id="event:recent",
+        type="event",
+        ref="recent",
+        quote="recent",
+        text="deploy tamamlandı",
+        occurred_at=now - timedelta(hours=2),
+    )
+    old_event = _document(
+        id="event:old",
+        type="event",
+        ref="old",
+        quote="old",
+        text="deploy başladı",
+        occurred_at=now - timedelta(hours=72),
+    )
+    recent_pr = _document(
+        id="pr:42",
+        type="pr",
+        ref="42",
+        quote="PR",
+        text="PR açıldı",
+        occurred_at=now - timedelta(hours=10),
+    )
+    # MUTASYON KİLİDİ: tip filtresi (`document.type in ("event", "pr")`)
+    # kaldırılırsa bu scope belgesi de (occurred_at YOK ama yine de) sayıma
+    # girmeye ÇALIŞIR — occurred_at None olduğu için zaten elenir, ama tip
+    # filtresi kaldırılıp occurred_at eklenseydi yanlış sayardı; bu yüzden
+    # ayrı bir task belgesiyle de (occurred_at VERİLMİŞ) doğruluyoruz.
+    scope_belgesi = _document()  # occurred_at yok → zaten elenir
+    task_ile_occurred_at = _document(
+        id="task:T-9",
+        type="task",
+        ref="T-9",
+        quote="t",
+        text="t",
+        occurred_at=now - timedelta(hours=1),
+    )
+    service, judge, embeddings = _service(
+        [recent_event, old_event, recent_pr, scope_belgesi, task_ile_occurred_at]
+    )
+
+    result = service.scan()
+
+    assert result.recent_events == 2  # recent_event + recent_pr; old_event ve task DIŞARIDA
+    assert result.recent_event_window_hours == 48
+    assert judge.calls == []
+    assert embeddings.calls == []
+
+
+# ── #322 review (Semih): kesilmiş corpus'ta "son 48 saatte N olay" ALT SINIR ──
+# Sorun: corpus `event_limit`(200) ile kesiliyor; pencerede daha fazla olay
+# varsa kullanıcıya EKSİK sayı kesinmiş gibi gösteriliyordu. Düzeltme "limiti
+# büyüt" değil "belirsizliği görünür kıl": `recent_events_capped`.
+
+
+def _olay(saat_once: float, *, id: str, now: datetime) -> QueryDocument:
+    return _document(
+        id=id,
+        type="event",
+        ref=id,
+        quote=id,
+        text="olay",
+        occurred_at=now - timedelta(hours=saat_once),
+    )
+
+
+def test_scan_kesme_var_ve_tum_olaylar_pencerede_ise_sayi_alt_sinir():
+    """Kaynak limite dayandı VE pencereden eski olay YOK → sayı alt sınır.
+
+    MUTASYON KİLİDİ: `recent_events_capped` sabit `False` yapılırsa (ya da
+    `corpus.events_truncated` okuması düşerse) bu test kırılır — kullanıcı
+    yine eksik sayıyı kesinmiş gibi görürdü, yani tam olarak Semih'in
+    bildirdiği hata geri gelir."""
+    now = datetime.now(timezone.utc)
+    olaylar = [_olay(1, id="event:a", now=now), _olay(2, id="event:b", now=now)]
+
+    service, _, _ = _service(olaylar, events_truncated=True)
+    result = service.scan()
+
+    assert result.recent_events == 2
+    assert result.recent_events_capped is True
+
+
+def test_scan_kesme_var_ama_pencereden_eski_olay_gorulduyse_sayi_kesin():
+    """Kesme VAR ama pencere tam kapsanmış → sayı KESİN, `+` basılmamalı.
+
+    MUTASYON KİLİDİ: `recent_events_capped` yalnız `corpus.events_truncated`'a
+    bağlanırsa (yani `pencere_tam_kapsandi` koşulu düşerse) bu test kırılır.
+    Olaylar `ts DESC` çekildiği için pencereden ESKİ bir olay görmek, pencere
+    içindeki her olayın corpus'a girdiğinin kanıtıdır — orada `+` basmak
+    gereksiz belirsizlik üretir (200 olayın hepsi eskiyse sayı zaten kesin)."""
+    now = datetime.now(timezone.utc)
+    olaylar = [
+        _olay(1, id="event:a", now=now),
+        _olay(72, id="event:eski", now=now),  # pencere DIŞI → pencere kapsandı
+    ]
+
+    service, _, _ = _service(olaylar, events_truncated=True)
+    result = service.scan()
+
+    assert result.recent_events == 1
+    assert result.recent_events_capped is False
+
+
+def test_scan_kesme_yoksa_alt_sinir_isareti_yok():
+    """Kaynak limite hiç dayanmadıysa sayı her hâlükârda kesindir."""
+    now = datetime.now(timezone.utc)
+    olaylar = [_olay(1, id="event:a", now=now)]
+
+    service, _, _ = _service(olaylar, events_truncated=False)
+    result = service.scan()
+
+    assert result.recent_events == 1
+    assert result.recent_events_capped is False
+
+
+def test_scan_corpus_okuma_hatasi_gizlenmez():
+    service = QueryService(
+        _BrokenSource(),
+        _TokenEmbeddings(),
+        InMemoryVectorIndex(),
+        _Judge(),
+    )
+
+    with pytest.raises(QueryRetrievalError, match="corpus'u okunamadı"):
+        service.scan()
 
 
 # ── #355: parmak izi kalıcılığı — "her restart tüm korpusu yeniden gömme" ────

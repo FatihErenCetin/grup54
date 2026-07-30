@@ -141,6 +141,74 @@ def test_source_veri_yokken_uydurma_dokuman_uretmez(tmp_path):
 
     assert corpus.documents == []
     assert corpus.last_commit == "unavailable"
+    assert corpus.events_truncated is False
+
+
+def _olay_dolu_sessions(adet: int):
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    sessions = sessionmaker(bind=engine)
+    with sessions() as session:
+        for index in range(adet):
+            session.add(
+                EventRow.from_domain(
+                    NormalizedEvent(
+                        id=f"commit:c{index:04d}",
+                        type="commit",
+                        actor="fatih",
+                        branch="T-319-ask-activity-paritesi",
+                        files=["src/backend/ensemble/engine/query.py"],
+                        ts=datetime(2026, 7, 21, 12, 0, tzinfo=timezone.utc),
+                        ref=f"c{index:04d}",
+                    ),
+                    repo_full_name="FatihErenCetin/grup54",
+                )
+            )
+        session.commit()
+    return sessions
+
+
+def test_source_olay_cekimi_limite_dayandiysa_kesme_bildirilir(tmp_path):
+    """#322 review (Semih): `.limit(event_limit)` tam dolduysa DB'de daha
+    eski olaylar KALMIŞ olabilir — bunu yalnız kaynak bilir.
+
+    MUTASYON KİLİDİ: `events_truncated` sabit `False` yapılırsa (ya da
+    `len(rows) >= self.event_limit` karşılaştırması düşerse) bu test kırılır;
+    `QueryService.scan()` de kesmeyi göremediği için "son 48 saatte N olay"
+    yine eksik sayıyı KESİNMİŞ gibi basardı."""
+    sessions = _olay_dolu_sessions(3)
+    source = HarnessEventQuerySource(
+        _MissingHarness(),
+        session_factory=sessions,
+        repo_root=tmp_path,
+        repo_full_name="FatihErenCetin/grup54",
+        event_limit=3,
+    )
+
+    corpus = source.load_query_corpus()
+
+    assert len([d for d in corpus.documents if d.type == "event"]) == 3
+    assert corpus.events_truncated is True
+
+
+def test_source_olay_cekimi_limitin_altinda_kalirsa_kesme_yok(tmp_path):
+    """Limitin altında kaldıysa DB tükendi demektir → kesme YOK.
+
+    MUTASYON KİLİDİ: `events_truncated` sabit `True` yapılırsa kırılır —
+    o durumda küçük/normal projelerde şerit sürekli gereksiz `N+` basardı."""
+    sessions = _olay_dolu_sessions(2)
+    source = HarnessEventQuerySource(
+        _MissingHarness(),
+        session_factory=sessions,
+        repo_root=tmp_path,
+        repo_full_name="FatihErenCetin/grup54",
+        event_limit=5,
+    )
+
+    corpus = source.load_query_corpus()
+
+    assert len([d for d in corpus.documents if d.type == "event"]) == 2
+    assert corpus.events_truncated is False
 
 
 class _KararsizHarness:

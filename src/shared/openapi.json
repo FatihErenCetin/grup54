@@ -599,6 +599,84 @@
         }
       }
     },
+    "/query/scan": {
+      "get": {
+        "tags": [
+          "query"
+        ],
+        "summary": "Scan Project",
+        "description": "#319 — AskPage'in \"Tarandı\" şeridi. `q` YOK: LLM'e gitmez, yalnız\ncorpus'u sayar (bkz. `QueryService.scan` docstring'i).",
+        "operationId": "scan_project_query_scan_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QueryScanResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Kalici saglayici hatasi (GitHub/Gemini/Ollama)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Gecici olarak erisilemez",
+            "headers": {
+              "Retry-After": {
+                "description": "Saniye — yalniz kendiliginden duzelebilir durumlarda",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Demo istek limiti aşıldı (yalnız DEMO_MODE)",
+            "headers": {
+              "Retry-After": {
+                "description": "Saniye — pencere kayınca tekrar denenebilir",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "?repo= izinli sette değil (T-79)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/graph": {
       "get": {
         "tags": [
@@ -4826,6 +4904,51 @@
           "nearest"
         ],
         "title": "QueryResponse"
+      },
+      "QueryScanResponse": {
+        "properties": {
+          "as_of": {
+            "type": "string",
+            "format": "date-time",
+            "title": "As Of"
+          },
+          "last_commit": {
+            "type": "string",
+            "title": "Last Commit"
+          },
+          "searched": {
+            "items": {
+              "$ref": "#/components/schemas/SearchReceipt"
+            },
+            "type": "array",
+            "title": "Searched"
+          },
+          "recent_events": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Recent Events"
+          },
+          "recent_event_window_hours": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Recent Event Window Hours"
+          },
+          "recent_events_capped": {
+            "type": "boolean",
+            "title": "Recent Events Capped",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "as_of",
+          "last_commit",
+          "searched",
+          "recent_events",
+          "recent_event_window_hours"
+        ],
+        "title": "QueryScanResponse",
+        "description": "`GET /query/scan` (#319) — bkz. `QueryScanResult` docstring'i."
       },
       "RadarDegraded": {
         "properties": {

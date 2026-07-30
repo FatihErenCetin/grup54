@@ -15,6 +15,7 @@ from ensemble.models import (
     NearestRef,
     QueryDocument,
     QueryResult,
+    QueryScanResult,
     SearchReceipt,
 )
 from ensemble.ports import EmbeddingsPort, QueryJudgePort, QuerySourcePort, VectorIndexPort
@@ -23,6 +24,9 @@ QUERY_DOCUMENT_TASK = "RETRIEVAL_DOCUMENT"
 QUERY_EMBEDDING_TASK = "RETRIEVAL_QUERY"
 DEFAULT_QUERY_TOP_K = 5
 DEFAULT_QUERY_MIN_SEMANTIC_SCORE = 0.5
+# #319 "Tarandı" şeridi: tasarım paketi "son 48 saat olayları" diyor —
+# scan() bu iddiayla eşleşen sabit kesme kullanır (uydurma sayı yasak).
+SCAN_RECENT_EVENT_WINDOW_HOURS = 48
 
 _WORD_RE = re.compile(r"[^\W_]+", re.UNICODE)
 _WINDOW_RE = re.compile(r"\bson\s+(\d+)\s*(saat|gün|gun|hafta)\b", re.IGNORECASE)
@@ -139,6 +143,46 @@ class QueryService:
             searched=searched,
             nearest=nearest,
             degraded=degraded,
+        )
+
+    def scan(self) -> QueryScanResult:
+        """Soru sorulmadan ÖNCE "ne aranabilir" ön-izlemesi (#319 — AskPage
+        "Tarandı" şeridi). `ask()`'ın aksine embeddings/judge'a HİÇ gitmez —
+        yalnız corpus'u okuyup sayar (kota/maliyet sıfır; sayfa her açıldığında
+        çağrılabilir). Corpus okuma hatası `ask()` ile AYNI şekilde
+        `QueryRetrievalError`'a çevrilir — "tarandı" şeridi de gerçek bir
+        okuma başarısızlığını gizlemez."""
+        try:
+            corpus = self.source_port.load_query_corpus()
+        except Exception as exc:
+            raise QueryRetrievalError("proje corpus'u okunamadı") from exc
+        now = datetime.now(timezone.utc)
+        cutoff = now - timedelta(hours=SCAN_RECENT_EVENT_WINDOW_HOURS)
+        recent_events = 0
+        pencere_tam_kapsandi = False
+        for document in corpus.documents:
+            # yalnız event/pr: scope/task'ın "son 48 saat" anlamı yok (occurred_at
+            # taşımazlar) — tip filtresi olmadan yanlışlıkla onları da sayardık
+            if document.type not in ("event", "pr") or document.occurred_at is None:
+                continue
+            if _as_utc(document.occurred_at) >= cutoff:
+                recent_events += 1
+            else:
+                # Pencereden ESKİ bir olay gördük. Kaynak olayları `ts DESC`
+                # çektiği için bundan YENİ olan her olay corpus'a girmiş
+                # demektir → pencere tam kapsanmış, sayı kesme olsa bile KESİN.
+                pencere_tam_kapsandi = True
+        return QueryScanResult(
+            as_of=now,
+            last_commit=corpus.last_commit,
+            searched=_search_receipts(corpus.documents),
+            recent_events=recent_events,
+            recent_event_window_hours=SCAN_RECENT_EVENT_WINDOW_HOURS,
+            # İKİ koşul birlikte: kaynak limite dayandı VE pencereden eski olay
+            # görmedik → pencere kesmenin ötesine taşmış OLABİLİR, sayı bir alt
+            # sınır. Tek başına `events_truncated` yetmez (200 olayın hepsi
+            # pencereden eskiyse sayı yine kesindir) — #322 review, Semih.
+            recent_events_capped=corpus.events_truncated and not pencere_tam_kapsandi,
         )
 
     def _retrieve(

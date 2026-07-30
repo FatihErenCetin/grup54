@@ -2,8 +2,10 @@ import { useState, type ReactNode } from "react";
 import type { components } from "../api/schema.d.ts";
 import { EmptyState, SonGuncelleme, YuklemeIskeleti } from "../components/ui";
 import { ASK_MAX_LENGTH, useAsk } from "../lib/useAsk";
+import { useQueryScan } from "../lib/useQueryScan";
 
 type QueryResponse = components["schemas"]["QueryResponse"];
+type QueryScanResponse = components["schemas"]["QueryScanResponse"];
 type Citation = components["schemas"]["Citation"];
 type CitationType = Citation["type"];
 
@@ -25,7 +27,22 @@ type CitationType = Citation["type"];
 
    Gate'li (eksik DEĞİL, bilinçli): "Yeniden dene" butonu YOK — usePolling
    `refetch` döndürmüyor, aynı soru cache'ten gelirdi; iş yapmayan buton
-   basmıyoruz (DetailSheet'teki aynı kural). Soru değişince yeni istek gider. */
+   basmıyoruz (DetailSheet'teki aynı kural). Soru değişince yeni istek gider.
+
+   #319 tasarım paritesi eklentileri (3'ü de GERÇEK veriden):
+   1) "Tarandı" şeridi (`TaramaSeridi`) — `GET /query/scan` (LLM'siz, sıfır
+      kota), bkz. `useQueryScan`. ÖLÇÜLMÜŞ SINIR: `HarnessEventQuerySource`
+      `type="decision"` belgesi ÜRETMİYORDU (.harness/decisions/ okunmuyordu),
+      o yüzden "karar" ilk turda GATE'Lİ bırakılmıştı — sayı her zaman 0
+      gelirdi ve "0 karar" basmak uydurma olurdu. #355 o boşluğu kapattı
+      (`read_decisions()` + `_decision_documents()`), sayı artık gerçek →
+      gate KALKTI. Kural değişmedi, ölçüm değişti.
+   2) "Takip" önerileri (`takipSorulari`) — cevabın GERÇEKTEN dayandığı
+      citation'lardan (ya da not_found'da `nearest`'ten) şablonlu soru
+      türetir; konu uydurulmaz, yalnız ifade kalıbı sabittir.
+   3) "Son sorular (bu tarayıcıda)" — `localStorage` (GraphPage'in
+      `MOD_STORAGE_KEY` ilkesiyle aynı: try/catch'siz ASLA okunmaz/yazılmaz,
+      gizli-sekme/kota hatası sayfayı beyaz ekran ETMEZ). */
 
 const ORNEK_SORULAR = [
   "Son 3 gün içinde ne değişti?",
@@ -341,6 +358,153 @@ function AramaFisi({ searched }: { searched: QueryResponse["searched"] }) {
   );
 }
 
+/* ── "Tarandı" şeridi (#319) — soru sorulmadan ÖNCE gösterilir ────────────── */
+
+/** `GET /query/scan` sıfır-LLM ön-izlemesi. `scan` undefined ise (henüz
+    yüklenmedi ya da geçici poll hatası) şerit SESSİZCE gizlenir — bu bir
+    ön-izleme zenginleştirmesi, sormayı bloklayan kritik yol DEĞİL; hata
+    burada `HataBloku` gibi gövde kaplayarak gösterilmiyor (bilinçli). */
+function TaramaSeridi({ scan }: { scan: QueryScanResponse | undefined }) {
+  if (!scan) return null;
+  const say = (tur: CitationType) => scan.searched.find((s) => s.type === tur)?.count ?? 0;
+  return (
+    <p data-testid="tarama-seridi" className="text-xs text-muted-foreground">
+      <span className="text-muted-foreground/70">Tarandı:</span> kapsam{" "}
+      <span aria-hidden>✓</span>
+      <span aria-hidden> · </span>
+      <span className="tabular-nums">{say("task")}</span> görev <span aria-hidden>✓</span>
+      <span aria-hidden> · </span>
+      son <span className="tabular-nums">{scan.recent_event_window_hours}</span> saatte{" "}
+      {/* `recent_events_capped` (#322 review, Semih): olay listesi kaynakta
+          `event_limit`'e dayandıysa pencerede DAHA FAZLA olay olabilir —
+          sayı bir ALT SINIR. "200" basmak eksik sayıyı kesinmiş gibi
+          gösterirdi; "200+" belirsizliği görünür kılar (decision gate'iyle
+          aynı ilke: uydurma yerine dürüst işaret). */}
+      <span
+        className="tabular-nums"
+        data-testid="tarama-olay-sayisi"
+        title={
+          scan.recent_events_capped
+            ? `Olay listesi kaynakta sınıra dayandı — son ${scan.recent_event_window_hours} saatte daha fazla olay olabilir; gösterilen sayı bir alt sınırdır.`
+            : undefined
+        }
+      >
+        {scan.recent_events}
+        {scan.recent_events_capped ? "+" : ""}
+      </span>{" "}
+      olay <span aria-hidden>✓</span>
+      {/* "karar" GATE'İ #355'te KALKTI. Gerekçesi doğruydu ama artık geçerli
+          değil: o an backend `.harness/decisions/`'ı hiç okumuyordu, yani sayı
+          HER ZAMAN 0 gelirdi ve "0 karar" basmak "karar yok" diye okunurdu.
+          #355 ile `read_decisions()` + `_decision_documents()` eklendi; sayı
+          artık GERÇEK (canlı ölçüm: 11). Gate'i tutmak bu sefer ters yönde
+          yalan olurdu — aranan bir kaynağı aranmıyormuş gibi göstermek. */}
+      <span aria-hidden> · </span>
+      <span className="tabular-nums">{say("decision")}</span> karar{" "}
+      <span aria-hidden>✓</span>
+    </p>
+  );
+}
+
+/* ── "Takip" önerileri + "son sorular" geçmişi (#319, cevabın altında) ──── */
+
+const TAKIP_SABLONU: Record<CitationType, (ref: string) => string> = {
+  scope: (ref) => `${ref} kapsam maddesinin gerekçesi nedir?`,
+  task: (ref) => `${ref} görevinin şu anki durumu nedir?`,
+  decision: (ref) => `${ref} kararının gerekçesi neydi?`,
+  event: (ref) => `${ref} olayında ne değişti?`,
+  pr: (ref) => `PR #${ref} içinde ne değişti?`,
+};
+
+/** Tür bilinmiyorsa (citations UNION'ının düz-string hâli, bkz. AlintiSatiri)
+    türe özel şablon yerine GENEL bir ifade kullanılır — bilmediğimiz türe
+    yanlış şablon (ör. "kararının gerekçesi") uydurmaktan iyidir. */
+function takipSorusu(tur: CitationType | null, ref: string): string {
+  return tur === null ? `${ref} hakkında daha fazla bilgi ver` : TAKIP_SABLONU[tur](ref);
+}
+
+/** Takip sorularının KAYNAĞI her zaman cevabın gerçekten dayandığı bir kayıt:
+    `answered` ise gösterilen citation'lar, `not_found` ise "en yakın kayıtlar"
+    (`nearest`) — konu asla uydurulmaz, yalnız ifade kalıbı şablonludur. */
+function takipSorulari(data: QueryResponse): { ref: string; soru: string }[] {
+  const kaynaklar: { type: CitationType | null; ref: string }[] =
+    data.status === "answered"
+      ? data.citations.map((c) =>
+          typeof c === "string" ? { type: null, ref: c } : { type: c.type, ref: c.ref },
+        )
+      : data.nearest.map((n) => ({ type: n.type, ref: n.ref }));
+
+  const gorulen = new Set<string>();
+  const sonuc: { ref: string; soru: string }[] = [];
+  for (const kaynak of kaynaklar) {
+    if (gorulen.has(kaynak.ref)) continue;
+    gorulen.add(kaynak.ref);
+    sonuc.push({ ref: kaynak.ref, soru: takipSorusu(kaynak.type, kaynak.ref) });
+    if (sonuc.length >= 3) break;
+  }
+  return sonuc;
+}
+
+const GECMIS_ANAHTAR = "grup54:ask:gecmis";
+const GECMIS_LIMIT = 8;
+
+/** localStorage okuması try/catch'siz ASLA yapılmaz (GraphPage `okunanMod`
+    ile aynı ilke) — gizli-sekme/kota hatası sayfayı beyaz ekran ETMEZ,
+    sessizce boş geçmişe düşer. */
+function gecmisOku(): string[] {
+  try {
+    const ham = window.localStorage.getItem(GECMIS_ANAHTAR);
+    if (!ham) return [];
+    const ayristirilmis: unknown = JSON.parse(ham);
+    if (!Array.isArray(ayristirilmis)) return [];
+    return ayristirilmis.filter((v): v is string => typeof v === "string");
+  } catch {
+    return [];
+  }
+}
+
+/** En yeni önce, tekrarsız, en fazla `GECMIS_LIMIT` soru. Yazma best-effort
+    (GraphPage `modKaydet` ile aynı ilke) — kalıcılık başarısız olsa da state
+    yine güncellenir, sayfa çalışmaya devam eder. */
+function gecmiseEkle(soru: string): string[] {
+  const yeni = [soru, ...gecmisOku().filter((s) => s !== soru)].slice(0, GECMIS_LIMIT);
+  try {
+    window.localStorage.setItem(GECMIS_ANAHTAR, JSON.stringify(yeni));
+  } catch {
+    /* kalıcılık best-effort */
+  }
+  return yeni;
+}
+
+function SoruCipleri({
+  baslik,
+  sorular,
+  onSec,
+}: {
+  baslik: string;
+  sorular: string[];
+  onSec: (soru: string) => void;
+}) {
+  if (sorular.length === 0) return null;
+  return (
+    <div className="space-y-1.5">
+      <h2 className="text-[11px] font-semibold tracking-wide text-muted-foreground">{baslik}</h2>
+      <div className="flex flex-wrap gap-1.5">
+        {sorular.map((s) => (
+          <button
+            key={s}
+            type="button"
+            onClick={() => onSec(s)}
+            className="rounded-full border border-border bg-card px-2.5 py-1 text-left text-xs text-muted-foreground hover:border-foreground/25 hover:text-foreground"
+          >
+            {s}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function CevapBloku({ data }: { data: QueryResponse }) {
   const alintilar = data.citations;
   // ref → görünür alıntı numarası (Citation.n varsa ona saygı duy, yoksa sıra)
@@ -436,13 +600,19 @@ export default function AskPage() {
   // Taslak (kutudaki metin) ile SORULAN soru ayrı: her tuşta LLM'e gitmiyoruz.
   const [taslak, setTaslak] = useState("");
   const [soru, setSoru] = useState("");
+  // Lazy initializer → localStorage yalnız ilk mount'ta okunur (GraphPage `mod` ilkesi).
+  const [gecmis, setGecmis] = useState<string[]>(gecmisOku);
   const { data, error, isLoading, isFetching, dataUpdatedAt } = useAsk(soru);
+  // Sıfır-LLM ön-izleme (#319) — soru sorulmadan ÖNCE de poll'lanır, `useAsk`'tan
+  // bağımsız (ikisi ayrı uç, ayrı query-key; biri hata verse diğeri etkilenmez).
+  const { data: scan } = useQueryScan();
 
   const sor = (metin: string) => {
     const temiz = metin.trim();
     if (!temiz) return; // boş soruyla istek ATILMAZ (hook da enabled ile kapatıyor)
     setTaslak(metin);
     setSoru(temiz);
+    setGecmis(gecmiseEkle(temiz));
   };
 
   return (
@@ -477,14 +647,27 @@ export default function AskPage() {
             // focus:outline-none YOK: uygulamadaki hiçbir kontrol odak halkasını
             // bastırmıyor (Radar filtreleri · Graph hücreleri · nav) — tek istisna
             // olmak hem tutarsız hem klavye kullanıcısına karşı.
-            className="min-w-0 flex-1 rounded-lg border border-border bg-card px-4 py-3 text-sm placeholder:text-muted-foreground focus:border-foreground/25"
+            // border-primary (#319): marka turuncusu (index.css "marka aksanı");
+            // tasarım paketindeki "turuncu çerçeveli kutu" birebir bu token.
+            className="min-w-0 flex-1 rounded-lg border-2 border-primary/50 bg-card px-4 py-3 text-sm placeholder:text-muted-foreground focus:border-primary"
           />
+          {/* #319: tasarımda "Sor" butonu değil, sağda bir Enter tuş ipucu var.
+              Form zaten Enter'da submit oluyor — bu buton işlevi KORUR (tıkla
+              da olur), yalnız etiketini ipucuna çevirir; ekran okuyucu için
+              erişilebilir ad `aria-label` ile "Soruyu gönder" olarak kalır. */}
           <button
             type="submit"
             disabled={taslak.trim().length === 0}
-            className="shrink-0 rounded-lg bg-primary px-4 py-3 text-sm font-medium text-primary-foreground disabled:cursor-not-allowed disabled:bg-muted disabled:text-muted-foreground"
+            aria-label="Soruyu gönder"
+            className="flex shrink-0 items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-3 text-xs font-medium text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50"
           >
-            Sor
+            <kbd
+              aria-hidden
+              className="rounded border border-current/40 px-1.5 py-0.5 font-sans text-[10px] leading-none"
+            >
+              ↵
+            </kbd>
+            Enter
           </button>
         </div>
         <div className="flex flex-wrap items-center gap-1.5">
@@ -494,7 +677,8 @@ export default function AskPage() {
               key={s}
               type="button"
               onClick={() => sor(s)}
-              className="rounded px-2 py-1 text-xs text-muted-foreground hover:bg-muted/50"
+              // #319: buton GÖRÜNÜMLÜ (border+bg) — öncesinde düz linke benziyordu
+              className="rounded-full border border-border bg-card px-2.5 py-1 text-xs text-muted-foreground hover:border-foreground/25 hover:text-foreground"
             >
               {s}
             </button>
@@ -507,12 +691,23 @@ export default function AskPage() {
         </div>
       </form>
 
+      {/* #319: tasarımda kutunun HEMEN altında — soru sorulmadan önce de görünür */}
+      <TaramaSeridi scan={scan} />
+
       <section aria-live="polite" aria-busy={isLoading}>
         {soru === "" ? (
-          // Henüz sorulmadı — bu "boş sonuç" değil, davetkâr başlangıç durumu
+          // Henüz sorulmadı — bu "boş sonuç" değil, davetkâr başlangıç durumu.
+          // "karar günlüğü" GERİ GELDİ (#355). Semih #322 review'unda haklıydı:
+          // o an corpus `.harness/decisions/`'ı okumuyordu, yani metin
+          // aranmayan bir kaynağa söz veriyordu ve doğru çözüm vaadi
+          // KALDIRMAKTI. #355'te aynı boşluk diğer uçtan kapandı —
+          // `HarnessPort.read_decisions()` + `_decision_documents()` eklendi,
+          // karar kayıtları GERÇEKTEN aranıyor (canlı: makbuz `decision: 11`).
+          // Vaat artık doğru olduğu için geri yazıldı; şerit de decision
+          // sayısını gate'lemeyi bırakabilir (aşağıdaki gate notuna bak).
           <EmptyState
             title="Doğal dille sor, kaynak alıntılı cevap al"
-            description="Soru; dondurulmuş kapsam, görev dosyaları, karar günlüğü ve PR geçmişi üzerinde aranır. Her cevap dayandığı alıntılarla birlikte gelir — kaynaksız cümle göstermiyoruz."
+            description="Soru; dondurulmuş kapsam, görev dosyaları, karar günlüğü ve olay/PR geçmişi üzerinde aranır. Her cevap dayandığı alıntılarla birlikte gelir — kaynaksız cümle göstermiyoruz."
             items={[
               "Cevap kanonik .harness kayıtlarından üretilir",
               "Her iddia bir alıntıya bağlanır — bağlanamazsa cevap verilmez",
@@ -529,11 +724,20 @@ export default function AskPage() {
         ) : data === undefined ? (
           <p className="text-sm text-muted-foreground">Cevap bekleniyor…</p>
         ) : (
-          <div className="space-y-3">
-            <p className="text-xs text-muted-foreground">
-              Soru: <span className="text-foreground">{soru}</span>
-            </p>
-            <CevapBloku data={data} />
+          <div className="space-y-4">
+            <div className="space-y-3">
+              <p data-testid="soru-satiri" className="text-xs text-muted-foreground">
+                Soru: <span className="text-foreground">{soru}</span>
+              </p>
+              <CevapBloku data={data} />
+            </div>
+            {/* #319: tasarımda ikisi de "cevabın altında" */}
+            <SoruCipleri baslik="Takip:" sorular={takipSorulari(data).map((t) => t.soru)} onSec={sor} />
+            <SoruCipleri
+              baslik="Son sorular (bu tarayıcıda)"
+              sorular={gecmis.filter((g) => g !== soru)}
+              onSec={sor}
+            />
           </div>
         )}
       </section>

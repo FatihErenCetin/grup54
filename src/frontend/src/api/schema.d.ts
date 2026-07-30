@@ -123,6 +123,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/query/scan": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Scan Project
+         * @description #319 — AskPage'in "Tarandı" şeridi. `q` YOK: LLM'e gitmez, yalnız
+         *     corpus'u sayar (bkz. `QueryService.scan` docstring'i).
+         */
+        get: operations["scan_project_query_scan_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/graph": {
         parameters: {
             query?: never;
@@ -1263,6 +1284,30 @@ export interface components {
             degraded?: string | null;
         };
         /**
+         * QueryScanResponse
+         * @description `GET /query/scan` (#319) — bkz. `QueryScanResult` docstring'i.
+         */
+        QueryScanResponse: {
+            /**
+             * As Of
+             * Format: date-time
+             */
+            as_of: string;
+            /** Last Commit */
+            last_commit: string;
+            /** Searched */
+            searched: components["schemas"]["SearchReceipt"][];
+            /** Recent Events */
+            recent_events: number;
+            /** Recent Event Window Hours */
+            recent_event_window_hours: number;
+            /**
+             * Recent Events Capped
+             * @default false
+             */
+            recent_events_capped: boolean;
+        };
+        /**
          * RadarDegraded
          * @description Bu turda judge'ın DEĞERLENDİREMEDİĞİ çiftler (#252).
          *
@@ -2037,6 +2082,66 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Demo istek limiti aşıldı (yalnız DEMO_MODE) */
+            429: {
+                headers: {
+                    /** @description Saniye — pencere kayınca tekrar denenebilir */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Kalici saglayici hatasi (GitHub/Gemini/Ollama) */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Gecici olarak erisilemez */
+            503: {
+                headers: {
+                    /** @description Saniye — yalniz kendiliginden duzelebilir durumlarda */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    scan_project_query_scan_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QueryScanResponse"];
+                };
+            };
+            /** @description ?repo= izinli sette değil (T-79) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
             /** @description Demo istek limiti aşıldı (yalnız DEMO_MODE) */
