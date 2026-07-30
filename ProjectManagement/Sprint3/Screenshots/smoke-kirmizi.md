@@ -5,7 +5,12 @@
 - **Tarih:** 2026-07-30T12:50:28Z
 - **API:** https://api.recommend2me.com
 - **Web:** https://example.com
-- **Çıkış kodu:** `2`
+- **Çıkış kodu:** `1`
+
+> Bu satır önce `2` yazıyordu — yanlıştı (PR #367 review'unda yakalandı). `scripts/smoke.py`'de
+> `exit(2)` yolu YOK; `main()`'in tüm dönüşleri `0`/`1` (satır 508 · 546 · 550). Aşağıdaki
+> transkriptin kendi son satırı da `make: *** [smoke] Error 1` diyor, yani dosya kendi kendisiyle
+> çelişiyordu. Senaryo yeniden koşuldu (30 Tem), gerçek çıkış kodu **1**.
 
 ```
 	SMOKE_STRICT="" uv run python scripts/smoke.py
