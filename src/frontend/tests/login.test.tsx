@@ -177,3 +177,38 @@ describe("LoginPage — girişli görünüm (handle/email fallback)", () => {
     expect(screen.getByText("GitHub ile devam et")).toBeInTheDocument();
   });
 });
+
+describe("LoginPage — kayıt sayfasına yol (#335)", () => {
+  it("email girişi açıkken 'Üye ol' linki /kayit'e gider", () => {
+    // MUTASYON KİLİDİ: linki kaldır → kırılır. RegisterPage VAR ve /kayit'a
+    // bağlı, ama bu sayfada ona giden hiç yol yoktu — yeni kullanıcı için
+    // giriş ekranı çıkmaz sokaktı (ölçüm: grep -c kayit -> 0).
+    mockUseAuth.mockReturnValue({
+      enabled: false,
+      emailEnabled: true,
+      kullanici: null,
+      isLoading: false,
+      error: null,
+    });
+    renderPage();
+
+    const link = screen.getByTestId("kayit-linki");
+    expect(link).toBeInTheDocument();
+    expect(link.getAttribute("href")).toBe("/kayit");
+  });
+
+  it("email girişi kapalıyken kayıt linki BASILMAZ", () => {
+    // Üyelik e-posta+parola akışıdır (#297); o kapı kapalıyken kullanıcıyı
+    // çalışmayan bir kayıt sayfasına göndermek yanlış olurdu.
+    mockUseAuth.mockReturnValue({
+      enabled: true,
+      emailEnabled: false,
+      kullanici: null,
+      isLoading: false,
+      error: null,
+    });
+    renderPage();
+
+    expect(screen.queryByTestId("kayit-linki")).not.toBeInTheDocument();
+  });
+});
