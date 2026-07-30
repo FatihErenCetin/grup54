@@ -1,39 +1,39 @@
 ---
-title: Sprint 3 — go-live (canliya alma) + web MVP'nin gerisi
+title: Sprint 3 — go-live (canlıya alma) + web MVP'nin gerisi
 status: frozen
-owner: Fatih Eren Cetin (PO)
+owner: Fatih Eren Çetin (PO)
 version: '1'
 ref: .harness/scope/sprint-3.md
 commit_sha: 18f846fba6b2c45c3374b61a69d43a328254d1a0
 frozen_at: '2026-07-25T17:33:02+03:00'
 goals:
-- 'Go-live mekanigi: Fly.io backend + Vercel frontend canliya alinir (docs/sprint3-kontratlar.md
+- 'Go-live mekaniği: Fly.io backend + Vercel frontend canlıya alınır (docs/sprint3-kontratlar.md
   Ek A/F, docs/deploy-runbook.md)'
-- 'Kalan API router''lari: /board · /events · /presence · /query · /scope · /graph
+- 'Kalan API router''ları: /board · /events · /presence · /query · /scope · /graph
   (Ek B)'
-- 'Store/pgvector''un canli baglanmasi: hosted app-boot DI + DDL tek-kaynak (Ek C,
+- 'Store/pgvector''ün canlı bağlanması: hosted app-boot DI + DDL tek-kaynak (Ek C,
   #182/#183)'
-- 'MCP okuma yuzu: who_is_touching + check_scope (read-first, Ek D, #32)'
-- 'Uc frontend sayfasi: Board · Ask · Activity + Actors/Radar isi matrisi client-side
+- 'MCP okuma yüzü: who_is_touching + check_scope (read-first, Ek D, #32)'
+- 'Üç frontend sayfası: Board · Ask · Activity + Actors/Radar ısı matrisi client-side
   (Ek E, #33/#105/#129)'
-- 'Hosted demo sertlestirme: tek-repo pin + IP/rate cap + cached verdict (Ek F, #63)'
+- 'Hosted demo sertleştirme: tek-repo pin + IP/rate cap + cached verdict (Ek F, #63)'
 non_goals:
-- 'MCP write-back (declare_work yazma) — S3''te yalniz read, write-back stretch (Ek
-  D siniri, #32)'
-- '"GitHub ile giris" OAuth-user akisi — #79 GATE''li stretch, cekirdek eval (#17+#18)
-  yesil olmadan baslanmaz (D-28)'
-- Dagitik sayac/cache (Redis) — Ek F5, bilincli kapsam disi (kapsam-sinirlari.md queue/worker
-  yasagi)
-- WebSocket/SSE push — polling sozlesmesi korunuyor, sahte-canlilik yasak (D-34, kapsam-sinirlari.md)
-- 'Graph ek gorunum modlari (git agaci · guc-yonlu · treemap) — #130, ayrica S3-stretch
+- 'MCP write-back (declare_work yazma) — S3''te yalnız read, write-back stretch (Ek
+  D sınırı, #32)'
+- '"GitHub ile giriş" OAuth-user akışı — #79 GATE''li stretch, çekirdek eval (#17+#18)
+  yeşil olmadan başlanmaz (D-28)'
+- Dağıtık sayaç/cache (Redis) — Ek F5, bilinçli kapsam dışı (kapsam-sinirlari.md queue/worker
+  yasağı)
+- WebSocket/SSE push — polling sözleşmesi korunuyor, sahte-canlılık yasak (D-34, kapsam-sinirlari.md)
+- 'Graph ek görünüm modları (git ağacı · güç-yönlü · treemap) — #130, ayrıca S3-stretch
   etiketli'
 - Full observability (Prometheus/Grafana/Sentry/OTel) · K8s/Helm/Terraform/canary
   — kapsam-sinirlari.md
 type: scope
 sprint: '3'
 ---
-[.harness/scope/ — PO tarafindan dondurulmus (frozen) Sprint-3 kapsami]
+[.harness/scope/ — PO tarafından dondurulmuş (frozen) Sprint-3 kapsamı]
 
-Amac (docs/sprint3-kontratlar.md, satir 3): go-live (canliya alma) + web MVP'nin gerisi — deploy mekanigi, kalan router'lar, store/pgvector'un canli baglanmasi, MCP okuma yuzu ve uc frontend sayfasi ayni anda, farkli kisilerde ilerliyor. Arayuzler sprint basinda donduruldu (retro aksiyonu R2 · D-22: kontrat-once parallellesme).
+Amaç (docs/sprint3-kontratlar.md, satır 3): go-live (canlıya alma) + web MVP'nin gerisi — deploy mekaniği, kalan router'lar, store/pgvector'ün canlı bağlanması, MCP okuma yüzü ve üç frontend sayfası aynı anda, farklı kişilerde ilerliyor. Arayüzler sprint başında donduruldu (retro aksiyonu R2 · D-22: kontrat-önce paralelleşme).
 
-Kaynak: GitHub milestone "Sprint 3" (#3, due 2026-08-02) + docs/sprint3-kontratlar.md (Ek A-F, FROZEN). Bu dosya #242 ile git'e alindi; icerik uydurulmadi — milestone + donmus kontrat metninden birebir tasindi.
+Kaynak: GitHub milestone "Sprint 3" (#3, due 2026-08-02) + docs/sprint3-kontratlar.md (Ek A-F, FROZEN). Bu dosya #242 ile git'e alındı; içerik uydurulmadı — milestone + donmuş kontrat metninden birebir taşındı.
