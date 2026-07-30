@@ -78,6 +78,38 @@ API dürüstçe ilan ediyor, arayüz yutuyordu.
 Sözleşme model katmanında **üç yerde** uygulanmış, arayüzde **bir yerde**
 bağlanmıştı.
 
+## ⑥ Yedek sağlayıcı Ask için bozuktu (deploy sonrası ölçüldü)
+
+Düzeltmeler canlıya çıktıktan sonra `/query` **503** döndü. Log:
+
+> `answer_query: iki sağlayıcı da üretemedi (birincil: 429 … · yedek: Groq Ask
+> cevabı şemaya uymuyor: 2 validation errors)`
+
+Yani Gemini'nin günlük **generate** kotası (flash için 20/gün) bitmiş, yedek
+devreye girmiş, **Groq gerçekten cevap üretmiş** — ama `{"answer": "…"}`
+döndürüp `citation_refs` ve `confidence` alanlarını atlamış.
+
+Kök sebep: Gemini şemayı **sunucu tarafında zorluyor**, Groq'un
+`response_format: json_object`'i yalnız "geçerli JSON" garanti ediyor —
+şemayı zorlamıyor. Paylaşılan prompt alanları **adıyla istemiyordu**.
+
+Yani kotanın bittiği an çalışan TEK yol, biçimsel bir eksik yüzünden çöpe
+gidiyordu. Yedeğin varlık sebebi tam o andı.
+
+**Çözüm iki katmanlı:**
+1. Paylaşılan prompt üç alanı da **adıyla** istiyor (Gemini'ye zararsız, iki
+   sağlayıcı aynı ölçütte kalıyor).
+2. Groq adaptörü eksik alanları **muhafazakâr biçimde onarıyor** — ve sınırı
+   net: `citation_refs` **uydurulmaz**, modelin cevabına KENDİ yazdığı
+   `[cite:…]` işaretlerinden *okunur* (uydurma ref'i engine'in
+   `_validated_citations`'ı zaten yakalar); hiç işaret yoksa onarım YAPILMAZ.
+   `confidence` bir yargıdır ve model söylemediyse **en düşük kademe** verilir
+   — bilinmeyen güveni "medium" saymak, olmayan bir kesinlik satmak olurdu.
+   *Eksik yönde yanılmak serbest, fazla yönde değil.*
+
+Not: Groq anahtarı **çalışıyordu**; sorun kimlik doğrulama ya da kota değil,
+bizim ayrıştırmamızdı.
+
 ## Ortak kök: "son santim"
 
 Beşinin de aynı şekli var — çevredeki her şey hazır, son bağlantı yok:
@@ -105,7 +137,8 @@ sabitlendi.
 
 ## Groq yedeği (aynı gün, PO'dan)
 
-`GROQ_API_KEY` sunucuya eklendi. **Embedding sorununu ÇÖZMEZ** — Groq yalnız
+`GROQ_API_KEY` zaten kuruluydu ve çalışıyordu (bkz. ⑥ — kırık olan ayrıştırma
+tarafımızdı). **Embedding sorununu ÇÖZMEZ** — Groq yalnız
 LLM judge sağlıyor (`judge` · `scope_judge` · `query_judge`), embedding
 sunmuyor. Değeri şurada: Gemini'nin günlük *generate* kotası (flash için 20)
 bitince cevap üretimi ayakta kalır. Semantik aramayı ayakta tutan şey ③ ve
@@ -113,8 +146,8 @@ bitince cevap üretimi ayakta kalır. Semantik aramayı ayakta tutan şey ③ ve
 
 ## Kanıt
 
-- `15 mutasyon kanıtı` (①4 · ③3 · ④4 · ⑤4) — her kilit kodu bozunca kırılıyor
-- 1189 backend + 356 frontend test yeşil · `ruff` temiz
+- **20 mutasyon kanıtı** (①4 · ③3 · ④4 · ⑤4 · ⑥5) — her kilit kodu bozunca kırılıyor
+- 1197 backend + 356 frontend test yeşil · `ruff` temiz
 - Migration `e5b8d2c71a09` · yeni port metodu `VectorIndexPort.fingerprints()`
 - Yeni test dosyası: `src/frontend/tests/ask.test.tsx`
 

@@ -82,7 +82,17 @@ def _build_prompt(question: str, documents: list[QueryDocument]) -> str:
         "Soruyu yalnız verilen kanonik proje kanıtlarıyla Türkçe yanıtla. "
         "Her iddianın hemen arkasına birebir [cite:<ref>] placeholder'ı koy. "
         "citation_refs yalnız aşağıdaki ref değerlerinden oluşmalı; yeni ref, kişi, karar "
-        "veya proje olgusu uydurma. Kanıt yetmiyorsa bunu açıkça söyle.\n\n"
+        "veya proje olgusu uydurma. Kanıt yetmiyorsa bunu açıkça söyle.\n"
+        # ÜÇ alanın da adıyla istenmesi (#355): Gemini şemayı sunucu tarafında
+        # ZORLUYOR, Groq ise `response_format: json_object` ile yalnız "geçerli
+        # JSON" garanti ediyor — şemayı zorlamıyor. Canlıda ölçüldü (30 Tem):
+        # llama-3.3-70b yalnız `answer` döndürüp `citation_refs`/`confidence`'ı
+        # atlıyordu, yani Gemini kotası bitince yedek de üretemiyordu.
+        # Prompt ORTAK kalmalı (iki sağlayıcı aynı ölçüte göre cevaplasın), o
+        # yüzden düzeltme Groq'a özel değil buraya yazıldı; Gemini'ye zararsız.
+        "Cevabın JSON nesnesi ŞU ÜÇ alanı da taşımalı: "
+        '"answer" (metin), "citation_refs" (kullandığın ref listesi), '
+        '"confidence" ("low" | "medium" | "high"). Üçü de zorunludur.\n\n'
         f"Soru: {question}\n"
         f"Kanıtlar: {json.dumps(evidence, ensure_ascii=False)}"
     )
