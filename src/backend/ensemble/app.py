@@ -37,19 +37,33 @@ from ensemble.engine.query import QueryService
 from ensemble.engine.radar import RadarService
 from ensemble.engine.scope import ScopeService
 from ensemble.integrations.gemini.client import RETRY_WAIT_CAP_S
+from ensemble.integrations.gemini.errors import GeminiError
 from ensemble.integrations.gemini.embeddings import GeminiEmbeddingsAdapter
 from ensemble.integrations.gemini.fake import FakeJudgeAdapter
 from ensemble.integrations.gemini.judge import GeminiJudgeAdapter
-from ensemble.integrations.gemini.query_judge import build_query_judge
-from ensemble.integrations.gemini.scope_judge import build_scope_judge
+from ensemble.integrations.gemini.query_judge import (
+    GeminiQueryJudgeAdapter,
+    build_query_judge,
+)
+from ensemble.integrations.gemini.scope_judge import (
+    GeminiScopeJudgeAdapter,
+    build_scope_judge,
+)
 from ensemble.integrations.github.adapter import GitHubAdapter
 from ensemble.integrations.github.errors import GitHubConfigError
 from ensemble.integrations.github.fake import FakeGitHubAdapter
 from ensemble.engine.devre_kesici import DevreKesiciJudge
-from ensemble.engine.fallback import FallbackJudge
+from ensemble.engine.fallback import (
+    FallbackJudge,
+    FallbackQueryJudge,
+    FallbackScopeJudge,
+)
 from ensemble.engine.persistence import PersistentJudge
 from ensemble.integrations.groq.client import RETRY_WAIT_CAP_S as GROQ_RETRY_WAIT_CAP_S
+from ensemble.integrations.groq.errors import GroqError
 from ensemble.integrations.groq.judge import GroqJudgeAdapter
+from ensemble.integrations.groq.query_judge import GroqQueryJudgeAdapter
+from ensemble.integrations.groq.scope_judge import GroqScopeJudgeAdapter
 from ensemble.integrations.ollama.adapter import OllamaAdapter
 from ensemble.integrations.ollama.client import RETRY_WAIT_CAP_S as OLLAMA_RETRY_WAIT_CAP_S
 from ensemble.integrations.query_source import HarnessEventQuerySource
@@ -396,15 +410,7 @@ def _build_query_service(
         github_repo=settings.GITHUB_REPO_NAME,
         repo_full_name=_demo_repo_full_name(settings),
     )
-    query_judge_port = build_query_judge(settings)
-    if settings.DEMO_MODE:
-        # #63: aynı soru+belge çiftini Gemini'ye yeniden sormaz.
-        query_judge_port = CachedQueryJudge(
-            query_judge_port,
-            ttl_s=settings.DEMO_CACHE_TTL_S,
-            max_entries=settings.DEMO_CACHE_MAX_ENTRIES,
-            single_flight_wait_s=_gemini_single_flight_wait_s(settings),
-        )
+    query_judge_port = _build_query_judge_port(settings)
     return QueryService(
         source_port=source,
         embeddings_port=radar_service.embeddings_port,
@@ -413,19 +419,82 @@ def _build_query_service(
     )
 
 
-def _build_scope_service(settings: Settings, radar_service: RadarService) -> ScopeService:
-    subject_port = (
-        radar_service.github_port if isinstance(radar_service.github_port, GitHubAdapter) else None
-    )
-    scope_judge_port = build_scope_judge(settings)
+def _build_query_judge_port(settings: Settings):
+    """Ask judge zinciri: Gemini [+ Groq yedeği] [+ demo cache] (#330).
+
+    `_build_judge_port` (conflict judge) ile AYNI iki disiplin:
+
+    1. **DAHİL ETME listesi** (`isinstance(..., GeminiQueryJudgeAdapter)`),
+       hariç tutma listesi DEĞİL. Hariç tutma (`not isinstance(..., Fake)`)
+       yazılsaydı `LLM_PROVIDER=ollama` dalını da yakalar ve README'nin
+       *"Gemini anahtarı tanımlı olsa bile buluta geri düşmez"* taahhüdünü
+       SESSİZCE kırardı — Ask prompt'u task/scope metinlerini taşır. Hariç
+       tutma listeleri her yeni sağlayıcı dalında sessizce yanlışa döner;
+       dahil etme listeleri yeni dal geldiğinde KAPALI kalır.
+    2. **Yedek cache'in İÇİNDE kalır** — cache "hangi sağlayıcı ürettiyse
+       üretsin ortaya çıkan cevabı" saklar; iki ayrı cache aynı soruyu iki
+       kez saklar ve birincil dönünce yedeğin bayat cevabı ayrı kayıtta
+       yaşamaya devam ederdi.
+
+    Neden var: D-53 (26 Tem) Groq'u yedek olarak doğru karara bağlamıştı ama
+    düzeltme ÜÇ judge'dan yalnız radar'ınkine uygulanmıştı. Ölçüm (29 Tem):
+    vizyondaki üç örnek sorunun üçü de canlıda 503.
+    """
+    port = build_query_judge(settings)
+    if settings.GROQ_API_KEY and isinstance(port, GeminiQueryJudgeAdapter):
+        port = FallbackQueryJudge(
+            port,
+            GroqQueryJudgeAdapter(settings),
+            unavailable=(GeminiError, GroqError),
+        )
+    elif settings.GROQ_API_KEY:
+        logger.warning(
+            "GROQ_API_KEY var ama birincil Ask judge %s — yedek devrede DEĞİL "
+            "(yalnız Gemini birincilde sarılır; yerel-kal modu korunur).",
+            type(port).__name__,
+        )
     if settings.DEMO_MODE:
-        # #63: aynı ref+subject+aday üçlüsünü yeniden yargılamaz.
-        scope_judge_port = CachedScopeJudge(
-            scope_judge_port,
+        # #63: aynı soru+belge çiftini sağlayıcıya yeniden sormaz.
+        port = CachedQueryJudge(
+            port,
             ttl_s=settings.DEMO_CACHE_TTL_S,
             max_entries=settings.DEMO_CACHE_MAX_ENTRIES,
             single_flight_wait_s=_gemini_single_flight_wait_s(settings),
         )
+    return port
+
+
+def _build_scope_judge_port(settings: Settings):
+    """Scope judge zinciri — gerekçe ve iki disiplin için bkz.
+    `_build_query_judge_port` docstring'i (#330)."""
+    port = build_scope_judge(settings)
+    if settings.GROQ_API_KEY and isinstance(port, GeminiScopeJudgeAdapter):
+        port = FallbackScopeJudge(
+            port,
+            GroqScopeJudgeAdapter(settings),
+            unavailable=(GeminiError, GroqError),
+        )
+    elif settings.GROQ_API_KEY:
+        logger.warning(
+            "GROQ_API_KEY var ama birincil scope judge %s — yedek devrede DEĞİL.",
+            type(port).__name__,
+        )
+    if settings.DEMO_MODE:
+        # #63: aynı ref+subject+aday üçlüsünü yeniden yargılamaz.
+        port = CachedScopeJudge(
+            port,
+            ttl_s=settings.DEMO_CACHE_TTL_S,
+            max_entries=settings.DEMO_CACHE_MAX_ENTRIES,
+            single_flight_wait_s=_gemini_single_flight_wait_s(settings),
+        )
+    return port
+
+
+def _build_scope_service(settings: Settings, radar_service: RadarService) -> ScopeService:
+    subject_port = (
+        radar_service.github_port if isinstance(radar_service.github_port, GitHubAdapter) else None
+    )
+    scope_judge_port = _build_scope_judge_port(settings)
     return ScopeService(
         harness_port=FileHarnessPort(),
         judge_port=scope_judge_port,
