@@ -21,7 +21,18 @@
  * (backend `nodes` sırası için garanti vermiyor).
  */
 
-export type YerlesimDugumu = { id: string; agirlik: number };
+export type YerlesimDugumu = {
+  id: string;
+  agirlik: number;
+  /** Düğümün ETİKETİ DAHİL kapladığı kutu (nominal tuval birimi). Verilirse
+      çakışma gevşetmesi bu kutuya göre yapılır; verilmezse küçük bir
+      varsayılan. Neden kutu ve neden etiket dahil: canlı veride (30 Tem)
+      merkeze çekilen üç aktörün DAİRELERİ değil, altlarındaki YAZILAR üst
+      üste binip okunmaz oluyordu — ayrıştırılması gereken şey görünen
+      alandır, düğümün kendisi değil. */
+  en?: number;
+  boy?: number;
+};
 export type YerlesimKenari = { kaynak: string; hedef: string; agirlik: number };
 export type Konum = { id: string; x: number; y: number };
 
@@ -174,6 +185,50 @@ export function gucYonluYerlesim(
       x[i] = Math.min(genislik - KENAR_BOSLUK, Math.max(KENAR_BOSLUK, x[i]));
       y[i] = Math.min(yukseklik - KENAR_BOSLUK, Math.max(KENAR_BOSLUK, y[i]));
     }
+  }
+
+  /* ── Çakışma gevşetmesi ────────────────────────────────────────────────
+     NEDEN ayrı bir geçiş: ana döngüde sıcaklık (t) sona doğru 0'a iner, yani
+     geç kalan bir çakışma bir daha AÇILAMAZ — kuvvet hesaplansa bile adım
+     boyu sıfırlanmıştır. Bu geçiş sıcaklıktan bağımsız, konumu DOĞRUDAN
+     düzeltir.
+     NEDEN kutu (daire değil): canlı veride üst üste binen şey düğümlerin
+     kendisi değil, altlarındaki ETİKETLERdi. Ayrıştırılması gereken görünen
+     alandır. Deterministik: sıra `sirali`den gelir, rastgelelik yok. */
+  const en = sirali.map((d) => Math.max(d.en ?? 24, 8));
+  const boy = sirali.map((d) => Math.max(d.boy ?? 24, 8));
+  for (let gecis = 0; gecis < 80; gecis++) {
+    let ayrildi = false;
+    for (let i = 0; i < n; i++) {
+      for (let j = i + 1; j < n; j++) {
+        const gerekliX = (en[i] + en[j]) / 2;
+        const gerekliY = (boy[i] + boy[j]) / 2;
+        const farkX = x[i] - x[j];
+        const farkY = y[i] - y[j];
+        const asimX = gerekliX - Math.abs(farkX);
+        const asimY = gerekliY - Math.abs(farkY);
+        // Kutular yalnız İKİ eksende birden örtüşüyorsa çakışır.
+        if (asimX <= 0 || asimY <= 0) continue;
+        ayrildi = true;
+        // Daha AZ itmeyi gerektiren eksenden aç (en kısa çıkış yolu):
+        // yatay ayırmak yeterliyse dikey düzeni bozmuyoruz.
+        if (asimX < asimY) {
+          const yon = farkX === 0 ? (i % 2 === 0 ? 1 : -1) : Math.sign(farkX);
+          x[i] += (yon * asimX) / 2;
+          x[j] -= (yon * asimX) / 2;
+        } else {
+          const yon = farkY === 0 ? (i % 2 === 0 ? 1 : -1) : Math.sign(farkY);
+          y[i] += (yon * asimY) / 2;
+          y[j] -= (yon * asimY) / 2;
+        }
+      }
+    }
+    // Her geçişte tuvale geri sıkıştır, yoksa ayırma düğümü dışarı taşır.
+    for (let i = 0; i < n; i++) {
+      x[i] = Math.min(genislik - KENAR_BOSLUK, Math.max(KENAR_BOSLUK, x[i]));
+      y[i] = Math.min(yukseklik - KENAR_BOSLUK, Math.max(KENAR_BOSLUK, y[i]));
+    }
+    if (!ayrildi) break; // yakınsadı — boşuna dönme
   }
 
   return sirali.map((d, i) => ({ id: d.id, x: x[i], y: y[i] }));

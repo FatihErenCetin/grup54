@@ -338,3 +338,76 @@ describe("seritDizilimi — şerit üst sınırı (canlı veride 130 şerit öl�
     expect(d.gizlenenOlay).toBe(0);
   });
 });
+
+describe("gucYonluYerlesim — çakışma gevşetmesi (etiket kutuları)", () => {
+  /** İki kutu üst üste biniyor mu (AABB). */
+  function biniyorMu(
+    a: { x: number; y: number },
+    b: { x: number; y: number },
+    en: number,
+    boy: number,
+  ): boolean {
+    return Math.abs(a.x - b.x) < en && Math.abs(a.y - b.y) < boy;
+  }
+
+  it("merkeze çekilen ağır düğümlerin ETİKET KUTULARI üst üste binmez", () => {
+    /* Canlıda görülen hata (30 Tem, önizleme): üç aktör çok kenarlı olduğu
+       için merkeze çekilip etiketleri okunmaz biçimde üst üste bindi.
+       MUTASYON KİLİDİ: gevşetme geçişini (`for (let gecis = ...`) sil ->
+       bu test kırılır. */
+    const merkeziAktorler = ["FatihErenCetin", "asmarufoglu", "EnesErdemT"];
+    const moduller = Array.from({ length: 12 }, (_, i) => `src/modul-${i}`);
+    const EN = 120;
+    const BOY = 60;
+    const dugumler: YerlesimDugumu[] = [
+      ...merkeziAktorler.map((id) => ({ id, agirlik: 200, en: EN, boy: BOY })),
+      ...moduller.map((id) => ({ id, agirlik: 20, en: EN, boy: BOY })),
+    ];
+    // Her aktör HER modüle dokunuyor → üçü de merkeze çekilir (asıl senaryo)
+    const kenarlar: YerlesimKenari[] = merkeziAktorler.flatMap((a) =>
+      moduller.map((m) => ({ kaynak: a, hedef: m, agirlik: 10 })),
+    );
+
+    const k = gucYonluYerlesim(dugumler, kenarlar, G, Y);
+    const bul = (id: string) => k.find((p) => p.id === id)!;
+    for (let i = 0; i < merkeziAktorler.length; i++) {
+      for (let j = i + 1; j < merkeziAktorler.length; j++) {
+        expect(
+          biniyorMu(bul(merkeziAktorler[i]), bul(merkeziAktorler[j]), EN, BOY),
+        ).toBe(false);
+      }
+    }
+  });
+
+  it("gevşetme sonrası düğümler HÂLÂ tuval içinde (ayırma dışarı taşırmaz)", () => {
+    // MUTASYON KİLİDİ: gevşetme döngüsündeki sıkıştırmayı sil -> kırılır.
+    const cok: YerlesimDugumu[] = Array.from({ length: 25 }, (_, i) => ({
+      id: `d${i}`,
+      agirlik: 5,
+      en: 150,
+      boy: 70,
+    }));
+    for (const { x, y } of gucYonluYerlesim(cok, [], G, Y)) {
+      expect(x).toBeGreaterThanOrEqual(0);
+      expect(x).toBeLessThanOrEqual(G);
+      expect(y).toBeGreaterThanOrEqual(0);
+      expect(y).toBeLessThanOrEqual(Y);
+    }
+  });
+
+  it("gevşetme DETERMİNİZMİ bozmaz", () => {
+    const d: YerlesimDugumu[] = [
+      { id: "a", agirlik: 9, en: 100, boy: 50 },
+      { id: "b", agirlik: 9, en: 100, boy: 50 },
+      { id: "c", agirlik: 9, en: 100, boy: 50 },
+    ];
+    const ke: YerlesimKenari[] = [
+      { kaynak: "a", hedef: "b", agirlik: 4 },
+      { kaynak: "b", hedef: "c", agirlik: 4 },
+    ];
+    expect(gucYonluYerlesim(d, ke, G, Y)).toEqual(gucYonluYerlesim(d, ke, G, Y));
+    const ters = gucYonluYerlesim([...d].reverse(), [...ke].reverse(), G, Y);
+    const sirala = (k: typeof ters) => [...k].sort((p, q) => (p.id < q.id ? -1 : 1));
+    expect(sirala(ters)).toEqual(sirala(gucYonluYerlesim(d, ke, G, Y)));
+  });
+});

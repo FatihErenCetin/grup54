@@ -63,6 +63,32 @@ function yaricap(toplam: number, enBuyuk: number): number {
   return 9 + 17 * Math.sqrt(Math.max(toplam, 0) / enBuyuk);
 }
 
+/** Etikette gösterilen ad (uzunsa kısaltılır) — ölçü ve çizim AYNI metni
+    kullansın diye tek yerde. */
+const ETIKET_EN_FAZLA = 18;
+function etiketMetni(id: string): string {
+  return id.length > ETIKET_EN_FAZLA ? `${id.slice(0, ETIKET_EN_FAZLA - 1)}…` : id;
+}
+
+/* Etiket ölçüsü: font `text-[13px]` ve monospace → karakter ~%60 genişlik.
+   Ölçmek yerine tahmin ediyoruz çünkü yerleşim SVG DOM'u var olmadan, saf
+   bir fonksiyonda hesaplanıyor (ölçmek için önce çizmek gerekirdi — yumurta
+   tavuk). Tahmin CÖMERT tarafa yanılıyor: fazla boşluk seyrek bir graf verir,
+   eksik boşluk okunmayan bir graf. */
+const ETIKET_PUNTO = 13;
+const ETIKET_KARAKTER_EN = ETIKET_PUNTO * 0.62;
+
+/** Düğümün etiketi DAHİL kapladığı kutu (yerleşimin çakışma gevşetmesi için). */
+function kutuOlcusu(d: GucDugumu, r: number): { en: number; boy: number } {
+  const etiketEn = etiketMetni(d.id).length * ETIKET_KARAKTER_EN;
+  return {
+    // 6 birim nefes payı: kutular tam teğet durursa yazılar bitişik görünür.
+    en: Math.max(r * 2, etiketEn) + 6,
+    // Şekil + altındaki etiket satırı
+    boy: r * 2 + ETIKET_PUNTO + 8,
+  };
+}
+
 export default function GucYonluGraf({
   dugumler,
   kenarlar,
@@ -77,10 +103,19 @@ export default function GucYonluGraf({
   // Fare-üstü VE klavye odağı aynı state'i besler (bkz. başlık notu).
   const [vurgulu, setVurgulu] = useState<string | null>(null);
 
+  const enBuyuk = useMemo(
+    () => dugumler.reduce((m, d) => Math.max(m, d.toplam), 0),
+    [dugumler],
+  );
+
   const yerlesim = useMemo(
     () =>
       gucYonluYerlesim(
-        dugumler.map((d) => ({ id: dugumAnahtari(d.tip, d.id), agirlik: d.toplam })),
+        dugumler.map((d) => ({
+          id: dugumAnahtari(d.tip, d.id),
+          agirlik: d.toplam,
+          ...kutuOlcusu(d, yaricap(d.toplam, enBuyuk)),
+        })),
         kenarlar.map((e) => ({
           kaynak: dugumAnahtari("aktor", e.actor),
           hedef: dugumAnahtari("modul", e.module),
@@ -89,7 +124,7 @@ export default function GucYonluGraf({
         TUVAL_G,
         TUVAL_Y,
       ),
-    [dugumler, kenarlar],
+    [dugumler, kenarlar, enBuyuk],
   );
 
   const konum = useMemo(() => new Map(yerlesim.map((k) => [k.id, k])), [yerlesim]);
@@ -112,11 +147,6 @@ export default function GucYonluGraf({
     }
     return m;
   }, [kenarlar]);
-
-  const enBuyuk = useMemo(
-    () => dugumler.reduce((m, d) => Math.max(m, d.toplam), 0),
-    [dugumler],
-  );
 
   // Odak = vurgulanan (fare/klavye) yoksa seçili. Seçim kalıcı, vurgu geçici.
   const odak = vurgulu ?? secili;
@@ -247,7 +277,7 @@ export default function GucYonluGraf({
                   textAnchor="middle"
                   className="pointer-events-none fill-foreground font-mono text-[13px]"
                 >
-                  {d.id.length > 18 ? `${d.id.slice(0, 17)}…` : d.id}
+                  {etiketMetni(d.id)}
                 </text>
                 <text
                   x={k.x}
