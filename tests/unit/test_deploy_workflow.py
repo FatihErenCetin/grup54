@@ -1542,3 +1542,77 @@ def test_tum_workflowlar_gecerli_yaml_ve_her_job_runs_on_iceriyor():
         assert jobs, f"{wf_path.name} 'jobs' tanimlamiyor."
         for job_id, job in jobs.items():
             assert "runs-on" in job, f"{wf_path.name}:{job_id} 'runs-on' tanimlamiyor."
+
+
+# ── #353: drift adimi "yeni workflow + eski agac" yarisinda deploy'u kirmasin ──
+
+
+def _drift_adimi() -> dict:
+    """Deploy job'indaki yapilandirma-drift adimi (KAPI 7, #349)."""
+    jobs = _load("deploy.yml")["jobs"]
+    for job in jobs.values():
+        for adim in job.get("steps") or []:
+            if "config_drift.py" in (adim.get("run") or ""):
+                return adim
+    raise AssertionError("deploy.yml'de config_drift.py calistiran adim yok")
+
+
+def test_drift_adimi_script_yoksa_GORUNUR_sekilde_atlar():
+    """#353 — script deploy edilen agacta yoksa `::warning::` + exit 0.
+
+    Olculen yaris (30 Tem): GitHub workflow TANIMINI onu iten commit'ten alir,
+    deploy job'i ise CI'i yesil olan SHA'yi checkout eder. Hizli ardisik
+    merge'lerde ikisi AYRISIR -> yeni adim, eski agac, script yok:
+        python3: can't open file '.../scripts/config_drift.py'  (exit 2)
+    Deploy'un kendisi sorunsuzken deploy KIRMIZI goruyordu.
+
+    Atlama mesru cunku drift bir DOGRULAYICIdir (dosya basligindaki ayrim):
+    olculemedi != ihlal edildi. Ama SESSIZ olamaz.
+
+    MUTASYON KILIDI: `if [ ! -f scripts/config_drift.py ]` blogunu sil ->
+    bu test kirilir.
+    """
+    run = _drift_adimi()["run"]
+    assert "scripts/config_drift.py" in run
+    assert "-f scripts/config_drift.py" in run, (
+        "script varlik kontrolu yok — eski agacta adim exit 2 ile deploy'u kirar"
+    )
+    assert "::warning::" in run, "atlama SESSIZ olamaz (gorunmeyen atlama = yalan)"
+
+
+def test_drift_adimi_script_VARKEN_fail_closed_kalir():
+    """Atlama yalnizca "script yok" halinde; drift bulunursa deploy KIRMIZI.
+
+    En kolay regresyon `|| true` eklemektir — o an her sey yesile doner ve
+    kimse bir daha drift gormez. Bu test dizgi degil YAPI olcer: python
+    cagrisinin BULUNDUGU satirda yumusatici bir operator olmamali.
+
+    MUTASYON KILIDI: `python3 scripts/config_drift.py ...` satirinin sonuna
+    `|| true` ekle -> bu test kirilir. (`set +e` / `; exit 0` de yakalanir.)
+    """
+    run = _drift_adimi()["run"]
+    # Yalniz GERCEK cagri satiri: uyari METNI de "config_drift.py" gecirir
+    # (ve icinde noktali virgul olan duz bir cumledir) — dizgiyle degil,
+    # satirin `python3` ile BASLAMASIYLA ayirt ediyoruz.
+    cagri_satirlari = [
+        s for s in run.splitlines() if s.strip().startswith("python3") and "config_drift.py" in s
+    ]
+    assert cagri_satirlari, "config_drift.py'yi CALISTIRAN satir bulunamadi"
+    for satir in cagri_satirlari:
+        for yumusatici in ("||", ";", "|"):
+            assert yumusatici not in satir, (
+                f"drift cagrisi yumusatilmis ({yumusatici!r}): {satir.strip()!r} — "
+                "script VARKEN fail-closed kalmali"
+            )
+    assert "set +e" not in run, "govde `set +e` ile yumusatilmis — drift sessizce yutulur"
+
+
+def test_drift_adimi_shayi_env_uzerinden_alir():
+    """`run:` govdesine dogrudan `${{ }}` interpolasyonu yapilmaz.
+
+    Deger bir git SHA olsa bile kural kuraldir: shell enjeksiyonu yuzeyi
+    `env:` uzerinden kapatilir (bu dosyanin geri kalanindaki desenle ayni).
+    """
+    adim = _drift_adimi()
+    assert "${{" not in adim["run"], "run govdesinde dogrudan interpolasyon var"
+    assert "DEPLOY_SHA" in (adim.get("env") or {}), "SHA env uzerinden gecirilmeli"

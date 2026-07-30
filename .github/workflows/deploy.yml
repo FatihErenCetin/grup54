@@ -439,10 +439,34 @@ jobs:
       # Bu adim DOGRULAYICI ama fail-CLOSED: `continue-on-error` YOK ve
       # `|| true` YOK -- deploy "basarili" derken calisan yapilandirmanin
       # main'den farkli olmasi tam da bu issue'nun yalanidir.
+      # #353 -- SCRIPT YOKSA GORUNUR SEKILDE ATLA, KIRMIZI VERME.
+      # Olculen yaris (30 Tem, uc ardisik merge): GitHub workflow TANIMINI onu
+      # iten commit'ten alir, ama deploy job'i `needs.preflight.outputs.sha`yi
+      # checkout eder ve preflight CI'i YESIL olan SHA'yi secer. Hizli ardisik
+      # merge'lerde yeni commit'in CI'i henuz bitmemis olur -> YENI workflow +
+      # ESKI agac. Bu adimi ekleyen commit'in script'i o agacta YOKTUR:
+      #   python3: can't open file '.../scripts/config_drift.py'  (exit 2)
+      # Deploy'un kendisi sorunsuzken deploy KIRMIZI gorunuyordu.
+      #
+      # Atlama MESRU cunku drift kontrolu bir DOGRULAYICIdir (dosya basligindaki
+      # ayrim): bir sey DEGISTIRMEZ, yalniz olcer. Script yoksa "o SHA'da bu
+      # kontrol yok" demektir -- olculemez, ihlal edilmis DEGIL.
+      # Ama SESSIZ degil: `::warning::`. Ve script VARSA fail-closed KALIR --
+      # `|| true` YOK, drift bulursa deploy yine kirmizi (smoke adiminin
+      # emsaliyle ayni desen, bkz. `smoke_check`).
       - name: "Yapilandirma driftini dogrula (konteyner <-> main, #349)"
         env:
           OPS_CHECKOUT_DIR: ${{ vars.OPS_CHECKOUT_DIR }}
-        run: python3 scripts/config_drift.py --compose deploy/docker-compose.prod.yml
+          # `run:` govdesine DOGRUDAN `${{ }}` interpolasyonu yapilmaz -- deger
+          # bir git SHA olsa bile kural kuraldir (shell enjeksiyonu yuzeyi
+          # env uzerinden kapatilir; ayni desen dosyanin geri kalaninda da var).
+          DEPLOY_SHA: ${{ needs.preflight.outputs.sha }}
+        run: |
+          if [ ! -f scripts/config_drift.py ]; then
+            echo "::warning::scripts/config_drift.py deploy edilen agacta ($DEPLOY_SHA) YOK - drift kontrolu atlaniyor (#353: yeni workflow tanimi + eski agac yarisi). Bu SHA'da kontrol OLCULEMEDI; bir sonraki deploy'da kosacak."
+            exit 0
+          fi
+          python3 scripts/config_drift.py --compose deploy/docker-compose.prod.yml
 
       # Kabul kriteri 4 (#262): disk sismesin -- son IMAGE_KEEP_COUNT SHA
       # etiketi (+ hep en taze imaja isaretli `prod`) tutulur, gerisi budanir.
