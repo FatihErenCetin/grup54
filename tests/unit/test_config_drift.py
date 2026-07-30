@@ -441,8 +441,32 @@ def test_drift_dogrulamasi_up_dden_SONRA_kosar_ve_hata_bastirmaz():
     )
     step = _drift_step()
     assert "continue-on-error" not in step
-    assert "|| true" not in step["run"], "Cikis kodu yutuluyor -- kirmizi hic gorunmez."
     assert "if" not in step, "Step-level `if` sessiz atlamaya kapi acar."
+
+    # CIKIS KODU YUTMA KILIDI — dizge araMAK yetmez.
+    #
+    # Bu iddianin ilk hali `assert "|| true" not in step["run"]` idi ve
+    # DOGRULAMA TURUNDA KISMEN TOTOLOJIK bulundu: supheci `|| true` yerine
+    # `|| echo atlandi` yazdi — SEMANTIK OLARAK AYNI yutma — ve test YESIL
+    # kaldi. `|| exit 0`, `set +e`, `; true` de ayni bosluktan gecerdi.
+    #
+    # Dogru olcu: drift komutunu CALISTIRAN satir, cikis kodunu degistiren
+    # HICBIR kabuk yapisi tasimamali ve gövdede `set +e` bulunmamali.
+    govde = step["run"]
+    assert "set +e" not in govde, (
+        "`set +e` adimin geri kalaninda cikis kodunu etkisizlestirir."
+    )
+    drift_satirlari = [
+        s for s in govde.splitlines() if "config_drift.py" in s
+    ]
+    assert drift_satirlari, "drift adimi config_drift.py'yi hic calistirmiyor"
+    for satir in drift_satirlari:
+        gvd = satir.split("#", 1)[0]  # yorumlar sayilmaz
+        for yutucu in ("||", ";", "|"):
+            assert yutucu not in gvd, (
+                f"drift komutu cikis kodunu yutabilecek bir yapi tasiyor ({yutucu!r}): "
+                f"{satir.strip()!r} -- kirmizi hic gorunmez."
+            )
     env = step.get("env") or {}
     assert "vars.OPS_CHECKOUT_DIR" in str(env.get("OPS_CHECKOUT_DIR", "")), (
         "Drift adimi OPS_CHECKOUT_DIR'i almiyor -- B kontrolu (elle-operasyon "
