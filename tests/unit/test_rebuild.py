@@ -298,6 +298,13 @@ def test_rebuild_RADARIN_degil_GECMISIN_limitini_kullanir():
         "rebuild radarin backfill limitine geri dondurulmus"
     )
 
+    # Iki ayar GERCEKTEN ayri olmali (ayni degere sabitlenirse ayrim sozde kalir).
+    s = Settings()
+    assert s.GITHUB_HISTORY_LIMIT > s.GITHUB_BACKFILL_LIMIT, (
+        f"gecmis limiti ({s.GITHUB_HISTORY_LIMIT}) radar limitinden "
+        f"({s.GITHUB_BACKFILL_LIMIT}) buyuk olmali; degilse ayrim anlamsiz"
+    )
+
 
 # ---------------------------------------------------------------------------
 # #331 — GEÇMİŞ KURTARMA + KART KÜMESİ. Ölçülmüş üç kök neden:
@@ -561,9 +568,3 @@ def test_fold_reopen_done_u_hala_geri_alir():
     status, _, _ = fold_status("backlog", [kapanis, yeniden_acilis])
     assert status == "todo"
 
-    # Iki ayar GERCEKTEN ayri olmali (ayni degere sabitlenirse ayrim sozde kalir).
-    s = Settings()
-    assert s.GITHUB_HISTORY_LIMIT > s.GITHUB_BACKFILL_LIMIT, (
-        f"gecmis limiti ({s.GITHUB_HISTORY_LIMIT}) radar limitinden "
-        f"({s.GITHUB_BACKFILL_LIMIT}) buyuk olmali; degilse ayrim anlamsiz"
-    )

@@ -336,8 +336,15 @@ donmuş** kalır ve düzelme "sessizce" gerçekleşmez.
 
 ```bash
 ssh fatih@2.59.181.226
-cd /opt/ensemble && docker compose exec api sh -c "cd /app && make rebuild"
+cd /opt/ensemble && docker compose exec api python -m ensemble.store.rebuild
 ```
+
+> ⚠️ **`make rebuild` DEĞİL.** Prod imajı `python:3.12-slim` runtime katmanıdır ve
+> yalnız `COPY --from=builder /app /app` alır: `Makefile` hiç kopyalanmaz, `make` ve
+> `uv` ikilileri runtime'da **yoktur** (`uv` yalnız builder aşamasındadır). `python`
+> doğrudan çalışır çünkü `ENV PATH=/app/.venv/bin:$PATH` venv'i öne alır.
+> Bu satır `tests/unit/test_deploy_runbook.py` ile kilitli — runbook'taki hiçbir
+> `docker compose exec api` komutu imajda bulunmayan bir ikiliyi çağıramaz.
 
 Beklenen çıktı (30 Tem ölçümü, uçtan uca doğrulandı):
 

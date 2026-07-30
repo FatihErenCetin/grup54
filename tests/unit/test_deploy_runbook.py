@@ -492,3 +492,70 @@ def test_imaj_budama_sayisi_runbook_ile_deploy_yml_arasinda_esit():
         f"adiminda IMAGE_KEEP_COUNT={keep_count} -- sayilar birbirinden kaymis "
         "(workflow guncellenip runbook unutulmus, ya da tam tersi)."
     )
+
+
+# ── #331 doğrulama bulgusu: runbook prod imajında OLMAYAN ikiliyi çağırıyordu ──
+
+
+def _runtime_asamasinda_olmayan_ikililer() -> set[str]:
+    """Prod imajının runtime katmanında BULUNMAYAN, ama yanlışlıkla çağrılması
+    kolay ikililer.
+
+    `Dockerfile` iki aşamalı: `uv` yalnız **builder**'a kopyalanır
+    (`COPY --from=uv /uv /uvx /bin/`), runtime ise yalnız
+    `COPY --from=builder /app /app` alır. `Makefile` hiç kopyalanmaz.
+    Yani `make` ve `uv` runtime'da YOKTUR — `python` çalışır çünkü
+    `ENV PATH=/app/.venv/bin:$PATH` venv'i öne alır.
+    """
+    return {"make", "uv"}
+
+
+def test_runbook_exec_komutlari_imajda_OLMAYAN_ikili_cagirmaz() -> None:
+    """MUTASYON KİLİDİ: runbook'taki `docker compose exec api ... make rebuild`
+    satırını geri koy → bu test düşer.
+
+    Neden var: #331 düzeltmesini prod'da devreye sokan TEK elle adım
+    `docker compose exec api sh -c "cd /app && make rebuild"` idi ve **çalışmıyordu**.
+    Testler yeşildi, mühendislik doğruydu, ama onu canlıya indiren komut yoktu —
+    bu projenin tekrar eden hatası ("motoru yaz, son santimi bağlama").
+    Sınıfı burada kilitliyoruz ki bir daha sessizce dönmesin.
+    """
+    yasak = _runtime_asamasinda_olmayan_ikililer()
+    ihlaller: list[tuple[int, str, str]] = []
+    for no, satir in enumerate(_RUNBOOK.read_text(encoding="utf-8").splitlines(), 1):
+        if "docker compose exec api" not in satir:
+            continue
+        # KOMUTU ölç, cümleyi DEĞİL. İlk denemem `exec api`den sonrasının
+        # tamamına bakıyordu ve yanlış kırmızı veriyordu: satır 405'te komut
+        # `alembic downgrade` iken, aynı satırın DÜZYAZISI `make rebuild`den
+        # (yerel geliştirme komutu) söz ediyor. Markdown'da komut ya bir
+        # backtick aralığındadır (satır içi) ya da fenced blok satırının
+        # kendisidir (backtick yok).
+        araliklar = re.findall(r"`([^`]+)`", satir)
+        komutlar = [a for a in araliklar if "docker compose exec api" in a] or (
+            [] if araliklar else [satir]
+        )
+        for komut in komutlar:
+            govde = komut.split("docker compose exec api", 1)[1]
+            for ikili in yasak:
+                if re.search(rf"(?<![\w-]){re.escape(ikili)}\s", govde):
+                    ihlaller.append((no, ikili, komut.strip()))
+
+    assert not ihlaller, (
+        "runbook, prod imajının runtime katmanında BULUNMAYAN bir ikiliyi "
+        "`docker compose exec api` ile çağırıyor — komut sunucuda çalışmaz:\n"
+        + "\n".join(f"  satır {no}: `{i}` → {s}" for no, i, s in ihlaller)
+        + "\n\nDoğrusu: `docker compose exec api python -m <modul>` "
+        "(PATH=/app/.venv/bin venv python'unu zaten öne alır)."
+    )
+
+
+def test_runbook_rebuild_adimi_dogru_modulu_cagirir() -> None:
+    """`make rebuild` hedefi neyi koşuyorsa (`python -m ensemble.store.rebuild`)
+    runbook da aynı modülü çağırmalı — ikisi ayrışırsa sunucuda yanlış şey koşar."""
+    makefile = (_REPO_ROOT / "Makefile").read_text(encoding="utf-8")
+    assert "python -m ensemble.store.rebuild" in makefile, (
+        "Makefile `rebuild` hedefi değişmiş; runbook kilidi güncellenmeli"
+    )
+    metin = _RUNBOOK.read_text(encoding="utf-8")
+    assert "docker compose exec api python -m ensemble.store.rebuild" in metin
