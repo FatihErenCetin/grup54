@@ -1602,6 +1602,10 @@ export interface components {
              * @default
              */
             kok: string;
+            /** Projeksiyon Eklenen */
+            projeksiyon_eklenen?: number | null;
+            /** Projeksiyon Notu */
+            projeksiyon_notu?: string | null;
         };
     };
     responses: never;

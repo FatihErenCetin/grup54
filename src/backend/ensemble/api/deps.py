@@ -55,6 +55,26 @@ def get_board_service(request: Request) -> BoardService:
     return BoardService(session_factory=session_factory)
 
 
+def get_session_factory_or_build(request: Request) -> "sessionmaker[Session]":
+    """`get_session_factory`in HOŞGÖRÜLÜ ikizi (#340).
+
+    `get_session_factory` `app.state.session_factory`i ZORUNLU kılar; o da
+    yalnız `lifespan` koştuğunda kurulur. Onboarding `/uygula` ucu ise
+    `TestClient(app)` gibi lifespan'siz kurulumlarda ve masaüstü paketinde de
+    çalışmalı — orada sert bir `AttributeError` kullanıcıya hiçbir şey
+    anlatmaz.
+
+    Geri düşüş `get_board_service`in ZATEN kullandığı desenin aynısı; burada
+    yalnız ADLANDIRILDI ki iki yerde kopyalanmasın.
+    """
+    session_factory = getattr(request.app.state, "session_factory", None)
+    if session_factory is None:
+        from ensemble.store.engine import get_engine, get_session_factory as _kur
+
+        session_factory = _kur(get_engine(request.app.state.settings))
+    return session_factory
+
+
 def get_graph_service(request: Request) -> GraphService:
     # #104 review bulgusu (Semih, blocker): eskiden Board/Scope ile ayni gecici
     # stub'du (session_factory=lambda: None) - override'siz istekte TypeError
@@ -76,6 +96,9 @@ BoardServiceDep = Annotated[BoardService, Depends(get_board_service)]
 GraphServiceDep = Annotated[GraphService, Depends(get_graph_service)]
 EventServiceDep = Annotated[EventService, Depends(get_event_service)]
 SessionFactoryDep = Annotated[sessionmaker[Session], Depends(get_session_factory)]
+SessionFactoryOrBuildDep = Annotated[
+    sessionmaker[Session], Depends(get_session_factory_or_build)
+]
 
 
 # --- Çok-kiracılı repo seçimi (#79 kalan dilim, T-79) ---------------------

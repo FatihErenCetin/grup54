@@ -5731,6 +5731,28 @@
             "type": "string",
             "title": "Kok",
             "default": ""
+          },
+          "projeksiyon_eklenen": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Projeksiyon Eklenen"
+          },
+          "projeksiyon_notu": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Projeksiyon Notu"
           }
         },
         "type": "object",

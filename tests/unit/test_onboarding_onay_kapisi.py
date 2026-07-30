@@ -249,3 +249,114 @@ def test_taslak_uretim_uclari_diske_hic_dokunmaz(tmp_path):
         },
     )
     assert not (tmp_path / ".harness").exists()
+
+
+# --- 3) #340 doğrulama turu: yazmadan sonra board KENDİLİĞİNDEN dolar -----
+
+
+def _semali_client(tmp_path) -> TestClient:
+    """`_client` gibi ama DB ŞEMASI KURULU (in-memory SQLite).
+
+    Neden ayrı: mevcut testler diske yazmayı ölçüyor, DB'ye ihtiyaçları yok.
+    #340'ın projeksiyon adımı ise gerçek tablolar ister; şemasız çalıştırmak
+    "tablo yok" hatasını ölçmüş olurdu, özelliği değil.
+    """
+    from sqlalchemy import create_engine
+    from sqlalchemy.pool import StaticPool
+    from sqlalchemy.orm import sessionmaker
+
+    from ensemble.store.models import Base
+
+    from ensemble.api.deps import get_session_factory_or_build
+
+    # StaticPool ZORUNLU: `sqlite:///:memory:` her YENI BAGLANTIDA ayri bir
+    # bos veritabani acar. TestClient istegi ayri bir thread'den baglanir ve
+    # `create_all` ile kurulan tablolari GORMEZ ("no such table"). StaticPool
+    # tek baglantiyi paylastirir.
+    motor = create_engine(
+        "sqlite:///:memory:",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    Base.metadata.create_all(motor)
+    fabrika = sessionmaker(bind=motor)
+    app = create_app(Settings(_env_file=None, ENSEMBLE_MODE="local"))
+    app.dependency_overrides[get_onboarding_root] = lambda: tmp_path
+    # `app.state` yerine BAGIMLILIK OVERRIDE: state'e yazmak, lifespan
+    # kosarsa sessizce ezilebilir; override deterministiktir.
+    app.dependency_overrides[get_session_factory_or_build] = lambda: fabrika
+    istemci = TestClient(app)
+    istemci._test_fabrika = fabrika  # type: ignore[attr-defined]
+    return istemci
+
+
+def _onayli_govde() -> dict:
+    return {
+        "onay": {"onaylandi": True, "onaylayan": "fatih"},
+        "brief": _brief().model_dump(mode="json"),
+        "taslak": _taslak().model_dump(mode="json"),
+        "plan": None,
+    }
+
+
+def test_uygula_yazdiktan_sonra_projeksiyona_kart_ekler(tmp_path):
+    """Başarı ekranı önce `make rebuild` çalıştırmayı söylüyordu — ama o komut
+    HEDEF KURULUMDA ÇALIŞMIYOR: gerçek GitHub App yapılandırılmamış yeni bir
+    projede rebuild fail-closed kapıya çarpıp reddediliyor (D-51). Yani
+    sihirbazın son adımı kapalı bir kapıya işaret ediyordu.
+
+    MUTASYON KİLİDİ: uçtaki `eksik_kartlari_ekle` çağrısını sil → düşer; yani
+    kullanıcı yine "yazdı ama hiçbir şey olmadı" görür.
+    """
+    cevap = _semali_client(tmp_path).post("/onboarding/uygula", json=_onayli_govde())
+
+    assert cevap.status_code == 200, cevap.text
+    govde = cevap.json()
+    assert govde["projeksiyon_eklenen"], "yazılan görevler projeksiyona eklenmeli"
+    assert govde["projeksiyon_eklenen"] > 0
+    assert govde["projeksiyon_notu"] is None, "sağlıklı turda uyarı basılmamalı"
+
+
+def test_projeksiyon_tazelenemezse_yazma_DUSMEZ_ama_sebep_BEYAN_edilir(tmp_path, monkeypatch):
+    """Sessiz düşüş yasağı: projeksiyon hatası yazmayı düşürmez (dosyalar
+    gerçekten diskte) ama kullanıcı SEBEBİ görür.
+
+    MUTASYON KİLİDİ: `except` bloğundaki `projeksiyon_notu` atamasını sil →
+    düşer. O zaman board boş kalır ve kullanıcı nedenini hiç öğrenemez.
+    """
+    import ensemble.api.routers.onboarding as router_modulu
+
+    def _patla(*a, **k):
+        raise RuntimeError("DB kapali")
+
+    monkeypatch.setattr(router_modulu, "eksik_kartlari_ekle", _patla)
+
+    cevap = _client(tmp_path).post("/onboarding/uygula", json=_onayli_govde())
+
+    assert cevap.status_code == 200, "projeksiyon hatası YAZMAYI düşürmemeli"
+    govde = cevap.json()
+    assert govde["task_dosyalari"], "dosyalar yine de yazılmış olmalı"
+    assert (tmp_path / ".harness" / "tasks").is_dir()
+    assert govde["projeksiyon_notu"] is not None
+    assert "RuntimeError" in govde["projeksiyon_notu"]
+
+
+def test_ayni_gorev_iki_kez_kart_COGALTMAZ(tmp_path):
+    """`eksik_kartlari_ekle` idempotent: var olan satır ezilmez, çoğaltılmaz."""
+    from ensemble.onboarding.projeksiyon import eksik_kartlari_ekle
+    from ensemble.store.models import DEFAULT_REPO_FULL_NAME
+    from ensemble_shared.harness import FileHarnessPort
+
+    istemci = _semali_client(tmp_path)
+    ilk = istemci.post("/onboarding/uygula", json=_onayli_govde()).json()
+    assert ilk["projeksiyon_eklenen"] > 0
+
+    fabrika = istemci._test_fabrika  # type: ignore[attr-defined]
+    with fabrika() as s:
+        ikinci = eksik_kartlari_ekle(
+            # Ucun KULLANDIGI kiracinin AYNISI olmali — baska bir
+            # repo_full_name ile cagirmak (ilk denememde oldugu gibi) kiraci
+            # izolasyonu yuzunden kartlari YENIDEN acar ve test yanlis kirmizi verir.
+            s, FileHarnessPort(tmp_path), repo_full_name=DEFAULT_REPO_FULL_NAME
+        )
+    assert ikinci == 0, "ikinci çağrı yeni kart AÇMAMALI"

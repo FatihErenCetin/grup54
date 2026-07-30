@@ -203,9 +203,17 @@ describe("OnboardingPage — K6: insan onayı (MUTASYON KİLİDİ)", () => {
       onaylayan: "fatiherencetin",
     });
     expect(await screen.findByText("Yazıldı")).toBeInTheDocument();
-    // Son adım: dosyalar diskte ama Board bir projeksiyon — söylenmezse
+    // Son adım: dosyalar diskte ama Board bir PROJEKSİYON — söylenmezse
     // kullanıcı "yazdı ama hiçbir şey olmadı" görür (#340 duman testi bulgusu).
-    expect(screen.getByText(/make rebuild/)).toBeInTheDocument();
+    //
+    // Bu iddia DEĞİŞTİ, zayıflamadı: eskiden `make rebuild` talimatı aranıyordu,
+    // ama doğrulama turunda ölçüldü ki O KOMUT HEDEF KURULUMDA ÇALIŞMIYOR
+    // (gerçek GitHub App yoksa rebuild fail-closed kapıya çarpıyor, D-51).
+    // Yani test, kullanıcıyı kapalı bir kapıya gönderen davranışı şartname
+    // olarak kodluyordu. Artık uç projeksiyonu KENDİSİ tazeliyor ve ekran
+    // SONUCU basıyor.
+    expect(await screen.findByTestId("projeksiyon-ozeti")).toBeInTheDocument();
+    expect(screen.queryByText(/make rebuild/)).not.toBeInTheDocument();
   });
 
   it("sunucu 403 derse (K6) mesaj DÜRÜSTÇE basılır", async () => {

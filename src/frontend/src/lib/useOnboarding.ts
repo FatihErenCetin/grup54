@@ -312,6 +312,11 @@ export async function uygula(govde: {
         sprint_dosyalari: data.sprint_dosyalari ?? [],
         task_dosyalari: data.task_dosyalari ?? [],
         kok: data.kok ?? "",
+        // #340: yazmadan sonra board projeksiyonunun sonucu. `null` =
+        // tazelenemedi; sebep `projeksiyon_notu`nda ve basari ekraninda
+        // GOSTERILIR (sessiz dusus yasak).
+        projeksiyon_eklenen: data.projeksiyon_eklenen ?? null,
+        projeksiyon_notu: data.projeksiyon_notu ?? null,
       };
     }
     // 403/404/409 AYRI AYRI karşılanır: üçü de "olmadı" ama kullanıcının

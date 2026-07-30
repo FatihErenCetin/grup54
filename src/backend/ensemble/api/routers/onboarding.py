@@ -35,7 +35,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 
-from ensemble.api.deps import SettingsDep
+from ensemble.api.deps import SessionFactoryOrBuildDep, SettingsDep
 from ensemble.config import Settings
 from ensemble.onboarding.apply import (
     MevcutDosyaHatasi,
@@ -63,8 +63,11 @@ from ensemble.onboarding.intake import (
     eksik_alanlar,
     uyarilar,
 )
+from ensemble.onboarding.projeksiyon import eksik_kartlari_ekle
 from ensemble.onboarding.sprint_plan import Kapasite, SprintPlani, sprint_dagit
 from ensemble.onboarding.story import StoryTaslagi, UserStory, temizle
+from ensemble.store.models import DEFAULT_REPO_FULL_NAME
+from ensemble_shared.harness import FileHarnessPort
 
 logger = logging.getLogger("ensemble.onboarding")
 
@@ -421,7 +424,10 @@ def plan_uret(istek: PlanIstegi) -> SprintPlani:
     },
 )
 def uygula(
-    istek: UygulaIstegi, settings: SettingsDep, kok: OnboardingRootDep
+    istek: UygulaIstegi,
+    settings: SettingsDep,
+    kok: OnboardingRootDep,
+    session_factory: SessionFactoryOrBuildDep,
 ) -> YazmaSonucu:
     """Onaylanmış taslağı `.harness/`'e yazar. **K6 kapısı `apply.py`'de.**"""
     _require_local_mode(settings)
@@ -434,7 +440,7 @@ def uygula(
             detail=f"Çalışma dizinine yazılamıyor: {kok} (izinleri kontrol et).",
         )
     try:
-        return harness_yaz(
+        sonuc = harness_yaz(
             kok,
             brief=istek.brief,
             taslak=istek.taslak,
@@ -445,3 +451,30 @@ def uygula(
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     except MevcutDosyaHatasi as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    # Yazma BASARILI. Simdi board'u doldur — aksi halde kullanici "yazdi ama
+    # hicbir sey olmadi" gorur. Bu adim `rebuild_projection` KULLANMAZ: o
+    # fonksiyon `github=None` ile cagrildiginda EventRow'lari kosulsuz silip
+    # geri doldurmaz, yani tum olay gecmisini yok eder (olculdu, 30 Tem).
+    # Burada yalniz EKSIK kartlar eklenir; silme/ezme yok.
+    #
+    # Hata YUTULMAZ: projeksiyon tazelenemezse sebep kullaniciya `projeksiyon_notu`
+    # ile doner ve arayuz bunu gosterir (sessiz dusus yasak).
+    try:
+        with session_factory() as session:
+            sonuc.projeksiyon_eklenen = eksik_kartlari_ekle(
+                session,
+                FileHarnessPort(kok),
+                repo_full_name=(
+                    f"{settings.GITHUB_REPO_OWNER}/{settings.GITHUB_REPO_NAME}"
+                    if settings.GITHUB_REPO_OWNER and settings.GITHUB_REPO_NAME
+                    else DEFAULT_REPO_FULL_NAME
+                ),
+            )
+    except Exception as exc:  # noqa: BLE001 — sebep kullaniciya TASINIR
+        logger.warning("onboarding: projeksiyon tazelenemedi: %s", exc, exc_info=True)
+        sonuc.projeksiyon_notu = (
+            "Dosyalar yazildi ama board projeksiyonu tazelenemedi "
+            f"({type(exc).__name__}). Kartlar gorunmuyorsa uygulamayi yeniden baslat."
+        )
+    return sonuc

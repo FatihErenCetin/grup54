@@ -66,6 +66,13 @@ class YazmaSonucu(BaseModel):
     sprint_dosyalari: list[str] = Field(default_factory=list)
     task_dosyalari: list[str] = Field(default_factory=list)
     kok: str = ""
+    # #340: board bir DB PROJEKSIYONUdur, `.harness/`i canli okumaz. Yazmadan
+    # sonra projeksiyon tazelenmezse kullanici "yazdi ama hicbir sey olmadi"
+    # gorur. Bu alanlar o adimin SONUCUNU tasir — sessiz gecmez:
+    #   projeksiyon_eklenen = kac kart acildi (None = hic denenemedi)
+    #   projeksiyon_notu     = denenemediyse NEDEN (kullaniciya gosterilir)
+    projeksiyon_eklenen: int | None = None
+    projeksiyon_notu: str | None = None
 
 
 def _sonraki_task_no(root: Path) -> int:

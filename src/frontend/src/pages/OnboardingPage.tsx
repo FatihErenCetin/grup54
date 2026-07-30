@@ -1048,14 +1048,34 @@ function OnayAdimi({
             <li key={y}>{y}</li>
           ))}
         </ul>
-        {/* SON ADIM — ölçüldü (#340 duman testi): dosyalar diskte ama Board
-            bir DB PROJEKSİYONU, `.harness/`'i canlı okumaz. Bunu söylemezsek
-            kullanıcı "yazdı ama hiçbir şey olmadı" görür. Doğrulandı: rebuild
-            sonrası üç görev de Board'da `backlog` sütununda çıkıyor. */}
-        <p className="rounded border border-border bg-muted/40 px-2 py-1.5 text-xs text-muted-foreground">
-          Board bir projeksiyondur, <code>.harness/</code>'i canlı okumaz —
-          kartların görünmesi için <code>make rebuild</code> çalıştır.
-        </p>
+        {/* SON ADIM (#340 dogrulama turu): Board bir DB PROJEKSIYONUdur,
+            `.harness/`'i canli okumaz. Buraya once "make rebuild calistir"
+            yaziyordu — ama o komut HEDEF KURULUMDA CALISMIYOR: gercek bir
+            GitHub App yapilandirilmamis yeni bir projede rebuild fail-closed
+            kapiya carpip reddediliyor (D-51). Yani sihirbazin son adimi
+            kullaniciyi KAPALI BIR KAPIYA gonderiyordu.
+            Artik `/onboarding/uygula` ucu projeksiyonu KENDISI tazeliyor
+            (yalniz eksik kartlari ekler; silme/ezme yok). Tazeleyemezse
+            SESSIZ GECMEZ — sebep `projeksiyon_notu` ile buraya basilir. */}
+        {sonuc.projeksiyon_notu ? (
+          <p
+            data-testid="projeksiyon-notu"
+            className="rounded border border-severity-med/40 bg-severity-med/10 px-2 py-1.5 text-xs text-foreground"
+          >
+            {sonuc.projeksiyon_notu}
+          </p>
+        ) : (
+          <p
+            data-testid="projeksiyon-ozeti"
+            className="rounded border border-border bg-muted/40 px-2 py-1.5 text-xs text-muted-foreground"
+          >
+            Board guncellendi
+            {typeof sonuc.projeksiyon_eklenen === "number" &&
+            sonuc.projeksiyon_eklenen > 0
+              ? ` — ${sonuc.projeksiyon_eklenen} kart acildi.`
+              : "."}
+          </p>
+        )}
       </Card>
     );
   }
