@@ -221,6 +221,10 @@ export type SeritDizilimi = {
   cakisanDosyalar: Set<string>;
   /** `ts`'i çözülemediği için ÇİZİLMEYEN olay sayısı — sessizce yutulmaz. */
   okunamayan: number;
+  /** Üst sınır yüzünden gösterilmeyen şerit sayısı — GÖRÜNÜR bildirilir. */
+  gizlenenSerit: number;
+  /** O şeritlerdeki toplam olay sayısı. */
+  gizlenenOlay: number;
 };
 
 /** Ana dal adları en üstte gösterilir (okuma alışkanlığı: main yukarıda). */
@@ -233,8 +237,17 @@ export const DALSIZ_ETIKET = "dal bilgisi yok";
  *
  * Determinizm: şerit sırası (ana dal → ilk olay zamanı → ad) ve şerit içi
  * sıra (zaman → id) tamamen veriden türer; girdi sırasından bağımsızdır.
+ *
+ * @param enFazlaSerit Gösterilecek en fazla şerit sayısı. Neden gerekli:
+ *   canlı veride 14 günlük pencerede **130 şerit** ölçüldü (30 Tem 2026) ve
+ *   82'si tek olaylı — 130 satır çizmek sayfayı kullanılamaz hâle getirir.
+ *   Kırpma SESSİZ DEĞİL: kaç şerit/olay gizlendiği döndürülür ve arayüz onu
+ *   basar ("gizli üst sınır yok" kuralı). `Infinity` = kırpma yok.
  */
-export function seritDizilimi(olaylar: SeritOlayi[]): SeritDizilimi {
+export function seritDizilimi(
+  olaylar: SeritOlayi[],
+  enFazlaSerit = 12,
+): SeritDizilimi {
   const gruplar = new Map<string, { dalBilinmiyor: boolean; olaylar: YerlesikOlay[] }>();
   let okunamayan = 0;
 
@@ -270,21 +283,46 @@ export function seritDizilimi(olaylar: SeritOlayi[]): SeritDizilimi {
 
   let bas: number | null = null;
   let son: number | null = null;
-  const seritler: Serit[] = [];
+  const tumSeritler: Serit[] = [];
 
   for (const [ad, grup] of gruplar) {
     grup.olaylar.sort((a, b) => a.t - b.t || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
     for (const o of grup.olaylar) {
+      // DİKKAT — çakışma işareti KIRPMADAN ÖNCE hesaplanır (`cakisanDosyalar`
+      // yukarıda TÜM gruplardan kuruldu). Sonra hesaplasaydık bir şeridi
+      // gizlemek, o dosyayı "tek dalda geçiyor" hâline getirip GERÇEK bir
+      // çakışma adayını sessizce yok ederdi — görünürlük kararı, doğruluk
+      // kararını asla değiştirmemeli.
       o.cakisan = o.files.filter((f) => cakisanDosyalar.has(f));
+      // Eksen uçları GİZLENENLER DAHİL tüm olaylardan: "tümünü göster"e
+      // basınca eksen kaymasın, noktalar yer değiştirmesin. Sabit eksen,
+      // tam genişlik kullanmaktan daha okunur (kullanıcı karşılaştırıyor).
       if (bas === null || o.t < bas) bas = o.t;
       if (son === null || o.t > son) son = o.t;
     }
-    seritler.push({ dal: ad, dalBilinmiyor: grup.dalBilinmiyor, olaylar: grup.olaylar });
+    tumSeritler.push({ dal: ad, dalBilinmiyor: grup.dalBilinmiyor, olaylar: grup.olaylar });
   }
+
+  /* Kırpma SEÇİMİ olay sayısına göre (en hareketli şeritler kalır), ama
+     GÖSTERİM sırası zamana göre — ikisi ayrı karar. Tek olaylı 82 şeridin
+     ilk 12'sini zamana göre seçseydik, main ve asıl iş dalları düşerdi. */
+  const secili = [...tumSeritler]
+    .sort((a, b) => {
+      // Ana dal her hâlükârda kalır: kapsamı okumanın çapası.
+      const aAna = ANA_DALLAR.has(a.dal);
+      const bAna = ANA_DALLAR.has(b.dal);
+      if (aAna !== bAna) return aAna ? -1 : 1;
+      if (a.olaylar.length !== b.olaylar.length) return b.olaylar.length - a.olaylar.length;
+      return a.dal < b.dal ? -1 : a.dal > b.dal ? 1 : 0;
+    })
+    .slice(0, Math.max(0, enFazlaSerit));
+
+  const seciliKume = new Set(secili);
+  const gizlenen = tumSeritler.filter((s) => !seciliKume.has(s));
 
   // Şerit sırası: ana dal(lar) üstte → en erken başlayan → ad. "dal bilgisi
   // yok" şeridi EN ALTA: gerçek bir dal değil, artık kovası.
-  seritler.sort((a, b) => {
+  const seritler = secili.sort((a, b) => {
     if (a.dalBilinmiyor !== b.dalBilinmiyor) return a.dalBilinmiyor ? 1 : -1;
     const aAna = ANA_DALLAR.has(a.dal);
     const bAna = ANA_DALLAR.has(b.dal);
@@ -295,7 +333,15 @@ export function seritDizilimi(olaylar: SeritOlayi[]): SeritDizilimi {
     return a.dal < b.dal ? -1 : a.dal > b.dal ? 1 : 0;
   });
 
-  return { seritler, bas, son, cakisanDosyalar, okunamayan };
+  return {
+    seritler,
+    bas,
+    son,
+    cakisanDosyalar,
+    okunamayan,
+    gizlenenSerit: gizlenen.length,
+    gizlenenOlay: gizlenen.reduce((s, x) => s + x.olaylar.length, 0),
+  };
 }
 
 /**

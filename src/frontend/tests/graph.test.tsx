@@ -668,3 +668,59 @@ describe("GraphPage — git ağacı şeridi (#130 mod d)", () => {
     expect(window.localStorage.getItem(MOD_KEY)).toBe("agac");
   });
 });
+
+describe("GraphPage — git şeridi üst sınırı (canlı veride 130 şerit)", () => {
+  /** 20 dal, i. dalda i+1 olay. */
+  function cokDal() {
+    const t = (g: number) => new Date(Date.now() - g * 86_400_000).toISOString();
+    const ev = [];
+    for (let i = 0; i < 20; i++) {
+      for (let j = 0; j <= i; j++) {
+        ev.push({
+          id: `s${i}-o${j}`,
+          type: "commit" as const,
+          actor: "fatih",
+          branch: `dal-${i}`,
+          files: [],
+          ts: t(j % 6),
+          ref: `r${i}${j}`,
+          actor_verified: true,
+        });
+      }
+    }
+    return ev;
+  }
+
+  async function agacaGec() {
+    mockUseEvents.mockReturnValue({
+      data: { events: cokDal(), latest_ts: null },
+      error: null,
+      isLoading: false,
+      isFetching: false,
+      dataUpdatedAt: Date.now(),
+    });
+    const kullanici = userEvent.setup();
+    render(<GraphPage />, { wrapper: router });
+    await kullanici.click(screen.getByRole("tab", { name: "Git ağacı" }));
+    return kullanici;
+  }
+
+  it("kırpma SESSİZ DEĞİL: kaç şeridin gizlendiği yazılı", async () => {
+    // "Gizli üst sınır yok" kuralı. MUTASYON KİLİDİ: bildirim paragrafını
+    // sil -> 8 şerit sessizce kaybolur, bu test kırılır.
+    await agacaGec();
+    // Sayı ayrı bir <span>'de (tabular-nums) → düz metin eşleşmesi çalışmaz;
+    // bildirim paragrafının TAMAMINI okuyoruz.
+    const bildirim = screen.getByRole("button", { name: "Tümünü göster" }).closest("p");
+    expect(bildirim?.textContent).toMatch(/8\s*şerit/); // 20 dal - 12 sınır
+    expect(bildirim?.textContent).toMatch(/gizli/);
+  });
+
+  it("'Tümünü göster' gerçekten hepsini açar (kırpma duvar değil)", async () => {
+    const kullanici = await agacaGec();
+    expect(screen.queryByText("dal-0")).not.toBeInTheDocument(); // en az olaylı
+    await kullanici.click(screen.getByRole("button", { name: "Tümünü göster" }));
+    expect(screen.getByText("dal-0")).toBeInTheDocument();
+    expect(screen.queryByText(/gizli/)).not.toBeInTheDocument();
+  });
+});

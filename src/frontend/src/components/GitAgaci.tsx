@@ -64,10 +64,19 @@ function tarihTam(t: number): string {
   return new Date(t).toLocaleString("tr-TR");
 }
 
+/** Varsayılan şerit üst sınırı. Canlı ölçüm (30 Tem 2026): 14 günlük
+    pencerede 130 şerit, 82'si tek olaylı → hepsini çizmek sayfayı yer. */
+const VARSAYILAN_SERIT_SINIRI = 12;
+
 export default function GitAgaci({ olaylar }: { olaylar: SeritOlayi[] }) {
   const [secili, setSecili] = useState<YerlesikOlay | null>(null);
-  const dizilim = useMemo(() => seritDizilimi(olaylar), [olaylar]);
-  const { seritler, bas, son, cakisanDosyalar, okunamayan } = dizilim;
+  const [hepsiniGoster, setHepsiniGoster] = useState(false);
+  const dizilim = useMemo(
+    () => seritDizilimi(olaylar, hepsiniGoster ? Infinity : VARSAYILAN_SERIT_SINIRI),
+    [olaylar, hepsiniGoster],
+  );
+  const { seritler, bas, son, cakisanDosyalar, okunamayan, gizlenenSerit, gizlenenOlay } =
+    dizilim;
 
   // Panel "Esc kapat" YAZIYORSA Esc gerçekten kapatmalı — GraphPage'in kendi
   // panelleriyle aynı kural (yazılı vaat, bağlanmış davranış).
@@ -137,6 +146,38 @@ export default function GitAgaci({ olaylar }: { olaylar: SeritOlayi[] }) {
           )}
         </p>
 
+        {/* Gizli üst sınır YOK: kırpıldıysa kaçının kırpıldığı yazılır ve
+            tamamına ulaşmanın yolu hep açık kalır. */}
+        {gizlenenSerit > 0 && (
+          <p className="flex flex-wrap items-center gap-2 text-xs">
+            <span className="text-muted-foreground">
+              En hareketli{" "}
+              <span className="tabular-nums">{seritler.length}</span> şerit gösteriliyor;{" "}
+              <span className="tabular-nums text-foreground">{gizlenenSerit}</span> şerit
+              (<span className="tabular-nums">{gizlenenOlay}</span> olay) gizli.
+            </span>
+            <button
+              type="button"
+              onClick={() => setHepsiniGoster(true)}
+              className="rounded border border-border px-2 py-0.5 text-[11px] font-medium hover:bg-muted"
+            >
+              Tümünü göster
+            </button>
+          </p>
+        )}
+        {hepsiniGoster && (
+          <p className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+            <span>Tüm şeritler gösteriliyor.</span>
+            <button
+              type="button"
+              onClick={() => setHepsiniGoster(false)}
+              className="rounded border border-border px-2 py-0.5 text-[11px] font-medium hover:bg-muted"
+            >
+              En hareketli {VARSAYILAN_SERIT_SINIRI}'ye dön
+            </button>
+          </p>
+        )}
+
         <div className="overflow-x-auto rounded-lg border border-border bg-card">
           <div className="min-w-[640px] p-3">
             {/* Zaman ekseni başlığı */}
@@ -157,7 +198,13 @@ export default function GitAgaci({ olaylar }: { olaylar: SeritOlayi[] }) {
               return (
                 <div key={serit.dal} className="flex items-start gap-3 py-1">
                   <span
-                    title={serit.dal}
+                    title={
+                      serit.dalBilinmiyor
+                        ? // Ölçüm (canlı, 30 Tem 2026): 378 commit + 193 issue dalsız.
+                          // Kullanıcı bunu bir HATA sanmasın diye sebebi yazılı.
+                          "Bu olaylar dal bilgisi taşımıyor: issue'ların dalı yoktur, commit'ler de varsayılan daldan (sha=main) çekildiği için dal atfı gelmez. Bir hata değil, kaynağın sınırı."
+                        : serit.dal
+                    }
                     className={`w-40 shrink-0 truncate pt-1 font-mono text-[11px] ${
                       serit.dalBilinmiyor
                         ? "italic text-muted-foreground"
@@ -165,6 +212,11 @@ export default function GitAgaci({ olaylar }: { olaylar: SeritOlayi[] }) {
                     }`}
                   >
                     {serit.dal}
+                    {serit.dalBilinmiyor && (
+                      <span aria-hidden className="ml-1 not-italic">
+                        ⓘ
+                      </span>
+                    )}
                   </span>
                   <div
                     className="relative flex-1"

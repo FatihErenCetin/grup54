@@ -56,6 +56,33 @@ büyür.* Kapsam dosyasını düzenlemek **audit olayıdır** — bu commit o ol
 - ✅ Sınır **ekranda yazılı**: *"Bu bir commit ağacı (DAG) değil… ok/dirsek çizilmiyor — uydurulmuyor."* Yalnız kod yorumuna yazmak, kullanıcı için hiç yazmamakla aynı şeydir; kullanıcı çizilen her oka inanır.
 - ✅ "Çakışma noktası → Radar çapraz-linki" korundu, ama etiketi **"çakışma" değil "çakışma adayı"**: iki dalın aynı dosyaya dokunması bir *sinyaldir*, tespit değil. Gerçek karar (kesişim + judge + eşik) Radar'da; link oraya götürür. Radar bugün derin-link (seçili tespit) desteklemiyor → sahte bir sorgu parametresi uydurulmadı, link sayfanın kendisine gidiyor.
 
+## Canlı veri ölçümü — tasarımı iki yerde değiştirdi
+
+Kod yazıldıktan **sonra** üretim verisine bakıldı (`GET /events`, 30 Tem 2026,
+1036 olay). İki şey çıktı ve ikisi de tasarımı değiştirdi:
+
+**1. 130 şerit (14 günlük pencerede), 82'si tek olaylı.** 130 satır çizmek
+sayfayı kullanılamaz yapardı. Sessizce ilk N'i almak ise kendi kuralımızı
+("gizli üst sınır yok — neyin düştüğünü söyle") çiğnerdi. Yapılan: en hareketli
+12 şerit + **kaç şerit/olayın gizlendiğini yazan bir satır** + "Tümünü göster".
+Kırpma bir duvar değil, bir varsayılan.
+
+İnce ama kritik ayrıntı: **çakışma hesabı kırpmadan ÖNCE yapılır.** Sonra
+yapsaydık bir şeridi gizlemek, o dosyayı "tek dalda geçiyor" hâline getirip
+**gerçek bir çakışma adayını sessizce yok ederdi**. Görünürlük kararı,
+doğruluk kararını asla değiştirmemeli — bu ayrıca teste bağlandı.
+
+**2. 378 commit + 193 issue dalsız (toplam olayların %55'i).** Issue'ların dalı
+doğal olarak yok; commit'lerinki ise **D-63'ün ölçtüğü aynı kök**: commit'ler
+`sha=main` ile çekiliyor, dal atfı gelmiyor. Kullanıcı 312 olaylık "dal bilgisi
+yok" şeridini bir **hata** sanabilirdi → şeridin etiketi sebebi açıkça yazıyor
+("issue'ların dalı yoktur, commit'ler varsayılan daldan çekildiği için dal atfı
+gelmez — bir hata değil, kaynağın sınırı").
+
+Yöntem notu: ikisi de **kod yazılmadan önce tahmin edilemezdi**, ölçülünce
+çıktı. "Önce yaz, sonra gerçek veriye bak" adımı atlanmış olsaydı, iki mod da
+testlerde yeşil ama üründe kullanılamaz olurdu.
+
 ## Yan bulgu: determinizm açığı testle yakalandı
 
 Kuvvet simülasyonunda düğümler id'ye göre sıralanıyordu ama **kenarlar
@@ -72,9 +99,10 @@ kayan nokta işlemlerinde **iterasyon sırası da girdidir**.
 
 - `src/frontend/src/lib/grafYerlesimi.ts` — saf yerleşim (React'siz, DOM'suz)
 - `src/frontend/src/components/GucYonluGraf.tsx` · `GitAgaci.tsx` — çizim
-- `src/frontend/tests/grafYerlesimi.test.ts` (19 test) + `graph.test.tsx` (32 test)
-- 13 mutasyon kanıtı: her kilit, kodu bozunca **gerçekten** kırılıyor (totoloji yok)
-- Sıfır yeni endpoint · sıfır yeni bağımlılık
+- `src/frontend/tests/grafYerlesimi.test.ts` (25 test) + `graph.test.tsx` (40 test)
+- **18 mutasyon kanıtı**: her kilit, kodu bozunca **gerçekten** kırılıyor (totoloji yok)
+- 344 frontend + 1182 backend test yeşil · `ruff` temiz
+- Sıfır yeni endpoint · sıfır yeni bağımlılık (`package.json` değişmedi)
 
 ## İlgili
 

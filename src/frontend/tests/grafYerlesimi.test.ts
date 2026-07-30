@@ -247,3 +247,94 @@ describe("altSatirAta", () => {
     expect(altSatirAta([])).toEqual([]);
   });
 });
+
+describe("seritDizilimi — şerit üst sınırı (canlı veride 130 şerit ölçüldü)", () => {
+  /** n şeritli, i. şeridi i+1 olaylı bir küme üretir. */
+  function cokSerit(n: number): SeritOlayi[] {
+    const o: SeritOlayi[] = [];
+    for (let i = 0; i < n; i++) {
+      for (let j = 0; j <= i; j++) {
+        o.push(
+          olay({
+            id: `s${i}-o${j}`,
+            ts: new Date(Date.UTC(2026, 6, 1 + j)).toISOString(),
+            dal: `dal-${i}`,
+          }),
+        );
+      }
+    }
+    return o;
+  }
+
+  it("üst sınırı aşan şeritler kırpılır ve KAÇININ kırpıldığı bildirilir", () => {
+    // MUTASYON KİLİDİ: `.slice(0, ...)` satırını sil -> gizlenenSerit 0 olur,
+    // bu test kırılır. Sessiz kırpma tam olarak engellenmek istenen şey.
+    const d = seritDizilimi(cokSerit(20), 5);
+    expect(d.seritler).toHaveLength(5);
+    expect(d.gizlenenSerit).toBe(15);
+    // gizlenenler: 1..15 olaylı şeritler -> 1+2+...+15 = 120
+    expect(d.gizlenenOlay).toBe(120);
+  });
+
+  it("kırpma EN HAREKETLİ şeritleri tutar (zaman sırasına göre değil)", () => {
+    // Tek olaylı 82 şeridin ilk N'ini zamana göre alsaydık asıl iş dalları düşerdi.
+    // MUTASYON KİLİDİ: seçim sıralamasını olay sayısı yerine ada çevir -> kırılır.
+    const d = seritDizilimi(cokSerit(10), 3);
+    expect(d.seritler.map((s) => s.olaylar.length).sort((a, b) => b - a)).toEqual([
+      10, 9, 8,
+    ]);
+  });
+
+  it("ana dal (main) kırpmadan MUAF — az olayı olsa bile kalır", () => {
+    const d = seritDizilimi(
+      [
+        ...cokSerit(10),
+        olay({ id: "m1", ts: "2026-07-01T10:00:00Z", dal: "main" }), // tek olay
+      ],
+      3,
+    );
+    expect(d.seritler.map((s) => s.dal)).toContain("main");
+  });
+
+  it("KIRPMA ÇAKIŞMA TESPİTİNİ DEĞİŞTİRMEZ (görünürlük ≠ doğruluk)", () => {
+    /* En ince kilit. Çakışan dosyalar kırpmadan ÖNCE hesaplanmazsa, bir
+       şeridi gizlemek o dosyayı "tek dalda geçiyor" hâline getirir ve GERÇEK
+       bir çakışma adayı sessizce yok olur — görünürlük kararı doğruluk
+       kararını değiştirmiş olur.
+       MUTASYON KİLİDİ: `cakisanDosyalar` hesabını `secili` üstüne taşı ->
+       kırpılan durumda "ortak.py" aday olmaktan çıkar, bu test kırılır. */
+    const ortak = [
+      olay({ id: "a", ts: "2026-07-01T10:00:00Z", dal: "gorunur", files: ["ortak.py"] }),
+      olay({ id: "b1", ts: "2026-07-02T10:00:00Z", dal: "gorunur", files: ["ortak.py"] }),
+      olay({ id: "c", ts: "2026-07-03T10:00:00Z", dal: "gizlenecek", files: ["ortak.py"] }),
+    ];
+    const kirpilmamis = seritDizilimi(ortak, Infinity);
+    const kirpilmis = seritDizilimi(ortak, 1); // "gizlenecek" (1 olay) düşer
+
+    expect(kirpilmis.gizlenenSerit).toBe(1);
+    // Aynı dosya HER İKİ durumda da çakışma adayı olmalı
+    expect([...kirpilmamis.cakisanDosyalar]).toEqual(["ortak.py"]);
+    expect([...kirpilmis.cakisanDosyalar]).toEqual(["ortak.py"]);
+    // Ve GÖRÜNEN olay hâlâ işaretli
+    expect(kirpilmis.seritler[0].olaylar[0].cakisan).toEqual(["ortak.py"]);
+  });
+
+  it("eksen uçları GİZLENENLER DAHİL hesaplanır (tümünü göster ekseni kaydırmaz)", () => {
+    const d = seritDizilimi(
+      [
+        olay({ id: "gorunur1", ts: "2026-07-10T10:00:00Z", dal: "cok" }),
+        olay({ id: "gorunur2", ts: "2026-07-11T10:00:00Z", dal: "cok" }),
+        olay({ id: "gizli-erken", ts: "2026-07-01T10:00:00Z", dal: "az" }),
+      ],
+      1,
+    );
+    expect(d.gizlenenSerit).toBe(1);
+    expect(d.bas).toBe(new Date("2026-07-01T10:00:00Z").getTime());
+  });
+
+  it("sınır aşılmadıysa hiçbir şey gizlenmez", () => {
+    const d = seritDizilimi(cokSerit(3), 12);
+    expect(d.gizlenenSerit).toBe(0);
+    expect(d.gizlenenOlay).toBe(0);
+  });
+});
