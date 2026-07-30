@@ -74,11 +74,14 @@ describe("A1 — logo (iç içe iki halka)", () => {
 });
 
 describe("A2 — sidebar ikonları", () => {
-  it("altı nav linkinin HER BİRİNDE bir <svg> ikonu var", () => {
+  it("yedi nav linkinin HER BİRİNDE bir <svg> ikonu var", () => {
     // MUTASYON KİLİDİ: NAV dizisinden bir `Icon` alanını sil (örn. Board) ->
     // o linkin `querySelector('svg')` sonucu null olur, kırılır.
     render(<AppLayout />, { wrapper });
-    for (const label of ["Radar", "Board", "Scope", "Graf", "Activity", "Ask"]) {
+    // Sihirbaz (#340) YEDINCI link olarak eklendi — parite gereği o da
+    // ikonlu olmalı, bu yüzden listeye dahil (aksi halde test yeni linki
+    // hiç ölçmez ve ikonsuz eklenmesi sessizce geçerdi).
+    for (const label of ["Radar", "Board", "Scope", "Graf", "Activity", "Ask", "Sihirbaz"]) {
       const link = screen.getByText(label).closest("a");
       expect(link?.querySelector("svg")).not.toBeNull();
     }
