@@ -57,6 +57,7 @@ migrasyon notunu bırakıyor.
 
 | id | tarih | konu |
 |---|---|---|
+| [D-46](D-46-backend-kendi-sunucumuzda.md) | 2026-07-25 | Backend + DB ekibin KENDİ sunucusunda (Fly.io bırakıldı); frontend Vercel'de kalır — D-39'u supersede eder. Public aynası 30 Tem'de yazıldı (D-65 ②) |
 | [D-56](D-56-review-beklemeden-merge.md) | 2026-07-27 | Sprint 3 son gününde review beklemeden merge — gerekçe, kapsam, bedel |
 | [D-57](D-57-email-parola-uyeligi.md) | 2026-07-28 | Email + parola üyeliği S3'e alındı — D-23/D-28'in kapsamı değişti |
 | [D-58](D-58-cok-kiracili-repo-secimi.md) | 2026-07-28 | #79 tam yapılıyor — çok-kiracılı repo seçimi; D-23'ün son maddesi de değişti |
