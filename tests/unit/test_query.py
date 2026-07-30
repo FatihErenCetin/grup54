@@ -214,3 +214,51 @@ def test_corpus_okuma_hatasi_not_found_diye_gizlenmez():
 
     with pytest.raises(QueryRetrievalError, match="corpus'u okunamadı"):
         service.ask("Scope nedir?")
+
+
+# ── #330: embeddings düşünce 503 değil, BEYANLI leksikal cevap ──────────────
+
+
+class _DusenEmbeddings:
+    """Kota/ağ arızasını taklit eder — `embed()` her çağrıda patlar."""
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def embed(self, texts: list[str], task_type: str) -> list[list[float]]:
+        del texts, task_type
+        self.calls += 1
+        raise RuntimeError("429 kota doldu")
+
+
+def test_embeddings_dustugunde_cevap_uretilir_ve_dusus_beyan_edilir():
+    """MUTASYON KİLİDİ: `except Exception -> degraded` yerine eski
+    `raise QueryRetrievalError` konursa bu test o istisnayla düşer — yani
+    29 Tem'de canlıda ölçtüğümüz `503 query_retrieval_unavailable` geri gelir.
+    `degraded` ataması düşürülürse ikinci assert düşer (sessiz düşüş = yasak).
+    """
+    embeddings = _DusenEmbeddings()
+    judge = _Judge()
+    service = QueryService(
+        _Source([_document()]), embeddings, InMemoryVectorIndex(), judge
+    )
+
+    result = service.ask("Scope drift sprintte var mı?")
+
+    assert embeddings.calls == 1
+    # Leksikal yol cevabı TEK BAŞINA taşıdı — 503 yok, judge çağrıldı
+    assert result.status == "answered"
+    assert judge.calls != []
+    assert result.degraded is not None
+    assert "semantik retrieval kullanılamadı" in result.degraded
+    assert "429 kota doldu" in result.degraded
+
+
+def test_embeddings_saglamken_query_dusus_beyani_YOK():
+    """MUTASYON KİLİDİ: `degraded` sabit metne bağlanırsa kırılır — sağlıklı
+    turda kullanıcıya gereksiz "eksik sonuç" uyarısı basılmamalı."""
+    service, _, _ = _service([_document()])
+
+    result = service.ask("Scope drift sprintte var mı?")
+
+    assert result.degraded is None

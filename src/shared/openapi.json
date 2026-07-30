@@ -3570,6 +3570,17 @@
             },
             "type": "array",
             "title": "Nearest"
+          },
+          "degraded": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Degraded"
           }
         },
         "type": "object",
@@ -3929,6 +3940,17 @@
                 "type": "null"
               }
             ]
+          },
+          "degraded": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Degraded"
           }
         },
         "type": "object",

@@ -274,6 +274,48 @@ def test_hatalı_embedding_adedi_sessizce_devam_etmez():
         service.check_scope("T-31")
 
 
+# ── #330: sağlayıcı düşünce 503 değil, BEYANLI leksikal karar ────────────────
+
+
+class _DusenEmbeddings:
+    """Kota/ağ arızasını taklit eder — `embed()` her çağrıda patlar."""
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def embed(self, texts: list[str], task_type: str) -> list[list[float]]:
+        del texts, task_type
+        self.calls += 1
+        raise RuntimeError("429 kota doldu")
+
+
+def test_embeddings_dustugunde_karar_uretilir_ve_dususe_beyan_edilir():
+    """MUTASYON KİLİDİ: `try/except` kaldırılırsa (eski davranış) bu test
+    `RuntimeError` ile düşer — yani canlıda ölçtüğümüz 503 geri gelir.
+    `degraded` ataması düşürülürse ikinci assert düşer: karar üretilir ama
+    kullanıcı zeminin dar olduğunu göremez (sessiz düşüş = yasak)."""
+    embeddings = _DusenEmbeddings()
+    service, _ = _service(embeddings=embeddings)
+
+    verdict = service.check_scope("T-31")
+
+    assert embeddings.calls == 1
+    assert verdict.verdict in ("in_scope", "drift", "non_goal_violation")
+    assert verdict.degraded is not None
+    assert "semantik retrieval kullanılamadı" in verdict.degraded
+    assert "429 kota doldu" in verdict.degraded
+
+
+def test_embeddings_saglamken_dusus_beyani_YOK():
+    """MUTASYON KİLİDİ: `degraded` sabit bir metne bağlanırsa kırılır —
+    sağlıklı turda kullanıcıya gereksiz "eksik sonuç" uyarısı basılmamalı."""
+    service, _ = _service()
+
+    verdict = service.check_scope("T-31")
+
+    assert verdict.degraded is None
+
+
 def test_frozen_scope_snapshot_kontrat_alanlarini_doner():
     scope = _scope()
     scope.update(
