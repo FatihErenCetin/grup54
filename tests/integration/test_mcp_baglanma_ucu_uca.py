@@ -21,6 +21,7 @@ from __future__ import annotations
 import json
 import shutil
 import subprocess
+import time
 
 import pytest
 from fastapi.testclient import TestClient
@@ -77,21 +78,49 @@ def test_uretilen_config_komutu_calisan_bir_mcp_sunucusu_acar(tmp_path, monkeypa
     if shutil.which(komut) is None:
         pytest.skip(f"`{komut}` PATH'te yok")
 
-    girdi = "".join(json.dumps(m) + "\n" for m in (_INITIALIZE, _INITIALIZED, _TOOLS_LIST))
-    sonuc = subprocess.run(
+    # CEVABI BEKLE, SURECIN CIKMASINI DEGIL (kirilganlik duzeltmesi, 30 Tem).
+    #
+    # Eski hali `subprocess.run(input=...)` idi: uc mesaji birden yazip stdin'i
+    # KAPATIYOR ve surecin cikmasini bekliyordu. MCP sunucusu stdin kapaninca
+    # kapanmaya baslar — CI'da bir kez `tools/list` cevabi YAZILMADAN once
+    # kapandi. Kanit stderr'de: "Processing request of type ListToolsRequest"
+    # yani istek ALINDI, cevap yetismedi. `timeout=120` bunu etkilemiyordu;
+    # surec zaten erken ve BASARIYLA cikiyordu.
+    #
+    # Simdi beklenen kimlik gelene kadar stdout okunuyor. Yarisi ortadan
+    # kaldirir: cevap gelirse gecer, gelmezse (gercek kusur) sure dolar.
+    surec = subprocess.Popen(
         [komut, *args],
-        input=girdi,
-        capture_output=True,
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
         text=True,
-        timeout=120,
+        bufsize=1,
     )
+    kimlikler: dict[object, dict] = {}
+    try:
+        assert surec.stdin is not None and surec.stdout is not None
+        for mesaj in (_INITIALIZE, _INITIALIZED, _TOOLS_LIST):
+            surec.stdin.write(json.dumps(mesaj) + "\n")
+        surec.stdin.flush()
+        # stdin ACIK birakilir: kapatmak kapanisi tetikler ve tam da
+        # duzeltmeye calistigimiz yarisi geri getirir.
+        bitis = time.monotonic() + 120
+        while 2 not in kimlikler and time.monotonic() < bitis:
+            satir = surec.stdout.readline()
+            if not satir:
+                break
+            if satir.strip():
+                cevap = json.loads(satir)
+                kimlikler[cevap.get("id")] = cevap
+    finally:
+        surec.kill()
+        _, stderr = surec.communicate(timeout=30)
 
-    cevaplar = [json.loads(satir) for satir in sonuc.stdout.splitlines() if satir.strip()]
-    kimlikler = {c.get("id"): c for c in cevaplar}
-    assert 1 in kimlikler, f"initialize cevabı yok. stderr: {sonuc.stderr[-2000:]}"
+    assert 1 in kimlikler, f"initialize cevabı yok. stderr: {stderr[-2000:]}"
     assert kimlikler[1]["result"]["serverInfo"]["name"] == "ensemble"
 
-    assert 2 in kimlikler, f"tools/list cevabı yok. stderr: {sonuc.stderr[-2000:]}"
+    assert 2 in kimlikler, f"tools/list cevabı yok. stderr: {stderr[-2000:]}"
     tool_adlari = {t["name"] for t in kimlikler[2]["result"]["tools"]}
     assert {"who_is_touching", "check_scope"} <= tool_adlari, tool_adlari
 
