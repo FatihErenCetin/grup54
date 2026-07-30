@@ -66,6 +66,8 @@ from ensemble.integrations.groq.judge import GroqJudgeAdapter
 from ensemble.integrations.groq.query_judge import GroqQueryJudgeAdapter
 from ensemble.integrations.groq.scope_judge import GroqScopeJudgeAdapter
 from ensemble.integrations.ollama.adapter import OllamaAdapter
+from ensemble.integrations.ollama.query_judge import OllamaQueryJudgeAdapter
+from ensemble.integrations.ollama.scope_judge import OllamaScopeJudgeAdapter
 from ensemble.integrations.ollama.client import RETRY_WAIT_CAP_S as OLLAMA_RETRY_WAIT_CAP_S
 from ensemble.integrations.query_source import HarnessEventQuerySource
 from ensemble.ports import EmbeddingsPort, GitHubPort, JudgePort, VectorIndexPort
@@ -445,7 +447,23 @@ def _build_query_judge_port(settings: Settings):
     düzeltme ÜÇ judge'dan yalnız radar'ınkine uygulanmıştı. Ölçüm (29 Tem):
     vizyondaki üç örnek sorunun üçü de canlıda 503.
     """
-    port = build_query_judge(settings)
+    # #334 — TAM-YEREL dal EN BASTA. `build_query_judge` yalniz iki dal
+    # biliyordu (Gemini varsa Gemini, yoksa Fake) ve `LLM_PROVIDER`i HIC
+    # okumuyordu: `LLM_PROVIDER=ollama` secilmis bir kurulumda bile Gemini
+    # anahtari tanimliysa `/query` BULUTA gidiyordu. Ask prompt'u task/scope
+    # METINLERINI tasir — bu bir gizlilik taahhudu acigiydi, kalite acigi
+    # degil. Radar'in conflict judge'i ayni dali zaten tasiyordu (yukarida);
+    # taahhut ucte biri icin tutuluyor, ucte ikisi icin tutulmuyordu.
+    #
+    # Dalin EN BASTA olmasi bilincli: asagidaki yedek/cache sarmalayicilari
+    # `isinstance(..., GeminiQueryJudgeAdapter)` DAHIL ETME listesiyle
+    # calisiyor, yani Ollama portu onlarin hicbirine yakalanmaz ve bulut
+    # yedegi bu modda KURULMAZ (docstring'in 1. maddesi tam olarak bunu
+    # ongoruyordu).
+    if settings.LLM_PROVIDER == "ollama":
+        port = OllamaQueryJudgeAdapter(settings)
+    else:
+        port = build_query_judge(settings)
     if settings.GROQ_API_KEY and isinstance(port, GeminiQueryJudgeAdapter):
         port = FallbackQueryJudge(
             port,
@@ -472,7 +490,12 @@ def _build_query_judge_port(settings: Settings):
 def _build_scope_judge_port(settings: Settings):
     """Scope judge zinciri — gerekçe ve iki disiplin için bkz.
     `_build_query_judge_port` docstring'i (#330)."""
-    port = build_scope_judge(settings)
+    # #334 — bkz. `_build_query_judge_port` icindeki ayni gerekce. Scope
+    # prompt'u KAPSAM MADDELERINI tasir.
+    if settings.LLM_PROVIDER == "ollama":
+        port = OllamaScopeJudgeAdapter(settings)
+    else:
+        port = build_scope_judge(settings)
     if settings.GROQ_API_KEY and isinstance(port, GeminiScopeJudgeAdapter):
         port = FallbackScopeJudge(
             port,
