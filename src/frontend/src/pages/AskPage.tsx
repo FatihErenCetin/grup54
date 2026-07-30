@@ -409,7 +409,7 @@ export default function AskPage() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-4">
-        <h1 className="text-base font-semibold">Projeye sor</h1>
+        <h1 className="text-base font-semibold">Projeye Sor</h1>
         {/* Bu sayfa poll'lanmıyor (tek-atış uç): gösterge ancak cevap gelince anlamlı */}
         {dataUpdatedAt > 0 && (
           <SonGuncelleme dataUpdatedAt={dataUpdatedAt} isFetching={isFetching} />

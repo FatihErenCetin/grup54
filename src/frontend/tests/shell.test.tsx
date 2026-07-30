@@ -37,6 +37,16 @@ describe("app shell", () => {
     // jsdom'da backend yok → ilk kare loading iskeleti; sayfanın kendisi #21 testlerinde
     expect(screen.getByLabelText("Radar yükleniyor")).toBeInTheDocument();
   });
+
+  it("main gövdesi overflow-x-hidden taşır (#316/H3 savunması — sayfa YATAY kaymaz)", () => {
+    // MUTASYON KİLİDİ: `<main>`'den `overflow-x-hidden` sınıfını sil -> kırılır.
+    // Her sayfa geniş içeriği KENDİ `overflow-x-auto` kabında taşır (GraphPage
+    // ısı matrisi, BoardPage kanban, IsiMatrisi) — main'in kendisi hiçbir
+    // zaman yatay kaymamalı, tek sorumlu iç kap kalmalı.
+    const { container } = renderShell();
+    const main = container.querySelector("main");
+    expect(main?.className).toMatch(/overflow-x-hidden/);
+  });
 });
 
 describe("config (tipli env — tek giriş noktası)", () => {

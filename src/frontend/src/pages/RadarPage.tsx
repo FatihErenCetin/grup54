@@ -172,7 +172,7 @@ export default function RadarPage() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-4">
-        <h1 className="text-base font-semibold">Çakışma radarı</h1>
+        <h1 className="text-base font-semibold">Çakışma Radarı</h1>
         <SonGuncelleme dataUpdatedAt={dataUpdatedAt} isFetching={isFetching} />
       </div>
 

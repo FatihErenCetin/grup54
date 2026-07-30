@@ -198,6 +198,13 @@ describe("RadarPage", () => {
     expect(screen.getByText("Radar temiz — çakışma yok")).toBeInTheDocument();
   });
 
+  it("başlık Title Case (#316/A5): 'Çakışma Radarı', 'Çakışma radarı' DEĞİL", () => {
+    // MUTASYON KİLİDİ: h1'i eski "Çakışma radarı"ya geri çevir -> bu test kırılır.
+    mockUseRadar.mockReturnValue(dolu);
+    render(<MemoryRouter><RadarPage /></MemoryRouter>);
+    expect(screen.getByRole("heading", { name: "Çakışma Radarı" })).toBeInTheDocument();
+  });
+
   it("dolu: tespitler listelenir + severity filtresi çalışır", async () => {
     const user = userEvent.setup();
     mockUseRadar.mockReturnValue(dolu);

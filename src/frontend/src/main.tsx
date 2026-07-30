@@ -25,6 +25,8 @@ const RepoSeciciPage = lazy(() => import("./pages/RepoSeciciPage"));
 // T-309 — ayarlar sayfası; nav linki + rota AppLayout/AyarlarPage'in kendi
 // mod-kapısına tabi (yalnız local'de görünür), sidebar'da BAŞKA yere girmez.
 const AyarlarPage = lazy(() => import("./pages/AyarlarPage"));
+// #316/H2 — catch-all (aşağıda `path="*"`); layout route'un SON çocuğu olmalı.
+const NotFoundPage = lazy(() => import("./pages/NotFoundPage"));
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
@@ -57,6 +59,13 @@ createRoot(document.getElementById("root")!).render(
               {/* T-309 — ayarlar; sidebar'da KOŞULLU (AppLayout, yalnız
                   `GET /settings/saglayici` 200 dönerse görünür) */}
               <Route path="ayarlar" element={<AyarlarPage />} />
+              {/* #316/H2 — catch-all EN SONDA: `/graf` gibi yanlış bir yol
+                  eskiden hiçbir route'a eşleşmiyordu, kabuk bile render
+                  olmuyordu (tamamen boş ekran, canlıda doğrulandı). Bu
+                  layout route'un (pathless — yukarıdaki `<Route element=
+                  {<AppLayout />}>`) İÇİNDE olduğu için sidebar/topbar burada
+                  da görünür kalır. */}
+              <Route path="*" element={<NotFoundPage />} />
             </Route>
           </Routes>
         </Suspense>

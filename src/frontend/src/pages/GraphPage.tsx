@@ -315,7 +315,7 @@ export default function GraphPage() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-4">
-        <h1 className="text-base font-semibold">Dokunma grafı</h1>
+        <h1 className="text-base font-semibold">Dokunma Grafı</h1>
         <SonGuncelleme dataUpdatedAt={dataUpdatedAt} isFetching={isFetching} />
       </div>
 
@@ -577,7 +577,7 @@ function Legend({ enYogun }: { enYogun: number }) {
           aria-hidden
           className="inline-block size-3 rounded-sm bg-primary/45 opacity-60"
         />
-        7+ gün önce (solar)
+        7+ gün önce (soluk)
       </span>
     </div>
   );
@@ -815,7 +815,7 @@ function TreemapLegend({ enYogunModul }: { enYogunModul: number }) {
           aria-hidden
           className="inline-block size-3 rounded-sm bg-primary/45 opacity-60"
         />
-        7+ gün önce (solar)
+        7+ gün önce (soluk)
       </span>
     </div>
   );
