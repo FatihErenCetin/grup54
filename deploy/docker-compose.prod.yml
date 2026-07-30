@@ -384,14 +384,19 @@ volumes:
 #
 # 2) DB projeksiyonunu yeniden kurmak (`make rebuild` esdegeri):
 #    Makefile IMAJDA YOK (Dockerfile yalnizca pyproject/uv.lock/src'i COPY
-#    ediyor), bu yuzden hedef adiyla cagrilamaz. Konteyner ici karsiligi:
-#        docker compose -f docker-compose.prod.yml exec api python -c "\
-#    from ensemble.config import get_settings; \
-#    from ensemble.store.engine import get_engine, get_session_factory; \
-#    from ensemble.store.rebuild import rebuild_projection; \
-#    from ensemble_shared.harness import FileHarnessPort; \
-#    s=get_settings(); print(rebuild_projection(get_session_factory(get_engine(s))(), FileHarnessPort()))"
-#    (cwd /app oldugu icin FileHarnessPort() dogru mount'u okur.)
+#    ediyor), bu yuzden hedef adiyla cagrilamaz. Konteyner ici karsiligi
+#    `make rebuild` hedefinin KOSTUGU MODULUN TA KENDISIDIR:
+#        docker compose -f docker-compose.prod.yml exec api python -m ensemble.store.rebuild
+#    (cwd /app oldugu icin FileHarnessPort() dogru mount'u okur. Toplu-is
+#    retry/bekleme butcesi modulun kendi icinde ayarlanir -- `-e
+#    GEMINI_MAX_RETRIES=...` gerekmez, #342.)
+#
+#    Buradaki eski `python -c "... rebuild_projection(session, FileHarnessPort())"`
+#    tek satiri KULLANMA (#345): `github` portu verilmedigi icin `events`
+#    tablosunu ve vektor indeksini seed ETMEZ -- ustelik duzeltmeden once
+#    olay gecmisini SILIYOR ve yerine hicbir sey koymuyordu. Modul girisi
+#    ayrica D-51 fail-closed kapisini (sahte GitHub adapter'i ile gercek
+#    DB'nin ustune yazma) da uygular; ham fonksiyon cagrisi uygulamaz.
 #
 # 3) Konfigurasyon hatalari MIGRATE adiminda patlar, api'de degil: alembic
 #    env.py da get_settings() cagirir. Ornegin DEMO_MODE=true iken

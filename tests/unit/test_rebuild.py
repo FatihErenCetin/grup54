@@ -568,3 +568,128 @@ def test_fold_reopen_done_u_hala_geri_alir():
     status, _, _ = fold_status("backlog", [kapanis, yeniden_acilis])
     assert status == "todo"
 
+
+# ---------------------------------------------------------------------------
+# #345 — SİLME KURALI: yalnız yeniden kuracağın şeyi sil.
+#
+# `rebuild_projection` `EventRow`'ları KOŞULSUZ siliyor, ama yalnız
+# `github is not None` ise geri dolduruyordu. Yani imzada OPSİYONEL görünen
+# — ve "GitHub gerektirmeyen güvenli yol" gibi duran — çağrı, tüm olay
+# geçmişini (Activity akışı, dokunma grafı, board geçişleri) YOK EDİP yerine
+# hiçbir şey koymuyordu. Aynı hata vektör indeksinde de vardı.
+# ---------------------------------------------------------------------------
+
+
+def _olay_ekle(session, olay_id: str) -> None:
+    from ensemble.store.models import EventRow
+
+    session.add(
+        EventRow(
+            id=olay_id,
+            repo_full_name=_REPO,
+            type="commit",
+            actor="esma",
+            branch="main",
+            ts=datetime(2026, 7, 20, 9, 0),
+            ref="abc123",
+        )
+    )
+    session.commit()
+
+
+def test_github_verilmeden_rebuild_MEVCUT_OLAYLARI_KORUR():
+    """MUTASYON KİLİDİ (#345): `rebuild.py`'de `EventRow` silme satırını
+    `if github is not None:` bloğunun DIŞINA (koşulsuz) taşı → bu test kırmızı
+    olur (0 satır kalır).
+
+    Ölçülen senaryo: onboarding sihirbazı yazdıktan sonra board'u tazelemek
+    için akla gelen ilk çağrı buydu; kullanılsaydı "kurulum sihirbazını
+    çalıştırdım" diyen kullanıcı tüm olay geçmişini kaybederdi.
+    """
+    from ensemble.store.models import EventRow
+
+    session = _fresh_session()
+    _olay_ekle(session, "evt-gecmis-1")
+    harness = _mock_harness(tasks=[{"task_id": "T-1", "title": "A", "status": "todo"}])
+
+    res = rebuild_projection(session, harness)  # github VERİLMEDİ
+
+    kalanlar = [row.id for row in session.query(EventRow).all()]
+    assert kalanlar == ["evt-gecmis-1"], (
+        "github=None ile rebuild olay geçmişini SİLMEMELİ — geri dolduracak kaynağı yok"
+    )
+    # Kartlar yine de tazelenmiş olmalı: koruma, işi yapmamak demek değil.
+    assert res["tasks"] == 1
+    # Sözleşme: bu 0, "olay yok" değil "olaylara dokunulmadı" demek.
+    assert res["events"] == 0
+
+
+def test_github_verilmeden_rebuild_VEKTORLERI_KORUR():
+    """MUTASYON KİLİDİ (#345, aynı sınıf hata): `rebuild.py`'deki
+    `if github is not None and vector_index is not None:` koşulunu eski
+    `if vector_index is not None:` haline geri al → `replace_all([], ...)`
+    çalışır, indeks boşalır ve bu test kırmızı olur.
+
+    "Stale temizliği" diye belgelenmişti; gerçekte geri doldurulmayacak bir
+    indeksin kalıcı olarak boşaltılması = semantik aramanın ölmesiydi.
+    """
+    from ensemble.store.vector_store import LocalVectorIndex
+
+    session = _fresh_session()
+    vector_index = LocalVectorIndex()
+    vector_index.upsert("evt-gecmis-1", [1.0, 0.0], {"type": "commit"})
+    harness = _mock_harness(tasks=[])
+
+    rebuild_projection(session, harness, vector_index=vector_index)  # github YOK
+
+    hits = vector_index.query([1.0, 0.0], k=10)
+    assert [vid for vid, _ in hits] == ["evt-gecmis-1"], (
+        "github=None ile rebuild vektör indeksini SİLMEMELİ"
+    )
+
+
+def test_github_VERILINCE_olaylar_yine_de_yeniden_kurulur():
+    """Karşı-kilit: koruma, `github` verilen GERÇEK yolu bozmamalı — orada
+    silme hâlâ olmalı, çünkü hemen geri doldurulur (bayat satır kalmaz)."""
+    from datetime import timezone
+
+    from ensemble.integrations.github.fake import FakeGitHubAdapter
+    from ensemble.models import NormalizedEvent
+    from ensemble.ports import BackfillResources, EmbeddingsPort
+    from ensemble.store.models import EventRow
+    from ensemble.store.vector_store import LocalVectorIndex
+
+    session = _fresh_session()
+    _olay_ekle(session, "evt-bayat")
+    harness = _mock_harness(tasks=[])
+
+    github = FakeGitHubAdapter(
+        events=[
+            NormalizedEvent(
+                id="evt-yeni",
+                type="commit",
+                actor="enes",
+                branch="main",
+                files=["a.py"],
+                ts=datetime(2026, 7, 29, 9, 0, tzinfo=timezone.utc),
+                ref="def456",
+            )
+        ],
+        backfill_resources=BackfillResources(prs=[], issues=[]),
+    )
+    embeddings = MagicMock(spec=EmbeddingsPort)
+    embeddings.embed.return_value = [[1.0, 0.0]]
+
+    res = rebuild_projection(
+        session,
+        harness,
+        github=github,
+        vector_index=LocalVectorIndex(),
+        embeddings=embeddings,
+    )
+
+    assert res["events"] == 1
+    assert [row.id for row in session.query(EventRow).all()] == ["evt-yeni"], (
+        "github verilince bayat satır SİLİNMELİ (geri doldurma garantili)"
+    )
+

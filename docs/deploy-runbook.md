@@ -120,7 +120,7 @@ Dört sınıf — Fly döneminden **isim değişti**, kavram aynı:
 | 22 | `GEMINI_EMBEDDING_MODEL` | sunucu env dosyası (opsiyonel) | — | kod default `gemini-embedding-001` |
 | 23 | `GEMINI_EMBEDDING_DIMENSIONS` | sunucu env dosyası (opsiyonel) | — | kod default `768`; `vector(N)` migration'ıyla **hizalı** olmalı (Ek C3) |
 | 24 | `GEMINI_TIMEOUT_S` | sunucu env dosyası (opsiyonel) | — | kod default `10` |
-| 25 | `GEMINI_MAX_RETRIES` | sunucu env dosyası (opsiyonel) | — | kod default `3` |
+| 25 | `GEMINI_MAX_RETRIES` | sunucu env dosyası (opsiyonel) | — | kod default `3`; sunucuda D-54 ile `1` (interaktif yolda kullanıcıyı 429 kuyruğunda bekletme). `python -m ensemble.store.rebuild` bunu kendiliğinden **12**'ye yükseltir (`#342` — toplu iş kendi bütçesini ayarlar; env dosyası ve interaktif yol DEĞİŞMEZ) |
 | 26 | `OLLAMA_BASE_URL` | yalnız-local | — | VDS'te Ollama çalıştırılmıyor; kod zaten yalnız `127.0.0.1`/`localhost` kabul ediyor (loopback zorunluluğu) |
 | 27 | `OLLAMA_MODEL` | yalnız-local | — | tam-yerel gizlilik modu (#78) |
 | 28 | `OLLAMA_EMBEDDING_MODEL` | yalnız-local | — | " |
@@ -349,12 +349,29 @@ cd /opt/ensemble && docker compose exec api python -m ensemble.store.rebuild
 > Bu satır `tests/unit/test_deploy_runbook.py` ile kilitli — runbook'taki hiçbir
 > `docker compose exec api` komutu imajda bulunmayan bir ikiliyi çağıramaz.
 
+> 🔁 **`-e GEMINI_MAX_RETRIES=...` GEREKMEZ** (`#342`). 30 Tem'de bu komut ilk
+> 429'da düşüyordu (`RESOURCE_EXHAUSTED ... retry in 49.1s`) ve elle
+> `docker exec -e GEMINI_MAX_RETRIES=12 ...` vermek gerekiyordu: `rebuild.py`
+> toplu iş olduğunu bilip **bekleme tavanını** yükseltiyor ama **deneme
+> bütçesini** yükseltmiyordu — süreç 120 sn beklemeye razıydı, hiç beklemeye
+> fırsat bulamıyordu (sunucuda `GEMINI_MAX_RETRIES=1` sabit, D-54; bu karar
+> **interaktif** yol için doğru, toplu yol için yanlıştı). Artık iki bütçe de
+> **koddan** geliyor (`_TOPLU_IS_BEKLEME_SINIRI_S` · `_TOPLU_IS_DENEME_SAYISI`)
+> ve yalnız bu sürece uygulanıyor; sunucu env dosyası **değişmedi**. Env'de
+> daha cömert bir değer varsa küçültülmez (bunlar taban, tavan değil).
+
 Beklenen çıktı (30 Tem ölçümü, uçtan uca doğrulandı):
 
 ```
+Toplu is butcesi: GEMINI_MAX_RETRIES=12 GEMINI_RETRY_AFTER_CAP_S=120.0
+Rebuilding projection...
 Rebuilt: {'tasks': 155, 'tasks_from_harness': 22, 'tasks_from_github': 133,
           ..., 'backfill_transitions': 316, 'orphan_transitions': 12}
 ```
+
+İlk satır (`#342`) bilerek eklendi: "override gerektirmiyor" iddiası ancak
+**görülebilirse** işe yarar. Orada `GEMINI_MAX_RETRIES=1` yazıyorsa toplu-iş
+bütçesi devreye girmemiş demektir — komut ilk 429'da düşecektir.
 
 Doğrulama — kart sayısı ve tazelik sinyali:
 
