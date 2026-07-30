@@ -231,6 +231,38 @@ class Settings(BaseSettings):
     RADAR_MIN_JACCARD: float = 0.0
     RADAR_MIN_SIMILARITY: float = 0.0
 
+    # --- Agentic aksiyon (#339, D-61) — urunun disariya ILK YAZMA yolu ------
+    # Bugune kadar Ensemble %100 salt-okunurdu. Public bir repoya yorum yazan
+    # bir yol acilirken varsayilan degerler, "yanlis yapilandirma sessizce
+    # zarar veremesin" ilkesine gore secildi (CORS "*" reddi ve DEMO_MODE
+    # repo-pin zorunlulugu ile AYNI fail-closed aile):
+    #
+    #   ENABLED=false  -> hicbir sey calismaz (tek bir GitHub cagrisi bile).
+    #   DRY_RUN=true   -> calisir ama YAZMAZ; ne yazacagini loglar.
+    #
+    # GERCEK yazma yalnizca IKISI birden acikken olur (ENABLED=true VE
+    # DRY_RUN=false). Tek bir bayragi yanlislikla acmak yeterli DEGIL —
+    # iki bagimsiz kasit gerekir.
+    AGENTIC_ACTIONS_ENABLED: bool = False
+    AGENTIC_ACTIONS_DRY_RUN: bool = True
+    # Tur basina yazilabilecek EN FAZLA yorum. Kucuk tutuldu: bir radar turu
+    # onlarca yuksek tespit uretebilir (olculdu: soguk /radar 131 aday) ve
+    # bunlarin hepsine ayni anda yorum dusmek, uyarmak degil SPAM'lemek olur.
+    # Asilan kisim SESSIZCE kesilmez — loglanir ve rapora "sinir_asildi"
+    # olarak girer (bkz. engine/agentic.py).
+    AGENTIC_ACTIONS_MAX_PER_RUN: int = 3
+
+    @field_validator("AGENTIC_ACTIONS_MAX_PER_RUN")
+    @classmethod
+    def _validate_agentic_max_per_run(cls, value: int) -> int:
+        if value < 1:
+            raise ValueError(
+                "AGENTIC_ACTIONS_MAX_PER_RUN en az 1 olmali (#339) — "
+                "aksiyonu kapatmak icin AGENTIC_ACTIONS_ENABLED=false kullan; "
+                "0 bir 'sessizce hicbir sey yapma' modu yaratirdi"
+            )
+        return value
+
     # --- Hosted public demo sertlestirme (#63) — VARSAYILAN KAPALI ---
     # local/dev davranisi bu bayrak acilmadan HIC degismez.
     DEMO_MODE: bool = False

@@ -123,3 +123,16 @@ deploy:
 # docs/macos-paket-kurulumu.md. İkisi de gitignored (büyük ikili, repo'ya girmez).
 paket-macos:
 	packaging/build_macos.sh
+
+# #339 (D-61) — agentic aksiyon: radar'in severity=high tespitleri icin ilgili
+# ACIK PR'lara gerekceli uyari yorumu birakir. Varsayilan yapilandirmada
+# (AGENTIC_ACTIONS_ENABLED=false) hicbir sey yazmaz, hicbir GitHub cagrisi
+# yapmaz. `--kuru-calisma` bayragi yalniz GUVENLI yonde etki eder.
+#
+# ⚠️ Bu hedef YEREL recetedir. Uretimde `make` YOKTUR (Makefile prod imajina
+# kopyalanmaz) - orada karsiligi:
+#     docker compose exec api python -m ensemble.agentic_cli
+# Detay + izin/bayrak sirasi: docs/deploy-runbook.md §10.
+.PHONY: agentic
+agentic:
+	uv run python -m ensemble.agentic_cli $(ARGS)

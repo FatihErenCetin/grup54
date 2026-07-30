@@ -59,6 +59,13 @@ class FakeGitHubAdapter:
         # body/head.ref) zaten taşımıyor. Testler gerçek şekilli ham sözlükleri
         # açıkça verir.
         self._backfill_resources = backfill_resources or BackfillResources()
+        # --- YAZMA yuzeyi (#339) — kurucu parametresi BILEREK eklenmedi:
+        # testler bu sozlukleri kurulumdan SONRA doldurur (fake'in imzasi
+        # buyudukce her cagiran etkilenirdi). Ayrintili gerekce ve "bilinmeyen
+        # PR ACIK sayilir" secimi `pull_request_open` docstring'inde.
+        self.acik_prler: dict[int, bool] = {}
+        self.pr_yorumlari: dict[int, list[str]] = {}
+        self.yazma_cagrilari: list[tuple[int, str]] = []
 
     def fetch_events(self, since: datetime) -> list[NormalizedEvent]:
         since_key = _datetime_key(since)
@@ -91,6 +98,29 @@ class FakeGitHubAdapter:
 
     def get_diff(self, base: str, head: str) -> dict[str, str]:
         return self._diffs.get((base, head), {})
+
+    # --- YAZMA yuzeyi (#339) — aga CIKMAYAN, bellekte biriken ikiz ----------
+
+    def pull_request_open(self, number: int) -> bool:
+        """Bilinmeyen PR **ACIK** sayilir.
+
+        Neden fail-closed (`False`) degil: bu bir TEST IKIZI; varsayilan
+        `False` olsaydi her test yazma yolunu once `acik_prler` doldurarak
+        acmak zorunda kalir, unutan test SESSIZCE "yazmadi" diye yesil
+        gecerdi — yani guard'i degil, kurulum eksigini olcerdi. Gercek
+        fail-closed davranis uretimin kendisindedir: `GitHubAdapter`
+        durumu GitHub'dan okur ve `agentic_cli` GERCEK yazmada
+        `FakeGitHubAdapter`i zaten REDDEDER (bkz. o dosyadaki kapi).
+        """
+        return self.acik_prler.get(number, True)
+
+    def list_pull_request_comment_bodies(self, number: int) -> list[str]:
+        return list(self.pr_yorumlari.get(number, []))
+
+    def create_pull_request_comment(self, number: int, body: str) -> str:
+        self.yazma_cagrilari.append((number, body))
+        self.pr_yorumlari.setdefault(number, []).append(body)
+        return f"https://github.com/fake/fake/pull/{number}#issuecomment-{len(self.yazma_cagrilari)}"
 
 
 def _datetime_key(value: datetime) -> datetime:

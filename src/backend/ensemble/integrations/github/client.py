@@ -81,6 +81,34 @@ class GitHubRestClient:
             self._remember(key, etag, body)
         return body
 
+    def post(self, path: str, *, json: dict) -> Any:
+        """YAZMA istegi (#339) — urunun GitHub'a giden ilk POST'u.
+
+        `get()`ten uc bilincli farki var:
+
+        1) **ETag/cache YOK.** Cache okumayi ucuzlatmak icindir; bir yazma
+           istegini "degismedi" diye atlamak anlamsiz ve tehlikelidir.
+        2) **304 yolu YOK.** POST 304 donmez; donerse `raise_for_status`
+           zaten <400 oldugu icin gecirir ve JSON parse hatasi PATLAR —
+           sessiz basari uretilmez.
+        3) **Yeniden deneme YOK.** Bir GET'i tekrarlamak zararsizdir; bir
+           yorum POST'unu tekrarlamak AYNI PR'a IKINCI yorum demektir.
+           Idempotency bu katmanda degil, cagiran katmanda (isaret taramasi,
+           engine/agentic.py) saglanir — burada koru korune retry, o
+           garantiyi arkadan delerdi.
+
+        Yetki eksikse (App'in `Pull requests: write` izni yoksa) GitHub 403
+        doner ve `raise_for_status` bunu `GitHubAuthError`e cevirir — istisna
+        YUKARI yayilir, bir degere donusup "yazildi" gibi akmaz (#252/#253).
+        """
+        headers = {
+            "Authorization": f"Bearer {self._token_provider()}",
+            "Accept": "application/vnd.github+json",
+        }
+        resp = self._http.post(f"{_BASE}{path}", json=json, headers=headers)
+        raise_for_status(resp)
+        return resp.json()
+
     def _remember(self, key: str, etag: str, body: Any) -> None:
         self._etags[key] = etag
         self._etags.move_to_end(key)
