@@ -52,6 +52,22 @@ from ensemble_shared.harness import HarnessPort
 # isi yarim birakirdi.
 _TOPLU_IS_BEKLEME_SINIRI_S = 120.0
 
+# Toplu backfill 429'da KAC KEZ denemeye razi. Bekleme tavaninin IKIZI: iki
+# butce ancak BIRLIKTE anlamli. Onceden yalniz tavan yukseltiliyordu ve
+# sonucu olculdu (30 Tem, canli): sunucuda `GEMINI_MAX_RETRIES=1` sabit
+# (D-54, interaktif yol icin dogru karar) oldugundan surec "120 saniye
+# beklemeye razi ama hic beklemeye firsat bulamiyor" durumundaydi -- ilk 429
+# isi bitiriyordu (`GeminiTransientError: 429 ... retry in 49.1s`). Elle
+# `-e GEMINI_MAX_RETRIES=12` verilince ayni komut ilerledi; iste o deger
+# artik ENV'den degil KODDAN geliyor, cunku "bu bir toplu is" bilgisi
+# burada, env dosyasinda degil.
+#
+# 12 nereden: embed kotasi DAKIKALIK ve tukendiginde sunucu ~30-50 sn
+# "bekle" diyor. 12 deneme x <=120 sn tavan = en kotu ~20 dk bekleme
+# butcesi -- birkac dakikalik kota penceresini asmaya yeter, sonsuz donguye
+# donmez (kota gercekten GUNLUK olsaydi is 12. denemede DURUR, asilmaz).
+_TOPLU_IS_DENEME_SAYISI = 12
+
 
 def append_status_events(session: Session, events: Iterable[TaskStatusEventRow]) -> int:
     """`task_status_events`'e append-only ekleme.
@@ -186,10 +202,21 @@ def rebuild_projection(
     tek transaction; bir tarafın hata yolu diğerinin içine GÖMÜLMEZ, ikisi de
     aynı üst-düzey rollback'e çıkar).
 
-    `task_status_events` bu fonksiyon tarafından SİLİNMEZ (append-only kalıcı
-    günlük) — yalnızca `task_projection`, `presence` ve `events` yeniden inşa
-    edilir; bu yüzden art arda iki çağrı BİT-BİT AYNI sonucu üretir
-    (idempotent).
+    SİLME KURALI (#345): **yalnız yeniden kuracağın şeyi sil.**
+    `task_projection` ve `presence` her çağrıda silinip yeniden kurulur —
+    kaynakları (`harness`) ZORUNLU argüman, yani geri doldurma garantili.
+    `events` ve vektör indeksi ise yalnız `github` VERİLDİĞİNDE silinir;
+    `github=None` ise ikisine de DOKUNULMAZ (projeksiyonun o parçası
+    tazelenmez ama YOK EDİLMEZ). `task_status_events` hiç silinmez
+    (append-only kalıcı günlük). Bu yüzden art arda iki çağrı BİT-BİT AYNI
+    sonucu üretir (idempotent).
+
+    Bu kural bir ÖLÇÜMDEN doğdu (30 Tem, #345): `events` silme adımı
+    KOŞULSUZ, geri doldurma ise `github is not None`'a bağlıydı. İmzada
+    opsiyonel görünen `github` atlandığında — yani "GitHub gerektirmeyen
+    güvenli çağrı" sanılan yolda — tüm olay geçmişi (Activity akışı, dokunma
+    grafı, board geçişleri) siliniyor, yerine hiçbir şey konmuyordu. Aynı
+    hata vektör indeksinde de vardı (`replace_all([], ...)`).
 
     Ne `.harness`'te ne GitHub issue'ları arasında karşılığı olan bir task_id
     için geçiş bulunursa: satır `task_status_events`'te KALIR (kaybolmaz) ama
@@ -214,19 +241,23 @@ def rebuild_projection(
         harness: `.harness/` okuyucusu (tasks/active tohumu).
         github: verilirse `events` + `vector_index` GitHub backfill'inden
             seed edilir, GEÇMİŞ geçişleri türetilir ve issue kartları eklenir.
-            `None` ise (varsayılan) yalnızca tasks/presence/fold çalışır —
-            mevcut testlerle geriye dönük uyumlu.
+            `None` ise (varsayılan) yalnızca tasks/presence/fold çalışır;
+            `events` ve vektör indeksi OLDUĞU GİBİ KALIR (#345 — silinmez,
+            çünkü geri doldurulamaz).
         backfill_limit: `github.fetch_backfill_events(limit_per_type=...)` ve
             `github.fetch_backfill_resources(limit_per_type=...)`.
         vector_index: `github` verilmişse ZORUNLU (aksi halde ValueError).
-            `github` verilmese BİLE geçilirse, birikmiş (stale) vektörler
-            boş listeyle `replace_all` edilerek TEMİZLENİR.
+            `github` verilmeden geçilirse HİÇ ÇAĞRILMAZ (#345).
         embeddings: `github` verilmişse ZORUNLU (aksi halde ValueError).
 
     Returns:
         {"tasks": N, "tasks_from_harness": H, "tasks_from_github": G,
          "presence": M, "events": E, "backfill_transitions": B,
          "transitions_applied": K, "orphan_transitions": O}
+
+        `events` = BU çağrıda GitHub'dan seed edilen olay sayısıdır, tablodaki
+        toplam satır sayısı DEĞİL: `github=None` iken 0 döner ve bu "olay yok"
+        değil "olaylara dokunulmadı" demektir.
     """
     # Programlama-hatası kapısı EN BAŞTA: `github` verilip vector_index/
     # embeddings verilmemesi bir yapılandırma hatasıdır. Kontrol eskiden
@@ -303,10 +334,17 @@ def rebuild_projection(
         session.add_all(presence_rows)
 
         # --- b) events + vector index (GitHub backfill, #218) ---
-        session.query(EventRow).filter_by(repo_full_name=repo_full_name).delete()
-
+        # #345 — SİLME KURALI: **yalnız yeniden kuracağın şeyi sil.** Bu
+        # `.delete()` eskiden KOŞULSUZDU, geri doldurma ise yalnız
+        # `github is not None` dalındaydı. Yani imzada OPSİYONEL görünen
+        # `rebuild_projection(session, harness)` çağrısı — "GitHub
+        # gerektirmeyen güvenli yol" gibi duran çağrı — tüm olay geçmişini
+        # (Activity akışı, dokunma grafı) YOK EDİP yerine hiçbir şey
+        # koymuyordu. Bir argümanın YOKLUĞU sessizce YIKICI davranıyordu.
         event_rows: list[EventRow] = []
         if github is not None:
+            session.query(EventRow).filter_by(repo_full_name=repo_full_name).delete()
+
             # `embeddings`/`vector_index` burada GARANTİLİ dolu — fonksiyonun
             # ilk satırındaki fail-closed kapı bunu zaten doğruladı.
             events = github.fetch_backfill_events(limit_per_type=backfill_limit)
@@ -335,10 +373,18 @@ def rebuild_projection(
         # aşağıdaki tek session.commit() yapar → DB satırları + vektörler
         # birlikte commit/rollback olur. In-memory index session'ı yok sayar;
         # kendi içinde atomik (build-then-swap) olduğundan yarım-durum
-        # bırakmaz. `github` verilmese bile `vector_index` verilmişse stale
-        # vektörler boş listeyle temizlenir (replace_all([], ...)).
+        # bırakmaz.
         # embeddings.embed hatası bu satıra gelmeden (yukarıda) fırlar → rollback.
-        if vector_index is not None:
+        #
+        # #345 — AYNI SINIF HATA, ölçüldü: bu blok eskiden yalnız
+        # `vector_index is not None` şartına bakıyordu. `github` verilmeden
+        # `vector_index` geçilirse `staged_vectors` BOŞ kalır ve
+        # `replace_all([], ...)` tüm vektörleri siler — geri doldurulacak
+        # hiçbir şey yokken. ("stale temizliği" diye belgelenmişti; gerçekte
+        # semantik aramanın kalıcı olarak boşalması demekti.) Artık silme
+        # yeniden-kurmaya BAĞLI: vektörler yalnız `github` verildiğinde
+        # (yani gerçekten yeniden üretildiklerinde) değiştirilir.
+        if github is not None and vector_index is not None:
             vector_index.replace_all(staged_vectors, session=session)
 
         # --- c) transitions: kalıcı günlüğü (ts, source_event_id) sırasıyla
@@ -403,16 +449,37 @@ if __name__ == "__main__":
 
     settings = get_settings()
 
-    # TOPLU IS: 429'da sunucunun dayattigi sureyi TAM bekle.
-    # Interaktif yolda bu sure kirpiliyor (`GEMINI_RETRY_AFTER_CAP_S`, ~10 sn)
-    # cunku insan bekliyor ve gunluk kota penceresi zaten bugun acilmayacak.
-    # Burada tam tersi: kimse beklemiyor ve embed kotasi DAKIKALIK, yani
-    # beklemek GERCEKTEN ise yariyor -- gecmis backfill'i 250'den 663 olaya
-    # cikaran sey tam olarak buydu (#280/#283, olculdu 2026-07-27).
-    if settings.GEMINI_RETRY_AFTER_CAP_S < _TOPLU_IS_BEKLEME_SINIRI_S:
-        settings = settings.model_copy(
-            update={"GEMINI_RETRY_AFTER_CAP_S": _TOPLU_IS_BEKLEME_SINIRI_S}
-        )
+    # TOPLU IS: 429'da sunucunun dayattigi sureyi TAM bekle -- VE gercekten
+    # bekleyebilecek kadar deneme hakkiyla.
+    #
+    # Interaktif yolda bekleme suresi kirpiliyor (`GEMINI_RETRY_AFTER_CAP_S`,
+    # ~10 sn) cunku insan bekliyor ve gunluk kota penceresi zaten bugun
+    # acilmayacak; deneme hakki da sunucuda 1'e sabitlenmis (D-54). Burada
+    # tam tersi: kimse beklemiyor ve embed kotasi DAKIKALIK, yani beklemek
+    # GERCEKTEN ise yariyor -- gecmis backfill'i 250'den 663 olaya cikaran
+    # sey tam olarak buydu (#280/#283, olculdu 2026-07-27).
+    #
+    # IKI BUTCE BIRLIKTE (#342): yalniz tavani yukseltmek YARIM bir ayardi --
+    # `GEMINI_MAX_RETRIES=1` iken surec 120 sn beklemeye razi ama hic
+    # beklemeye firsat bulamiyordu, ilk 429 isi bitiriyordu (olculdu 30 Tem,
+    # canli). Env'e dokunmuyoruz: bu YALNIZCA bu surecin ayari.
+    settings = settings.model_copy(
+        update={
+            "GEMINI_RETRY_AFTER_CAP_S": max(
+                settings.GEMINI_RETRY_AFTER_CAP_S, _TOPLU_IS_BEKLEME_SINIRI_S
+            ),
+            "GEMINI_MAX_RETRIES": max(
+                settings.GEMINI_MAX_RETRIES, _TOPLU_IS_DENEME_SAYISI
+            ),
+        }
+    )
+    # Hangi butceyle kosuldugu CIKTIDA gorunur: "runbook override gerektirmesin"
+    # iddiasi ancak dogrulanabilirse ise yarar (bu satir
+    # tests/unit/test_rebuild_toplu_is_butcesi.py ile kilitli).
+    print(
+        f"Toplu is butcesi: GEMINI_MAX_RETRIES={settings.GEMINI_MAX_RETRIES} "
+        f"GEMINI_RETRY_AFTER_CAP_S={settings.GEMINI_RETRY_AFTER_CAP_S}"
+    )
 
     github = _build_github_port(settings)
     if isinstance(github, FakeGitHubAdapter) and not settings.ENSEMBLE_ALLOW_FAKE_SEED:

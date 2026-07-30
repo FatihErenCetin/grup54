@@ -455,8 +455,11 @@ def uygula(
     # Yazma BASARILI. Simdi board'u doldur — aksi halde kullanici "yazdi ama
     # hicbir sey olmadi" gorur. Bu adim `rebuild_projection` KULLANMAZ: o
     # fonksiyon `github=None` ile cagrildiginda EventRow'lari kosulsuz silip
-    # geri doldurmaz, yani tum olay gecmisini yok eder (olculdu, 30 Tem).
-    # Burada yalniz EKSIK kartlar eklenir; silme/ezme yok.
+    # geri doldurmuyordu, yani tum olay gecmisini yok ediyordu (olculdu,
+    # 30 Tem; #345 ile duzeltildi ama secim degismedi — rebuild TUM
+    # task_projection'i silip `.harness` tohumundan kurar, canli yolun
+    # yazdigi kartlari kapsam disi birakirdi). Burada yalniz EKSIK kartlar
+    # eklenir; silme/ezme yok.
     #
     # Hata YUTULMAZ: projeksiyon tazelenemezse sebep kullaniciya `projeksiyon_notu`
     # ile doner ve arayuz bunu gosterir (sessiz dusus yasak).

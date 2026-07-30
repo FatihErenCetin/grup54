@@ -11,12 +11,16 @@ rebuild fail-closed kapıya çarpıp reddediliyor (D-51: sahte veri gerçek
 DB'nin üstüne yazılmaz). Yani sihirbazın son adımı, yeni kullanıcı için
 kapalı bir kapıya işaret ediyordu.
 
-Akla gelen çözüm — `rebuild_projection(session, harness, github=None)` —
-**VERİ KAYBETTİRİR** (ölçüldü, 30 Tem): o fonksiyon `EventRow`'ları
-KOŞULSUZ siler, ama yalnız `github` verilmişse geri doldurur. `github=None`
-ile çağırmak tüm olay geçmişini (Activity akışı, dokunma grafı, board
-geçişleri) YOK EDER. Yani "GitHub gerektirmeyen güvenli yol" gibi görünen
-çağrı, sessizce yıkıcıdır.
+Akla gelen çözüm — `rebuild_projection(session, harness, github=None)` — o
+tarihte **VERİ KAYBETTİRİYORDU** (ölçüldü, 30 Tem): fonksiyon `EventRow`'ları
+KOŞULSUZ siliyor, ama yalnız `github` verilmişse geri dolduruyordu. Yani
+"GitHub gerektirmeyen güvenli yol" gibi görünen çağrı sessizce yıkıcıydı.
+O yıkıcılık `#345` ile giderildi (artık silme yeniden-kurmaya bağlı: `github`
+yoksa `events`/vektörlere DOKUNULMAZ), ama bu modülün varlık sebebi
+DEĞİŞMEDİ — sihirbazın koştuğu yolda `rebuild_projection` hâlâ yanlış araç:
+`.harness` tohumundan tüm `task_projection`'ı silip yeniden kurar (canlı
+yolun yazdığı kartları kapsam dışı bırakır) ve modül girişi gerçek bir
+GitHub App olmadan zaten fail-closed reddeder (D-51).
 
 Bu modül onun yerine yalnız **eksik kartları ekler**:
   * hiçbir şey SİLMEZ,

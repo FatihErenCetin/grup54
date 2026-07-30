@@ -92,7 +92,16 @@ def test_rebuild_projection():
     session.close()
 
 
-def test_rebuild_projection_clears_stale_vectors_when_events_empty():
+def test_rebuild_projection_github_verilince_bos_backfill_vektorleri_temizler():
+    """`github` VERİLDİĞİNDE vektör indeksi gerçekten yeniden kurulur — backfill
+    boş dönerse indeks de boşalır (eski `stale` vektör kalmaz).
+
+    Bu test eskiden `github` OLMADAN aynı şeyi iddia ediyordu
+    (`..._clears_stale_vectors_when_events_empty`) ve tam da #345'in hatasını
+    KİLİTLİYORDU: geri doldurulmayacak bir indeksi silmeyi "stale temizliği"
+    sanıyordu. Doğru sınır `github`'ın varlığıdır — silme ancak yeniden kurma
+    ile birlikte meşrudur.
+    """
     settings = Settings(DATABASE_URL="sqlite:///:memory:")
     engine = get_engine(settings)
     Base.metadata.create_all(engine)
@@ -108,7 +117,16 @@ def test_rebuild_projection_clears_stale_vectors_when_events_empty():
     vector_index = LocalVectorIndex()
     vector_index.upsert("stale-1", [1.0, 0.0], {"type": "old"})
 
-    res = rebuild_projection(session, mock_harness, vector_index=vector_index)
+    mock_github = MagicMock(spec=GitHubPort)
+    mock_github.fetch_backfill_events.return_value = []
+
+    res = rebuild_projection(
+        session,
+        mock_harness,
+        github=mock_github,
+        vector_index=vector_index,
+        embeddings=MagicMock(spec=EmbeddingsPort),
+    )
 
     assert res["events"] == 0
     assert vector_index.query([1.0, 0.0], k=10) == []
