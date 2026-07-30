@@ -54,7 +54,7 @@ eşiği değildir.
 | Scope | Dondurulmuş amaç ve kapsam içi/dışı maddeler görünür. | 14 kapsam maddesi yüklendi. `/scope/check` çağrılmadığı için “henüz kapsam kararı yok” dürüst boş durumu gösterildi. | 767,6 ms | PASS |
 | Board | Kanonik görevler beş kolona projekte edilir. | “22 kart · beş kolon” görünür; hata yok. | 805,5 ms | PASS |
 | Activity | Olay akışı ve aktör/görünüm filtreleri kullanılabilir. | 3 olay ve iki filtre grubu görünür; hata yok. | 780,6 ms | PASS |
-| Ask | Soru öncesi tarama makbuzu görünür; soru yerel zincirde kaynaklı cevaplanır. | Makbuz 14 kapsam · 23 görev · 11 karar gösterdi. “Hosted demo kararı nedir?” sorusu iki kaynak alıntılı, orta güvenli cevap döndürdü. | 933,6 ms | PASS |
+| Ask | Soru öncesi tarama makbuzu görünür; retrieval ve atıf UI zinciri çalışır. | Makbuz 14 kapsam · 23 görev · 11 karar gösterdi. `/query` 200; retrieval zinciri çalıştı ve UI iki kaynak atfını çizdi. Judge fake olduğu ve soruyu anlamsal değerlendirmediği için cevap metninin doğruluğu bu RC'de doğrulanmadı. | 933,6 ms | PASS |
 
 Süre, doğrudan route navigasyonundan akış koşulunun ve varsa etkileşimin
 tamamlanmasına kadardır. Vite modül istekleri dâhildir; production performans
@@ -71,7 +71,7 @@ tarafından ekran ekran kontrol edildi:
 | Scope | DONMUŞ v1, kapsam içi/dışı; sıfır-AI nedeniyle dürüst boş karar paneli | PASS |
 | Board | 22 kart ve beş kolon | PASS |
 | Activity | 3 olay ve filtre kontrolleri | PASS |
-| Ask | 14 kapsam · 23 görev · 11 karar makbuzu ve kaynak alıntılı cevap | PASS |
+| Ask | 14 kapsam · 23 görev · 11 karar makbuzu; retrieval sonucu ve iki kaynak atfının çizimi | PASS |
 
 Kalıcı kanıt:
 
@@ -108,10 +108,13 @@ değerler mevcut eval sonucuyla aynı kaldı. Canlı provider kalibrasyonu
 
 ## Sıfır dış AI çağrısı kanıtı
 
-Üç bağımsız iz aynı sonucu verdi:
+İki konfigürasyon izi ile bir tam ağ izi aynı sonucu destekledi:
 
 1. `/health`: `gemini=missing`, `fallback=missing`, GitHub auth `missing`.
-2. Backend başlangıç kaydı: `FakeJudgeAdapter` + `HashEmbeddings` +
+   Bu alanlar yalnız Radar judge zincirini yansıtır; Ask/Scope judge'ına
+   yapısal olarak kördür.
+2. Backend başlangıç ve kalıcı mod kaydı: Radar `FakeJudgeAdapter`, Ask
+   `FakeQueryJudgeAdapter`, embeddings `HashEmbeddings` ve GitHub
    `FakeGitHubAdapter`.
 3. Beş akışın tam tarayıcı Network kaydı: gözlenen host yalnız
    `127.0.0.1`; Gemini, Groq, Ollama veya başka bir dış host yok.
@@ -134,7 +137,7 @@ Production erişilebilirliği için #238'deki AI'sız smoke kanıtı alıntılan
   altı SPA route'un doğrudan/refresh kontrolleri geçti.
 - [Yeşil terminal ekran görüntüsü](Screenshots/smoke-yesil-terminal-2026-07-30.png).
 - [Bilinçli kırmızı koşum](Screenshots/smoke-kirmizi.md):
-  yanlış web hedefinde çıkış `2`, 14 hata; smoke'un hatayı gerçekten
+  yanlış web hedefinde çıkış `1`, 14 hata; smoke'un hatayı gerçekten
   yakaladığı doğrulandı.
 - [Kırmızı terminal ekran görüntüsü](Screenshots/smoke-kirmizi-terminal-2026-07-30.png).
 

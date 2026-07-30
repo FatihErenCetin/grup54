@@ -10,7 +10,8 @@
     "browser_visible": true,
     "backend": "local",
     "github": "FakeGitHubAdapter",
-    "judge": "FakeJudgeAdapter",
+    "radar_judge": "FakeJudgeAdapter",
+    "query_judge": "FakeQueryJudgeAdapter",
     "embeddings": "HashEmbeddings",
     "gemini_key": "empty",
     "groq_key": "empty"
@@ -82,6 +83,9 @@
       "interaction": {
         "scan_receipt": "Tarandı: kapsam ✓ · 23 görev ✓ · son 48 saatte 0 olay ✓ · 11 karar ✓",
         "question": "Hosted demo kararı nedir?",
+        "validated": "retrieval zinciri ve iki kaynak atfının UI çizimi",
+        "answer_semantics_validated": false,
+        "answer_semantics_note": "FakeQueryJudgeAdapter soruyu anlamsal değerlendirmez; cevap metni kalite kanıtı değildir.",
         "answer_excerpt": "Soru: Hosted demo kararı nedir?\n\nHosted demo sertleştirme: tek-repo pin + IP/rate cap + cached verdict (Ek F, #63) [1] Hosted demo: Fly backend + Vercel + webhook [2]\n\norta güven\n·\ncevap anı: 30.07.2026 23:42:30\n·\ncommit aaa1111\nKaynak alıntıları\n1\nkapsam\n.harness/scope/sprint-3.md#item-7\nHosted demo sertleştirme: tek-repo pin + IP/rate cap + cached verdict (Ek F, #63)\n2\ngörev\nT-34\nKaynağı aç ↗\nHosted demo: Fly backend + Vercel + webhook\n\nAranan kaynaklar: 14 kapsam · 23 görev · 11 karar · 2 olay · 1 PR\n\nTakip:\n.harness/scope/sprint-3.md#item-7 kapsam maddesinin gerekçesi nedir?\nT-34 görevinin"
       },
       "passed": true
