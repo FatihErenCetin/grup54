@@ -304,3 +304,267 @@ def test_rebuild_RADARIN_degil_GECMISIN_limitini_kullanir():
         f"gecmis limiti ({s.GITHUB_HISTORY_LIMIT}) radar limitinden "
         f"({s.GITHUB_BACKFILL_LIMIT}) buyuk olmali; degilse ayrim anlamsiz"
     )
+
+
+# ---------------------------------------------------------------------------
+# #331 — GEÇMİŞ KURTARMA + KART KÜMESİ. Ölçülmüş üç kök neden:
+#   (a) transitions_from_resources() yazılmış+test edilmiş ama prodüksiyonda
+#       HİÇ çağrılmıyordu -> board yalnız webhook canlıya alındıktan SONRAKİ
+#       olayları görebiliyordu (29 Tem ölçümü: 22 kartın 9'u yanlış).
+#   (b) kart kümesi .harness/tasks/'ın 22 dosyasıyla donmuştu (repoda ~150 issue).
+#   (c) fold "son satır kazanır" derken canlı yol monotonluk uyguluyordu.
+# ---------------------------------------------------------------------------
+
+
+def _github_with(prs=None, issues=None):
+    """`GitHubPort`in GERÇEK ŞEKİLLİ ham kaynak döndüren fake'i.
+
+    MagicMock KULLANILMAZ: `MagicMock(spec=GitHubPort).fetch_backfill_resources()`
+    sessizce boş iterable gibi davranır — yani kablolama SİLİNSE BİLE testler
+    yeşil kalırdı (bu issue'nun kök nedeninin ta kendisi: "kodda var" ile
+    "çalışıyor" aynı şey değil).
+    """
+    from ensemble.integrations.github.fake import FakeGitHubAdapter
+    from ensemble.ports import BackfillResources
+
+    return FakeGitHubAdapter(
+        events=[],
+        backfill_resources=BackfillResources(prs=prs or [], issues=issues or []),
+    )
+
+
+def _bos_ai_portlari():
+    from ensemble.ports import EmbeddingsPort
+    from ensemble.store.vector_store import LocalVectorIndex
+
+    embeddings = MagicMock(spec=EmbeddingsPort)
+    embeddings.embed.return_value = []
+    return LocalVectorIndex(), embeddings
+
+
+def test_rebuild_GECMISI_github_kaynaklarindan_kurtarir():
+    """(a) KİLİDİ: DB'de HİÇ task_status_events satırı yokken (webhook o gün
+    henüz canlı değildi) rebuild, GitHub'ın anlık kaynaklarından geçmişi
+    yeniden üretmeli.
+
+    Senaryo canlıdan alınmıştır: T-190'ın issue'su 2026-07-27T13:57:58'de
+    kapandı, webhook 14:06'da canlıya alındı — kart bugüne kadar `in_progress`
+    kaldı.
+
+    MUTASYON: rebuild.py'deki `transitions_from_resources(...)` +
+    `append_status_events(...)` bloğunu sil -> kart `in_progress` kalır,
+    `backfill_transitions` 0 olur, bu test kırmızı olur.
+    """
+    session = _fresh_session()
+    harness = _mock_harness(
+        tasks=[{"task_id": "T-190", "title": "Deploy runbook", "status": "in_progress"}]
+    )
+    github = _github_with(
+        issues=[
+            {
+                "number": 190,
+                "title": "Deploy runbook",
+                "updated_at": "2026-07-27T13:57:58Z",
+                "state": "closed",
+            }
+        ]
+    )
+    vector_index, embeddings = _bos_ai_portlari()
+
+    res = rebuild_projection(
+        session, harness, github=github, vector_index=vector_index, embeddings=embeddings
+    )
+
+    assert res["backfill_transitions"] == 1
+    row = session.query(TaskProjectionRow).filter_by(task_id="T-190").one()
+    assert row.status == "done"
+    assert row.seed_status == "in_progress"  # tohum korunur, fold üstüne biner
+    assert row.last_transition_at is not None
+    assert res["orphan_transitions"] == 0
+
+
+def test_rebuild_HARNESS_TE_OLMAYAN_github_issue_su_icin_kart_acar():
+    """(b) KİLİDİ: kart kümesi `.harness/tasks/` ile sınırlı değil.
+
+    MUTASYON: rebuild.py'deki `TaskProjectionRow.from_github_issue` döngüsünü
+    sil -> T-324 kartı hiç oluşmaz, geçişi `orphan_transitions`e düşer ve bu
+    test kırmızı olur.
+    """
+    session = _fresh_session()
+    harness = _mock_harness(tasks=[])  # .harness'te HİÇ dosya yok
+    github = _github_with(
+        issues=[
+            {
+                "number": 324,
+                "title": "Radar derinlik",
+                "updated_at": "2026-07-29T10:00:00Z",
+                "state": "closed",
+                "assignee": {"login": "FatihErenCetin"},
+            },
+            {
+                "number": 331,
+                "title": "Board kendiliğinden dolmuyor",
+                "updated_at": "2026-07-30T08:00:00Z",
+                "state": "open",
+            },
+        ]
+    )
+    vector_index, embeddings = _bos_ai_portlari()
+
+    res = rebuild_projection(
+        session, harness, github=github, vector_index=vector_index, embeddings=embeddings
+    )
+
+    assert res["tasks_from_harness"] == 0
+    assert res["tasks_from_github"] == 2
+    assert res["orphan_transitions"] == 0
+
+    kapali = session.query(TaskProjectionRow).filter_by(task_id="T-324").one()
+    assert kapali.status == "done"
+    assert kapali.title == "Radar derinlik"
+    assert kapali.assignee == "FatihErenCetin"
+    assert kapali.ref == "#324"
+
+    acik = session.query(TaskProjectionRow).filter_by(task_id="T-331").one()
+    # Açık issue: geçiş üretilmez, tohum `backlog`ta kalır (uydurma yok).
+    assert acik.status == "backlog"
+    assert acik.last_transition_at is None
+
+
+def test_rebuild_HARNESS_KAZANIR_github_basligi_tohumu_ezmez():
+    """`.harness` kanoniktir (dizin_yapisi §7): aynı task_id hem dosyada hem
+    GitHub'da varsa başlık/assignee/tohum DOSYADAN gelir.
+
+    MUTASYON: `if row.task_id in task_rows: continue` kontrolünü kaldır ->
+    başlık "GitHub başlığı" olur ve bu test kırmızı olur.
+    """
+    session = _fresh_session()
+    harness = _mock_harness(
+        tasks=[{"task_id": "T-64", "title": "Harness başlığı", "status": "backlog"}]
+    )
+    github = _github_with(
+        issues=[
+            {
+                "number": 64,
+                "title": "GitHub başlığı",
+                "updated_at": "2026-07-20T10:00:00Z",
+                "state": "open",
+            }
+        ]
+    )
+    vector_index, embeddings = _bos_ai_portlari()
+
+    res = rebuild_projection(
+        session, harness, github=github, vector_index=vector_index, embeddings=embeddings
+    )
+
+    assert res["tasks_from_harness"] == 1
+    assert res["tasks_from_github"] == 0
+    row = session.query(TaskProjectionRow).filter_by(task_id="T-64").one()
+    assert row.title == "Harness başlığı"
+    assert row.ref is None
+
+
+def test_rebuild_gecmis_backfilli_IDEMPOTENT():
+    """Aynı GitHub anlık görüntüsüyle iki kez rebuild: ikinci çağrıda YENİ
+    geçiş satırı EKLENMEZ (append-only günlük çoğalmaz) ve sonuç bit-bit aynı.
+
+    MUTASYON: `append_status_events` yerine düz `session.add_all` kullanılırsa
+    ikinci rebuild 1 yerine 2 satır yazar ve bu test kırmızı olur.
+    """
+    session = _fresh_session()
+    harness = _mock_harness(tasks=[{"task_id": "T-190", "title": "X", "status": "todo"}])
+    issues = [
+        {"number": 190, "title": "X", "updated_at": "2026-07-27T13:57:58Z", "state": "closed"}
+    ]
+    vector_index, embeddings = _bos_ai_portlari()
+
+    ilk = rebuild_projection(
+        session,
+        harness,
+        github=_github_with(issues=issues),
+        vector_index=vector_index,
+        embeddings=embeddings,
+    )
+    ikinci = rebuild_projection(
+        session,
+        harness,
+        github=_github_with(issues=issues),
+        vector_index=vector_index,
+        embeddings=embeddings,
+    )
+
+    assert ilk["backfill_transitions"] == 1
+    assert ikinci["backfill_transitions"] == 0  # ikinci kez YAZILMAZ
+    assert session.query(TaskStatusEventRow).filter_by(task_id="T-190").count() == 1
+    assert ilk["tasks"] == ikinci["tasks"]
+    assert session.query(TaskProjectionRow).filter_by(task_id="T-190").one().status == "done"
+
+
+def test_fold_CANLI_YOLLA_ayni_monotonluk_kuralini_kullanir():
+    """(c) KİLİDİ: fold artık `next_status`'ü çağırır — "son satır kazanır" DEĞİL.
+
+    Canlıdan ölçülen senaryo (T-44): issue KAPANDI (done) ama aynı dalda hâlâ
+    AÇIK bir PR var (in_review) ve PR'ın `updated_at`'i daha yeni. Eski
+    "son satır kazanır" kuralı kartı done'dan in_review'a GERİ alıyordu;
+    canlı yol (Projector.apply_transitions -> next_status) ise done'da
+    tutuyordu. Aynı veriden iki farklı board = rebuild'in "canlı yolla aynı
+    sonucu verir" iddiasının çürümesi.
+
+    MUTASYON: fold_status içindeki `next_status(...)` çağrısını
+    `current = row.status`a geri al -> sonuç `in_review` olur, bu test
+    kırmızı olur.
+    """
+    kapanis = TaskStatusEventRow(
+        source_event_id="issue:44:2026-07-27T13:00:00Z",
+        task_id="T-44",
+        repo_full_name=_REPO,
+        status="done",
+        ts=datetime(2026, 7, 27, 13, 0),
+        reason="issue_closed",
+    )
+    acik_pr = TaskStatusEventRow(
+        source_event_id="pr:300:2026-07-29T18:00:00Z",
+        task_id="T-44",
+        repo_full_name=_REPO,
+        status="in_review",
+        ts=datetime(2026, 7, 29, 18, 0),
+        reason="pr_opened",
+    )
+
+    status, last_ts, last_event_id = fold_status("todo", [kapanis, acik_pr])
+
+    assert status == "done"
+    # "En son GÖRÜLEN olay" yine ilerler — durum değişmedi diye zaman donmaz.
+    assert last_ts == datetime(2026, 7, 29, 18, 0)
+    assert last_event_id == "pr:300:2026-07-29T18:00:00Z"
+
+
+def test_fold_reopen_done_u_hala_geri_alir():
+    """Monotonluğun TEK bilinçli istisnası (`resets=True`) fold'da da geçerli —
+    aksi halde yeniden açılan bir issue sonsuza dek done kalırdı.
+
+    MUTASYON: fold'da `resets` alanı okunmayıp `False` sabitlenirse sonuç
+    `done` olur ve bu test kırmızı olur.
+    """
+    kapanis = TaskStatusEventRow(
+        source_event_id="issue:44:closed",
+        task_id="T-44",
+        repo_full_name=_REPO,
+        status="done",
+        ts=datetime(2026, 7, 27, 13, 0),
+        reason="issue_closed",
+    )
+    yeniden_acilis = TaskStatusEventRow(
+        source_event_id="issue:44:reopened",
+        task_id="T-44",
+        repo_full_name=_REPO,
+        status="todo",
+        ts=datetime(2026, 7, 28, 9, 0),
+        reason="issue_reopened",
+        resets=True,
+    )
+
+    status, _, _ = fold_status("backlog", [kapanis, yeniden_acilis])
+    assert status == "todo"
+

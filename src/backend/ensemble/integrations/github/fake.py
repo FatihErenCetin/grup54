@@ -7,6 +7,7 @@ karsi yazar - docs/sprint2-kontratlar.md'nin "fake adapter" ilkesi.
 from datetime import datetime, timezone
 
 from ensemble.models import NormalizedEvent
+from ensemble.ports import BackfillResources
 
 _DEFAULT_EVENTS: list[NormalizedEvent] = [
     NormalizedEvent(
@@ -47,11 +48,17 @@ class FakeGitHubAdapter:
         events: list[NormalizedEvent] | None = None,
         compare_files: dict[tuple[str, str], list[str]] | None = None,
         diffs: dict[tuple[str, str], dict[str, str]] | None = None,
+        backfill_resources: BackfillResources | None = None,
     ) -> None:
         self._events = events if events is not None else _DEFAULT_EVENTS
         self._compare_files = compare_files or {}
         self._diffs = diffs or {}
         self._seen_backfill_ids: set[str] = set()
+        # Varsayılan BOŞ (uydurma PR/issue yok): fake'in ürettiği
+        # `_DEFAULT_EVENTS` durum türetmeye yetecek alanları (state/merged_at/
+        # body/head.ref) zaten taşımıyor. Testler gerçek şekilli ham sözlükleri
+        # açıkça verir.
+        self._backfill_resources = backfill_resources or BackfillResources()
 
     def fetch_events(self, since: datetime) -> list[NormalizedEvent]:
         since_key = _datetime_key(since)
@@ -70,6 +77,14 @@ class FakeGitHubAdapter:
         fresh = [event for event in selected if event.id not in self._seen_backfill_ids]
         self._seen_backfill_ids.update(event.id for event in fresh)
         return fresh
+
+    def fetch_backfill_resources(self, limit_per_type: int = 50) -> BackfillResources:
+        if limit_per_type <= 0:
+            return BackfillResources()
+        return BackfillResources(
+            prs=self._backfill_resources.prs[:limit_per_type],
+            issues=self._backfill_resources.issues[:limit_per_type],
+        )
 
     def compare(self, base: str, head: str) -> list[str]:
         return self._compare_files.get((base, head), [])

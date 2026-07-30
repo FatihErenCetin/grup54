@@ -1,3 +1,4 @@
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import TYPE_CHECKING, Protocol
 
@@ -19,9 +20,33 @@ if TYPE_CHECKING:
 # oradan import edilecek. Buraya tekrar yazmıyoruz (GATE 1 kuralı).
 
 
+@dataclass(frozen=True)
+class BackfillResources:
+    """HAM GitHub REST kaynakları (PR + issue listeleri) — `NormalizedEvent`'e
+    İNDİRGENMEMİŞ hâlleri (#331).
+
+    Neden ayrı bir port metodu gerekti: `fetch_backfill_events()` ham payload'ı
+    `NormalizedEvent`'e daraltır ve durumun türediği alanları (`state`,
+    `merged_at`, PR `body`, `head.ref`, issue `title`/`assignee`) ATAR. Board'ın
+    GEÇMİŞİ tam olarak o alanlardan gelir; bu yüzden `engine/status_rules.py::
+    transitions_from_resources` ile `TaskProjectionRow.from_github_issue`
+    beslenecek ham sözlükler ikinci bir yoldan taşınır. `NormalizedEvent`'i
+    bu alanlarla şişirmek radar/graph/activity'nin (üç ayrı tüketici)
+    sözleşmesini durum-türetimi uğruna genişletirdi.
+
+    `issues` LİSTESİ PR'LARDAN ARINDIRILMIŞTIR: GitHub'ın `/issues` ucu PR'ları
+    da döndürür ve numaralar ortak havuzdan gelir — filtrelenmezse "PR #328
+    kapandı" sinyali `T-328` diye SAHTE bir issue kartı üretirdi.
+    """
+
+    prs: list[dict] = field(default_factory=list)
+    issues: list[dict] = field(default_factory=list)
+
+
 class GitHubPort(Protocol):
     def fetch_events(self, since: datetime) -> list[NormalizedEvent]: ...
     def fetch_backfill_events(self, limit_per_type: int = 50) -> list[NormalizedEvent]: ...
+    def fetch_backfill_resources(self, limit_per_type: int = 50) -> BackfillResources: ...
     def compare(self, base: str, head: str) -> list[str]: ...
     def get_diff(self, base: str, head: str) -> dict[str, str]: ...
 

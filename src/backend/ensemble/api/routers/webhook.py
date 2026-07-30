@@ -18,6 +18,12 @@ BAĞIMSIZ sinyaldir — biri boş dönse bile diğeri dolu olabilir (örn. bir P
 `synchronize` action'ı her zaman bir `NormalizedEvent` üretir ama hiçbir zaman
 bir `StatusTransition` üretmez; tersi de mümkün olsun diye ikisi AYRI AYRI
 kontrol edilir, biri diğerini sessizce yutmaz).
+
+#331 (D-60): `issues` event'inde ÜÇÜNCÜ bir iş daha yapılır —
+`Projector.upsert_issue_cards`. Kart kümesi artık `.harness/tasks/` ile
+sınırlı DEĞİL: hiç görülmemiş bir issue geldiğinde kartı ANINDA açılır
+(eskiden yalnız geçişi üretilir, o da "unmatched" diye loglanıp panoya hiç
+düşmezdi). Sıra önemli: kart açma, geçiş uygulamasından ÖNCE.
 """
 
 import hashlib
@@ -142,6 +148,18 @@ async def github_webhook(
     session_factory = request.app.state.session_factory
     with session_factory() as session:
         projector = Projector(session, harness_port, repo_full_name=repo_full_name)
+
+        # #331 — "kendiliğinden DOLAN board": yeni bir GitHub issue'su artık
+        # `.harness/tasks/` dosyası beklemeden kart üretir. Geçişten ÖNCE
+        # çalışmalı; aksi halde `apply_transitions` aynı payload'ın kapanış
+        # geçişini "unmatched" sayardı (bugüne kadarki davranış).
+        issue_payload = payload.get("issue") if x_github_event == "issues" else None
+        card_result = (
+            projector.upsert_issue_cards([issue_payload])
+            if isinstance(issue_payload, dict)
+            else {"created": 0, "existing": 0}
+        )
+
         result = (
             projector.project_events(events)
             if events
@@ -152,5 +170,17 @@ async def github_webhook(
             if transitions
             else {"applied": 0, "unchanged": 0, "unmatched": 0}
         )
+        # `upsert_issue_cards` bilerek commit etmez (bkz. docstring). Yukarıdaki
+        # iki metod kendi içinde commit eder ama İKİSİ DE atlanabilir (events ve
+        # transitions birlikte boşsa) — o durumda yeni kart oturumda ASILI kalıp
+        # sessizce kaybolurdu. Bu commit o deliği kapatır; bekleyen bir şey
+        # yoksa no-op.
+        session.commit()
 
-    return {"status": "accepted", "event": x_github_event, **result, **transition_result}
+    return {
+        "status": "accepted",
+        "event": x_github_event,
+        **result,
+        **transition_result,
+        "cards_created": card_result["created"],
+    }

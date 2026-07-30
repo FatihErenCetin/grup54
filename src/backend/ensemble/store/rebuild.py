@@ -31,6 +31,11 @@ from typing import Iterable
 
 from sqlalchemy.orm import Session
 
+from ensemble.engine.status_rules import (
+    StatusTransition,
+    next_status,
+    transitions_from_resources,
+)
 from ensemble.ports import EmbeddingsPort, GitHubPort, VectorIndexPort
 from ensemble.store.models import (
     DEFAULT_REPO_FULL_NAME,
@@ -94,6 +99,17 @@ def fold_status(
     sorumluluğu — İş 1); burada yalnızca sıralı katlama yapılır, ham GitHub
     event tipinden yeniden türetme YOKTUR.
 
+    Katlama kuralı `status_rules.next_status`'tür — CANLI yolun (webhook →
+    `Projector.apply_transitions`) kullandığı kuralın TA KENDİSİ (#331).
+    Eskiden burada "son satır kazanır" vardı; `engine/projector.py`'nin
+    docstring'i bu ayrışmayı açık bir entegrasyon notu olarak bırakmıştı
+    (İş 2/3 mutabakatı). Geçmiş backfill'i devreye girince not teorik olmaktan
+    çıktı: ÖLÇÜLDÜ (2026-07-30, repodaki 315 gerçek geçiş) — T-44'ün issue'su
+    kapalı ama dalında hâlâ AÇIK bir PR var; "son satır kazanır" kartı
+    done'dan in_review'a GERİ alıyordu, canlı yol ise done'da tutuyordu. Aynı
+    veriden iki farklı board = rebuild'in "canlı yolla AYNI sonucu verir"
+    iddiasının çürümesi. Tek kural: 143/144 → 144/144 doğru.
+
     Args:
         seed: `.harness/tasks/T-<id>.md` dosyasındaki tohum `status`.
         rows: bu task_id için birikmiş TaskStatusEventRow satırları.
@@ -108,7 +124,20 @@ def fold_status(
     last_ts: datetime | None = None
     last_event_id: str | None = None
     for row in ordered:
-        current = row.status
+        current = next_status(
+            current,
+            StatusTransition(
+                task_id=row.task_id,
+                status=row.status,
+                ts=row.ts,
+                source_event_id=row.source_event_id,
+                reason=row.reason,
+                resets=bool(row.resets),
+            ),
+        )
+        # `last_transition_at` durum DEĞİŞMESE de ilerler: "bu kartla ilgili en
+        # son GÖRÜLEN olay" bilgisidir, "en son DEĞİŞEN durum" değil — canlı
+        # yol (projector) da aynı şeyi yapar (unchanged dalı).
         last_ts = row.ts
         last_event_id = row.source_event_id
 
@@ -139,6 +168,10 @@ def rebuild_projection(
 
     Sıra ÖNEMLİ ve SABİTTİR:
       a) tasks/presence — `.harness` tohumundan kurulur (silinip yeniden yazılır).
+      a2) kart kümesi + geçmiş — `github` verilmişse HAM PR/issue kaynaklarından
+         eksik kartlar açılır ve geçmiş geçişler `task_status_events`'e yazılır
+         (#331). (a)'dan SONRA olmalı ki `.harness` kartları kazansın, (c)'den
+         ÖNCE olmalı ki yazılan geçişler aynı rebuild'de katlansın.
       b) events/vector_index — `github` verilmişse GitHub'dan seed edilir (#218).
       c) transitions — `task_status_events` (`ts`, `source_event_id`) sırasıyla
          (a)'da kurulan tohumun ÜZERİNE katlanır (fold, D-55). Fold, tohum
@@ -158,27 +191,51 @@ def rebuild_projection(
     edilir; bu yüzden art arda iki çağrı BİT-BİT AYNI sonucu üretir
     (idempotent).
 
-    .harness'te karşılığı olmayan bir task_id için geçiş bulunursa: satır
-    `task_status_events`'te KALIR (kaybolmaz) ama `task_projection`'a yeni kart
-    UYDURULMAZ — bu satırlar `orphan_transitions` olarak sayılır (fail-open
-    üretmez, sessizce yutulmaz).
+    Ne `.harness`'te ne GitHub issue'ları arasında karşılığı olan bir task_id
+    için geçiş bulunursa: satır `task_status_events`'te KALIR (kaybolmaz) ama
+    `task_projection`'a yeni kart UYDURULMAZ — bu satırlar `orphan_transitions`
+    olarak sayılır (fail-open üretmez, sessizce yutulmaz).
+
+    GEÇMİŞ + KART KÜMESİ (#331, `github` verildiğinde):
+      * `github.fetch_backfill_resources()` HAM PR/issue kaynaklarını getirir;
+        `status_rules.transitions_from_resources` ile geçmişteki geçişler
+        türetilip `task_status_events`'e (append-only, idempotent) yazılır.
+        Bu kablolama yokken `transitions_from_resources` yazılmış+test edilmiş
+        ama HİÇ ÇAĞRILMAMIŞTI: board webhook canlıya alınmadan önceki hiçbir
+        kapanışı göremiyordu (ölçüldü 29 Tem: 22 kartın 9'u yanlış).
+      * Kart kümesi artık `.harness/tasks/` ile SINIRLI DEĞİL: `.harness`'te
+        karşılığı olmayan her GERÇEK GitHub issue'su için kart üretilir
+        (`TaskProjectionRow.from_github_issue`). `.harness` KAZANIR — aynı
+        task_id için dosya varsa GitHub'dan kart üretilmez, tohum/başlık/
+        assignee `.harness`'ten gelir.
 
     Args:
         session: aktif SQLAlchemy oturumu (bu fonksiyon commit/rollback eder).
         harness: `.harness/` okuyucusu (tasks/active tohumu).
         github: verilirse `events` + `vector_index` GitHub backfill'inden
-            seed edilir. `None` ise (varsayılan) yalnızca tasks/presence/fold
-            çalışır — mevcut testlerle geriye dönük uyumlu.
-        backfill_limit: `github.fetch_backfill_events(limit_per_type=...)`.
+            seed edilir, GEÇMİŞ geçişleri türetilir ve issue kartları eklenir.
+            `None` ise (varsayılan) yalnızca tasks/presence/fold çalışır —
+            mevcut testlerle geriye dönük uyumlu.
+        backfill_limit: `github.fetch_backfill_events(limit_per_type=...)` ve
+            `github.fetch_backfill_resources(limit_per_type=...)`.
         vector_index: `github` verilmişse ZORUNLU (aksi halde ValueError).
             `github` verilmese BİLE geçilirse, birikmiş (stale) vektörler
             boş listeyle `replace_all` edilerek TEMİZLENİR.
         embeddings: `github` verilmişse ZORUNLU (aksi halde ValueError).
 
     Returns:
-        {"tasks": N, "presence": M, "events": E,
+        {"tasks": N, "tasks_from_harness": H, "tasks_from_github": G,
+         "presence": M, "events": E, "backfill_transitions": B,
          "transitions_applied": K, "orphan_transitions": O}
     """
+    # Programlama-hatası kapısı EN BAŞTA: `github` verilip vector_index/
+    # embeddings verilmemesi bir yapılandırma hatasıdır. Kontrol eskiden
+    # (b) bloğunun içindeydi; (a2) geçmiş backfill'i (#331) araya girince
+    # bu, hata fırlamadan ÖNCE iki GitHub isteği atılması demek olurdu
+    # (rollback DB'yi kurtarır ama harcanan rate-limit geri gelmez).
+    if github is not None and (vector_index is None or embeddings is None):
+        raise ValueError("github port requires both vector_index and embeddings for rebuild")
+
     # Yeni vektörleri DB commit'ten önce hazırla (staging). Bu sayede hata
     # çıkarsa vector index hiç değiştirilmez (build-then-swap, #218).
     staged_vectors: list[tuple[str, list[float], dict]] = []
@@ -195,6 +252,46 @@ def rebuild_projection(
         for task_data in tasks:
             row = TaskProjectionRow.from_harness(task_data, repo_full_name=repo_full_name)
             task_rows[row.task_id] = row
+        harness_task_count = len(task_rows)
+
+        # --- a2) GEÇMİŞ + kart kümesi: HAM GitHub kaynakları (#331) ---
+        # Ham PR/issue sözlükleri; `fetch_backfill_events`'in ürettiği
+        # NormalizedEvent bu iş için YETMEZ (state/merged_at/body/head.ref/
+        # title/assignee alanlarını atar — bkz. ports.BackfillResources).
+        backfill_transitions = 0
+        if github is not None:
+            resources = github.fetch_backfill_resources(limit_per_type=backfill_limit)
+
+            # Kart kümesi: `.harness` KAZANIR (dizin_yapisi §7) — yalnız
+            # `.harness`'te KARŞILIĞI OLMAYAN gerçek issue'lar için kart
+            # üretilir. Böylece board 22 dosyayla sınırlı kalmaz ama
+            # `.harness`'teki başlık/assignee GitHub tarafından EZİLMEZ.
+            for issue in resources.issues:
+                row = TaskProjectionRow.from_github_issue(issue, repo_full_name=repo_full_name)
+                if row.task_id in task_rows:
+                    continue
+                task_rows[row.task_id] = row
+
+            # Geçmiş geçişler: kalıcı günlüğe append-only yazılır. Aynı
+            # (source_event_id, task_id) ikinci rebuild'de ÇOĞALMAZ →
+            # rebuild idempotent kalır.
+            transitions = transitions_from_resources(resources.prs, resources.issues)
+            backfill_transitions = append_status_events(
+                session,
+                [
+                    TaskStatusEventRow(
+                        source_event_id=t.source_event_id,
+                        task_id=t.task_id,
+                        repo_full_name=repo_full_name,
+                        status=t.status,
+                        ts=t.ts,
+                        reason=t.reason,
+                        resets=t.resets,
+                    )
+                    for t in transitions
+                ],
+            )
+
         session.add_all(task_rows.values())
         session.flush()
 
@@ -210,9 +307,8 @@ def rebuild_projection(
 
         event_rows: list[EventRow] = []
         if github is not None:
-            if vector_index is None or embeddings is None:
-                raise ValueError("github port requires both vector_index and embeddings for rebuild")
-
+            # `embeddings`/`vector_index` burada GARANTİLİ dolu — fonksiyonun
+            # ilk satırındaki fail-closed kapı bunu zaten doğruladı.
             events = github.fetch_backfill_events(limit_per_type=backfill_limit)
             event_rows = [EventRow.from_domain(e, repo_full_name=repo_full_name) for e in events]
             session.add_all(event_rows)
@@ -261,9 +357,11 @@ def rebuild_projection(
             transitions_applied += len(rows)
             task_row = task_rows.get(task_id)
             if task_row is None:
-                # .harness'te olmayan task_id — kaybolmaz (satır
-                # task_status_events'te kalır), ama task_projection'a
-                # UYDURULMAZ.
+                # Ne .harness'te ne GitHub issue'ları arasında olan task_id —
+                # kaybolmaz (satır task_status_events'te kalır), ama
+                # task_projection'a UYDURULMAZ. Tipik kaynak: bir PR'ın
+                # `Closes #N`'i ya da `T-N-` dalı, artık var olmayan/silinmiş
+                # bir issue'ya işaret ediyor.
                 orphan_transitions += len(rows)
                 continue
             folded_status, last_ts, last_event_id = fold_status(task_row.seed_status, rows)
@@ -281,8 +379,15 @@ def rebuild_projection(
 
     return {
         "tasks": len(task_rows),
+        # Kartın NEREDEN geldiği görünür kalır (#331): "kart kümesi donmuş mu"
+        # sorusu tek bakışta cevaplanabilsin, sessizce şişmesin/erimesin.
+        "tasks_from_harness": harness_task_count,
+        "tasks_from_github": len(task_rows) - harness_task_count,
         "presence": len(presence_rows),
         "events": len(event_rows),
+        # Bu rebuild'de günlüğe YENİ eklenen geçmiş geçiş sayısı (idempotent:
+        # ikinci rebuild'de 0 olması BEKLENEN, hata değil).
+        "backfill_transitions": backfill_transitions,
         "transitions_applied": transitions_applied,
         "orphan_transitions": orphan_transitions,
     }

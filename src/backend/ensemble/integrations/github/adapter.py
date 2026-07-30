@@ -7,7 +7,7 @@ from ensemble.integrations.github.client import GitHubRestClient
 from ensemble.integrations.github.errors import GitHubConfigError, GitHubNotFoundError
 from ensemble.integrations.github.normalize import commit_to_event, issue_to_event, pr_to_event
 from ensemble.models import NormalizedEvent, ScopeSubject
-from ensemble.ports import ScopeSubjectNotFoundError
+from ensemble.ports import BackfillResources, ScopeSubjectNotFoundError
 
 _PR_REF_RE = re.compile(r"(?:^PR[-# ]?|/pull/|^#)(\d+)$", re.IGNORECASE)
 
@@ -236,13 +236,44 @@ class GitHubAdapter:
             return []
         return [pr_to_event(pr) for pr in prs if datetime.fromisoformat(pr["updated_at"]) >= since]
 
-    def _fetch_recent_pr_events(self, limit: int) -> list[NormalizedEvent]:
-        prs = self._sayfali(
+    def _fetch_recent_prs(self, limit: int) -> list[dict]:
+        """Ham PR kaynakları — `pr_to_event`'in ve `transitions_from_resources`'un
+        ORTAK girdisi (tek fetch, tek `cache_key`; ikinci çağrı ETag/304 ile
+        aynı gövdeyi replay eder, rate-limit'e ikinci kez dokunmaz)."""
+        return self._sayfali(
             f"/repos/{self._owner}/{self._repo}/pulls",
             params={"state": "all", "sort": "updated", "direction": "desc"},
             cache_key="pulls:recent",
             limit=limit,
         )
+
+    def _fetch_recent_issues(self, limit: int) -> list[dict]:
+        """Ham issue kaynakları — PR'lar ELENMİŞ (`/issues` ucu PR'ları da
+        döndürür; numara havuzu ortak olduğu için elenmezse "PR #328" bir
+        `T-328` issue'su sanılırdı)."""
+        issues = self._sayfali(
+            f"/repos/{self._owner}/{self._repo}/issues",
+            params={"state": "all", "sort": "updated", "direction": "desc"},
+            cache_key="issues:recent",
+            limit=limit,
+        )
+        return [i for i in issues if "pull_request" not in i]
+
+    def fetch_backfill_resources(self, limit_per_type: int = 50) -> BackfillResources:
+        """Backfill'in HAM hâli (#331) — durum geçişi ve kart kimliği buradan türer.
+
+        `fetch_backfill_events()` ile AYNI iki isteği paylaşır (aynı
+        `cache_key`), yalnızca daraltmayı yapmaz.
+        """
+        if limit_per_type <= 0:
+            return BackfillResources()
+        return BackfillResources(
+            prs=self._fetch_recent_prs(limit_per_type),
+            issues=self._fetch_recent_issues(limit_per_type),
+        )
+
+    def _fetch_recent_pr_events(self, limit: int) -> list[NormalizedEvent]:
+        prs = self._fetch_recent_prs(limit)
         if not prs:
             return []
         return [pr_to_event(pr) for pr in prs]
@@ -259,12 +290,4 @@ class GitHubAdapter:
         return [issue_to_event(i) for i in issues if "pull_request" not in i]
 
     def _fetch_recent_issue_events(self, limit: int) -> list[NormalizedEvent]:
-        issues = self._sayfali(
-            f"/repos/{self._owner}/{self._repo}/issues",
-            params={"state": "all", "sort": "updated", "direction": "desc"},
-            cache_key="issues:recent",
-            limit=limit,
-        )
-        if not issues:
-            return []
-        return [issue_to_event(i) for i in issues if "pull_request" not in i]
+        return [issue_to_event(i) for i in self._fetch_recent_issues(limit)]

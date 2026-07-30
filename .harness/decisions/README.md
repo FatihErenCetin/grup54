@@ -61,3 +61,4 @@ migrasyon notunu bırakıyor.
 | [D-57](D-57-email-parola-uyeligi.md) | 2026-07-28 | Email + parola üyeliği S3'e alındı — D-23/D-28'in kapsamı değişti |
 | [D-58](D-58-cok-kiracili-repo-secimi.md) | 2026-07-28 | #79 tam yapılıyor — çok-kiracılı repo seçimi; D-23'ün son maddesi de değişti |
 | [D-59](D-59-events-presence-kontrat-sapmasi.md) | 2026-07-28 | `/events`+`/presence` kontrat sapması — dokümanı gerçeğe uydur (has_more/filtreler/presence-304 uygulanmıyor) |
+| [D-60](D-60-board-kart-kumesi-github-issue.md) | 2026-07-30 | Board kart kümesi `.harness/tasks/` ile sınırlı değil — GitHub issue'ları da kart üretir (çakışmada `.harness` kazanır) |

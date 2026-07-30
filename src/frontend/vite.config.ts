@@ -29,6 +29,14 @@ export default defineConfig(({ command, mode }) => {
     test: {
       environment: "jsdom",
       setupFiles: ["./tests/setup.ts"],
+      // TZ SABITLENDI (#331 dogrulama bulgusu). Sebep: naive damgayi
+      // (`2026-07-29T09:00:00`, zone eki YOK) `new Date()` YEREL saat sayar,
+      // `parseUtc` ise UTC. TZ=UTC'de ikisi ayni sonucu verir — yani CI
+      // (GitHub Actions varsayilan UTC) bu regresyonu YAKALAYAMIYORDU:
+      // olculdu, mutasyon TZ=Europe/Istanbul'da 1 failed, TZ=UTC'de 0 failed.
+      // Sifir olmayan bir ofset secmek, zaman-dilimi varsayimlarini testin
+      // gorebilecegi tek yer haline getirir.
+      env: { TZ: "Europe/Istanbul" },
     },
   };
 });

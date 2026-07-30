@@ -178,6 +178,40 @@ class TaskProjectionRow(Base):
             ref=data.get("ref"),
         )
 
+    @classmethod
+    def from_github_issue(cls, issue: dict, *, repo_full_name: str) -> "TaskProjectionRow":
+        """Ham GitHub issue kaynağından kart satırı — `.harness`'te DOSYASI
+        OLMAYAN gerçek işler için (#331).
+
+        Neden gerekli: kart kümesi `.harness/tasks/`'la sınırlıyken repoda
+        ~150 issue varken board'da 22 kart vardı; bugün açılan gerçek işler
+        (`T-319`/`T-324`/`T-327`) `unmatched` diye loglanıp panoya HİÇ
+        düşmüyordu — "kendiliğinden DOLAN board" vaadi tam burada kırılıyordu.
+
+        Tohum BİLEREK `backlog`: issue'nun açık/kapalı olduğu bilgisi tohuma
+        GÖMÜLMEZ, aynı GitHub anlık görüntüsünden `transitions_from_resources`
+        ile GEÇİŞ olarak üretilir ve fold ile katlanır (tek kural, iki yol
+        yerine). "Kapalı issue'yu doğrudan done tohumla" kestirmesi durumu
+        `task_status_events` günlüğünden KOPARIR — kanıtsız bir done olurdu.
+
+        `ref`, `#<numara>` olarak doldurulur: `.harness` tohumlu kartlarda bu
+        alan boştur, dolu olması kartın kaynağını UI'da görünür kılar.
+        """
+        number = issue["number"]
+        assignee = (issue.get("assignee") or {}).get("login")
+        if not assignee:
+            assignees = issue.get("assignees") or []
+            assignee = (assignees[0] or {}).get("login") if assignees else None
+        return cls(
+            task_id=f"T-{number}",
+            repo_full_name=repo_full_name,
+            title=issue.get("title") or "",
+            status="backlog",
+            seed_status="backlog",
+            assignee=assignee,
+            ref=f"#{number}",
+        )
+
 
 class PresenceRow(Base):
     """.harness/active/ projeksiyonu — kim ne üzerinde çalışıyor (canlı varlık)."""

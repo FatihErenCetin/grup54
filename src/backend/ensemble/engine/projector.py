@@ -10,14 +10,13 @@ bir metod olan `apply_transitions()` ile uygulanır: her geçiş önce
 `status_rules.next_status` (İş 1, monotonluk kararı TEK yerde) ile GÜNCEL
 DB durumu üzerinden İLERİ oynatılır.
 
-Not (entegrasyon notu, İş 2/3 arayüzü): `store/rebuild.py::fold_status` tam
-tersine ham `(seed + tüm satırlar)`dan kronolojik SIRAYLA "son satırın statüsü"
-kuralıyla yeniden kurar — `next_status`'u ÇAĞIRMAZ, yani rank/monotonluk
-korumasını rebuild YOLUNDA uygulamaz (yalnız canlı yol, burada, uygular). Çok
-nadir bir senaryoda (bir push'un ts'i, zaten `in_review`'a taşınmış bir PR
-olayından SONRA ise) canlı yol ile rebuild farklı sonuç üretebilir — bu, İş 2
-ile mutabakat gerektiren AYRI bir entegrasyon notu (bu görevin dosya kapsamı
-`store/rebuild.py`'yi İÇERMİYOR, bkz. GOREV 3/4 dosya kilidi).
+Entegrasyon notu KAPANDI (#331): `store/rebuild.py::fold_status` eskiden
+"son satırın statüsü" kuralıyla katlıyordu, yani `next_status`'u ÇAĞIRMIYOR
+ve monotonluk korumasını rebuild yolunda UYGULAMIYORDU — canlı yol ile rebuild
+farklı sonuç üretebiliyordu. Geçmiş backfill'i devreye girince bu ölçülebilir
+hale geldi (T-44: kapalı issue + hâlâ açık PR -> rebuild in_review, canlı yol
+done). Fold artık AYNI `next_status`'ü çağırır; monotonluk kararı gerçekten
+TEK yerde (`status_rules.next_status`).
 """
 
 import logging
@@ -91,6 +90,39 @@ class Projector:
             "events_processed": len(events),
             "presence_synced": len(presence_rows),
         }
+
+    def upsert_issue_cards(self, issues: list[dict]) -> dict[str, int]:
+        """Ham GitHub issue payload'larından EKSİK kartları açar (#331).
+
+        `apply_transitions` bilerek kart UYDURMAZ — elinde yalnız bir task_id
+        vardır, başlık/assignee bilgisi yoktur. Bu metodun elinde ise GERÇEK
+        issue nesnesi vardır: uydurma değil, GitHub'ın kendi verisidir. İkisi
+        AYRI kalır ki "geçişten kart türetme" yasağı gevşemesin.
+
+        `.harness` KAZANIR (dizin_yapisi §7): var olan bir satır ASLA
+        üzerine yazılmaz — `.harness/tasks/T-<id>.md`'nin başlığı/assignee'si
+        GitHub tarafından ezilmez. GitHub kaynaklı kartların içeriği bir
+        sonraki `rebuild_projection()`'da tazelenir (orada satırlar zaten
+        silinip yeniden kurulur).
+
+        Bu metod COMMIT ETMEZ — çağıran (`webhook`) aynı transaction'da
+        `apply_transitions`'ı çağırıp orada commit eder; böylece "kart açıldı
+        ama geçişi uygulanmadı" yarım durumu oluşamaz.
+
+        Returns:
+            {"created": N, "existing": M} — N+M == len(issues).
+        """
+        created = 0
+        existing = 0
+        for issue in issues:
+            row = TaskProjectionRow.from_github_issue(issue, repo_full_name=self.repo_full_name)
+            if self.session.get(TaskProjectionRow, (row.task_id, self.repo_full_name)) is not None:
+                existing += 1
+                continue
+            self.session.add(row)
+            self.session.flush()
+            created += 1
+        return {"created": created, "existing": existing}
 
     def apply_transitions(self, transitions: list[StatusTransition]) -> dict[str, int]:
         """GERÇEK GitHub olayından türetilmiş `StatusTransition`'ları uygular.

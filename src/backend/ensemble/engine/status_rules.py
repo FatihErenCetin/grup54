@@ -138,9 +138,22 @@ def _issue_transition(issue: dict, action: str | None) -> list[StatusTransition]
     return []
 
 
+def _merged(pr: dict) -> bool:
+    """PR merge edildi mi — İKİ ayrı payload şeklini birlikte karşılar (#331).
+
+    Webhook'un içindeki TAM PR nesnesi (`pull-request`) `merged: bool` taşır;
+    REST LİSTE ucu (`GET /repos/{o}/{r}/pulls` → `pull-request-simple`) o alanı
+    HİÇ TAŞIMAZ, yalnız `merged_at` verir. Yalnız `merged`'a bakmak backfill
+    yolunda HER merge'i "merge edilmemiş kapanış" sayardı — yani geçmişten
+    tek bir `done` bile üretilmezdi ve bu hatasız görünürdü (ölçüldü,
+    2026-07-30: repodaki 130 kapalı PR'ın 130'unda `merged` anahtarı YOK).
+    """
+    return bool(pr.get("merged") or pr.get("merged_at"))
+
+
 def _pr_transition_from_webhook(pr: dict, action: str | None) -> list[StatusTransition]:
     if action == "closed":
-        if pr.get("merged"):
+        if _merged(pr):
             return _pr_done_transitions(pr, reason="pr_merged")
         # Merge edilmemiş kapanış: kart PR'sız hâline kendiliğinden DÖNMEZ -
         # sessiz tahmin yok, geçiş üretilmez (kabul kriteri).
@@ -201,12 +214,15 @@ def transitions_from_resources(prs: list[dict], issues: list[dict]) -> list[Stat
     Açık bir issue'nun "yeni mi yoksa reopen mı" olduğu tek bir REST
     snapshot'ından ayırt edilemez → bilinçli no-op (sessiz tahmin yok).
 
-    Çağıran kablolama (`GitHubAdapter.fetch_events`/`fetch_backfill_events`)
-    bu işin kapsamı DIŞINDA — yalnız bu saf fonksiyon teslim edilir.
+    Kablolama (#331): `GitHubPort.fetch_backfill_resources()` →
+    `store/rebuild.py::rebuild_projection`. Bu fonksiyon yazıldığı gün
+    (D-55, İş 1) test edilmiş ama PRODÜKSİYONDA HİÇ ÇAĞRILMAMIŞTI; board
+    bu yüzden yalnız webhook canlıya alındıktan SONRAKİ olayları görebiliyordu
+    (ölçüldü, 29 Tem: 22 kartın 9'u yanlış, hepsi webhook öncesi kapanmış).
     """
     transitions: list[StatusTransition] = []
     for pr in prs:
-        if pr.get("merged"):
+        if _merged(pr):
             transitions.extend(_pr_done_transitions(pr, reason="pr_merged"))
         elif pr.get("state") == "open":
             transitions.extend(_pr_review_transition(pr, reason="pr_opened"))
