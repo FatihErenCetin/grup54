@@ -422,9 +422,20 @@ export function zamanYuzdesi(t: number, bas: number | null, son: number | null):
  * @param yuzdeler Şeritteki olayların X yüzdeleri, ZAMAN SIRASINDA.
  * @param enAzAralik İki noktanın aynı alt-satırda durabilmesi için gereken
  *                   en küçük yüzde farkı.
+ * @param enFazlaSatir Şerit yüksekliği tavanı. Neden gerekli: canlı ölçüm
+ *   (30 Tem) "dal bilgisi yok" şeridinde **309 olay** gösterdi; sınırsız
+ *   açılım o şeridi tek başına **1009 piksel** yaptı — ekranın üç katı.
+ *   Tavana ulaşınca olay, son noktası EN ESKİ olan satıra konur (en az kötü
+ *   çakışma). Yani çok yoğun şeritte noktalar üst üste binebilir; bu bir
+ *   kayıp değil — yoğunluğun kendisi okunabilir bir sinyal, ve zaman (X)
+ *   hiçbir koşulda kaydırılmıyor.
  * @returns Her olay için alt-satır indeksi (0 = şeridin ortası).
  */
-export function altSatirAta(yuzdeler: number[], enAzAralik = 2.2): number[] {
+export function altSatirAta(
+  yuzdeler: number[],
+  enAzAralik = 2.2,
+  enFazlaSatir = 6,
+): number[] {
   /** Alt-satır -> o satırdaki SON noktanın yüzdesi. */
   const sonYuzde: number[] = [];
   return yuzdeler.map((y) => {
@@ -434,7 +445,17 @@ export function altSatirAta(yuzdeler: number[], enAzAralik = 2.2): number[] {
         return satir;
       }
     }
-    sonYuzde.push(y);
-    return sonYuzde.length - 1;
+    if (sonYuzde.length < enFazlaSatir) {
+      sonYuzde.push(y);
+      return sonYuzde.length - 1;
+    }
+    // Tavan doldu: son noktası en geride kalan satır en az çakışmayı verir.
+    // Deterministik (ilk eşitlikte en küçük indeks kazanır).
+    let enIyi = 0;
+    for (let s = 1; s < sonYuzde.length; s++) {
+      if (sonYuzde[s] < sonYuzde[enIyi]) enIyi = s;
+    }
+    sonYuzde[enIyi] = y;
+    return enIyi;
   });
 }

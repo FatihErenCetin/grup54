@@ -246,6 +246,22 @@ describe("altSatirAta", () => {
   it("boş girdi → boş çıktı", () => {
     expect(altSatirAta([])).toEqual([]);
   });
+
+  it("şerit yüksekliğinin TAVANI var (canlıda 309 olaylı şerit 1009px'di)", () => {
+    // MUTASYON KİLİDİ: `sonYuzde.length < enFazlaSatir` kontrolünü kaldır ->
+    // satır sayısı sınırsız büyür, bu test kırılır.
+    const hepsiAyni = Array.from({ length: 50 }, () => 10); // hepsi aynı anda
+    const satirlar = altSatirAta(hepsiAyni, 2.2, 6);
+    expect(Math.max(...satirlar)).toBe(5); // 0..5 = 6 satır
+    expect(satirlar).toHaveLength(50);
+  });
+
+  it("tavan dolunca ZAMAN (X) kaydırılmaz — yalnız satır tekrar kullanılır", () => {
+    // Nokta ATILMAZ da: 50 olay -> 50 atama.
+    const satirlar = altSatirAta([0, 0, 0, 0, 0, 0, 0, 0], 2.2, 3);
+    expect(satirlar).toHaveLength(8);
+    expect(new Set(satirlar).size).toBeLessThanOrEqual(3);
+  });
 });
 
 describe("seritDizilimi — şerit üst sınırı (canlı veride 130 şerit ölçüldü)", () => {

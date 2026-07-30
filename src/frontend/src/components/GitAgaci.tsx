@@ -292,7 +292,10 @@ export default function GitAgaci({ olaylar }: { olaylar: SeritOlayi[] }) {
             />
             çakışma adayı (dosyasına başka dalda da dokunulmuş)
           </span>
-          <span>dikey konum anlamsız — yalnız üst üste binmeyi açar</span>
+          <span>
+            dikey konum anlamsız — yalnız üst üste binmeyi açar; çok yoğun şeritte
+            noktalar yine de binebilir (zaman ekseni asla kaydırılmaz)
+          </span>
         </div>
       </div>
 
