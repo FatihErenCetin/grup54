@@ -378,6 +378,34 @@ class GitHubPort(Protocol):
 | `AGENTIC_ACTIONS_MAX_PER_RUN` | `3` (min 1) | tur başına yazma tavanı; aşan kısım loglanır + rapora girer |
 
 Gerçek yazma = `ENABLED=true` **ve** `DRY_RUN=false` **ve** App'in `Pull requests: write` izni. Gerekçe, kapsam ayrımı ("MCP write-back" non-goal'undan farkı) ve kabul edilen riskler: `.harness/decisions/D-61-agentic-github-yazma-yolu.md`.
+## Ek I (30 Tem) — Onboarding sihirbazı uçları (#340, vizyon §8.5)
+
+> **Yalnız EKLEME.** Hiçbir donmuş imzaya (Ek B router'ları, S2 modelleri) dokunulmadı; yeni bir router (`/onboarding/*`) ve yalnız ona ait yeni modeller eklendi. `openapi.json` + `src/frontend/src/api/schema.d.ts` `make contracts` ile BİRLİKTE üretildi.
+
+### I1 · Uç imzaları
+
+| Uç | Girdi | Çıktı | LLM? |
+|---|---|---|---|
+| `GET /onboarding/durum` | — | `OnboardingDurum` | hayır |
+| `POST /onboarding/sorular` | `SorularIstegi{mod,tur,brief}` | `SorularYaniti{sorular,tur,tur_bitti,eksikler}` | **hayır** |
+| `POST /onboarding/brief` | `BriefIstegi{mod,serbest_metin,cevaplar,brief,varsayimlarla_doldur}` | `BriefYaniti{brief,eksikler,uyarilar,ai_kullanildi,degraded?}` | yalnız `mod="anlat"` ya da `varsayimlarla_doldur` |
+| `POST /onboarding/taslak` | `TaslakIstegi{brief}` | `TaslakYaniti{taslak,degraded?}` | **evet** (1 çağrı) |
+| `POST /onboarding/plan` | `PlanIstegi{storyler,kapasite}` | `SprintPlani` · 400 | **hayır** (deterministik) |
+| `POST /onboarding/uygula` | `UygulaIstegi{onay,brief,taslak,plan?}` | `YazmaSonucu` · 403 · 404 · 409 | hayır |
+
+### I2 · Donan kurallar (imza kadar bağlayıcı)
+
+- **Durum sunucuda TUTULMAZ.** Her uç taslağın tamamını alır ve döner; "şu anki taslak"ın sahibi istemcidir. Oturum tablosu/temizleyicisi YOK.
+- **K6 (kilitli):** `POST /onboarding/uygula` `onay.onaylandi is true` DEĞİLSE **403** döner ve *hiçbir dosyaya dokunmaz* (`.harness/` dizini bile oluşmaz). Kapı `onboarding/apply.py::harness_yaz`'ın ilk satırıdır; mutasyonla kilitli (`tests/unit/test_onboarding_onay_kapisi.py`).
+- **Yazma yalnız local:** `ENSEMBLE_MODE != "local"` → `uygula` **404** (`settings.py` KURAL 1'in aynısı, aynı gerekçe). Diğer beş uç her modda çalışır (jüri hosted demoda sihirbazı görebilsin).
+- **Yazma kökü = `Path.cwd()`** — ürünün geri kalanı `.harness/`'i `FileHarnessPort()` (varsayılan kök `"."`) ile cwd'den okuyor; masaüstü paketi (`packaging/launcher.py`) açılışta `os.chdir(data_dir)` yapıyor. Dosya konumundan türetilen bir kök orada .app paketinin içini gösterirdi.
+- **Üzerine YAZMA yok:** hedef `scope/sprint-N.md` (ya da task dosyası) zaten varsa **409**, dosya adları listelenir; PO'nun dondurduğu kapsam ezilmez.
+- **`degraded` (yeni model `OnboardingDegraded{asama,saglayici,neden}`):** `RadarResponse.degraded` deseninin aynısı (#252). LLM aşaması düşerse 200 + BOŞ taslak + DOLU `degraded`. Uydurma taslak ÜRETİLMEZ; `build_drafter` sağlayıcı yoksa `None` döner (bilinçli olarak `Fake*Drafter` YOK).
+- **Sağlayıcı zinciri:** Gemini → Groq yedeği (`FallbackOnboardingDrafter`, `engine/fallback.FallbackJudge` deseni). `LLM_PROVIDER=ollama` iken bulut yedeği **devreye girmez** (README "tam-yerel gizlilik modu" taahhüdü, #255 kararının aynısı).
+
+### I3 · Ek F ekleme: demo rate-limit artık POST da ölçer
+
+`api/rate_limit.py`'ye `AI_METERED_POST_PATHS = {"/onboarding/brief", "/onboarding/taslak"}` eklendi. Ek F'deki GET kovaları ve limitleri **DEĞİŞMEDİ**; yalnız bu iki POST yolu AI kovasına dahil edildi. Gerekçe: middleware `request.method != "GET"` ile başlıyordu, dolayısıyla kullanıcı-girdili serbest metin + Gemini çağrısı taşıyan bu iki uç hosted demoda **kapaksız** kalırdı. Sihirbazın deterministik uçları (`/sorular`, `/plan`, `/durum`) bilerek DIŞARIDA — ağsız ve ücretsizler.
 
 ---
 

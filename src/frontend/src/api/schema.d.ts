@@ -476,6 +476,129 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/onboarding/durum": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Durum */
+        get: operations["durum_onboarding_durum_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/onboarding/sorular": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Sorular
+         * @description Sıradaki hedefli sorular — **LLM YOK** (bkz. `intake.py` başlığı).
+         */
+        post: operations["sorular_onboarding_sorular_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/onboarding/brief": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Brief Uret
+         * @description Sabit şemayı doldurur. LLM YALNIZCA gerekiyorsa çağrılır.
+         *
+         *     * `kendim`      -> hiç LLM yok; gelen brief doğrulanır.
+         *     * `soru_cevap`  -> cevaplar mekanik olarak şemaya oturur (LLM yok).
+         *     * `anlat`       -> serbest metinden yapı çıkarmak için 1 çağrı.
+         *     * `varsayimlarla_doldur=true` + boşluk varsa -> 1 çağrı (aynı çağrıya
+         *       birleşir: "anlat" modunda tek istek hem çıkarır hem doldurur).
+         */
+        post: operations["brief_uret_onboarding_brief_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/onboarding/taslak": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Taslak Uret
+         * @description Brief -> epic -> user story + kabul kriteri + puan (§8.5 adım 2).
+         */
+        post: operations["taslak_uret_onboarding_taslak_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/onboarding/plan": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Plan Uret
+         * @description Kapasiteye göre sprint dağıtımı — **deterministik, LLM YOK**.
+         */
+        post: operations["plan_uret_onboarding_plan_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/onboarding/uygula": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Uygula
+         * @description Onaylanmış taslağı `.harness/`'e yazar. **K6 kapısı `apply.py`'de.**
+         */
+        post: operations["uygula_onboarding_uygula_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -540,6 +663,70 @@ export interface components {
              */
             source: "seed" | "ingest";
         };
+        /**
+         * Brief
+         * @description SABİT hedef şema (§8.5) — sihirbazın topladığı bilginin TAMAMI.
+         *
+         *     Tüm alanlar varsayılanlı: yarım bir brief geçerli bir nesnedir. Eksiklik
+         *     bir doğrulama HATASI değil, raporlanan bir DURUMDUR (`eksik_alanlar`) —
+         *     aksi halde kullanıcı ilk adımda 422 duvarına toslardı ve "her an bununla
+         *     devam et diyebilir" vaadi imkânsız olurdu.
+         */
+        Brief: {
+            /**
+             * Urun Tek Cumle
+             * @default
+             */
+            urun_tek_cumle: string;
+            /** Hedef Kullanicilar */
+            hedef_kullanicilar?: string[];
+            /** Cekirdek Ozellikler */
+            cekirdek_ozellikler?: string[];
+            /** Kapsam Disi */
+            kapsam_disi?: string[];
+            kisitlar?: components["schemas"]["Kisitlar"];
+            /**
+             * Basari Hedefi
+             * @default
+             */
+            basari_hedefi: string;
+            /** Varsayimlar */
+            varsayimlar?: components["schemas"]["Varsayim"][];
+        };
+        /** BriefIstegi */
+        BriefIstegi: {
+            /**
+             * Mod
+             * @enum {string}
+             */
+            mod: "anlat" | "soru_cevap" | "kendim";
+            /**
+             * Serbest Metin
+             * @default
+             */
+            serbest_metin: string;
+            /** Cevaplar */
+            cevaplar?: {
+                [key: string]: string;
+            };
+            brief?: components["schemas"]["Brief"];
+            /**
+             * Varsayimlarla Doldur
+             * @default false
+             */
+            varsayimlarla_doldur: boolean;
+        };
+        /** BriefYaniti */
+        BriefYaniti: {
+            brief: components["schemas"]["Brief"];
+            /** Eksikler */
+            eksikler: components["schemas"]["Eksik"][];
+            /** Uyarilar */
+            uyarilar: components["schemas"]["Uyari"][];
+            /** Ai Kullanildi */
+            ai_kullanildi: boolean;
+            degraded?: components["schemas"]["OnboardingDegraded"] | null;
+        };
         /** Citation */
         Citation: {
             /**
@@ -582,6 +769,43 @@ export interface components {
             confidence: number;
             /** Rationale */
             rationale: string;
+        };
+        /**
+         * DusenStory
+         * @description Elenen/düzeltilen bir öğe — sebebiyle birlikte (sessiz düşüş yasağı).
+         */
+        DusenStory: {
+            /** Id */
+            id: string;
+            /** Neden */
+            neden: string;
+        };
+        /**
+         * Eksik
+         * @description Bir alanın neden "hazır değil" sayıldığı — sebep TAŞINIR, gizlenmez.
+         */
+        Eksik: {
+            /** Alan */
+            alan: string;
+            /**
+             * Neden
+             * @enum {string}
+             */
+            neden: "bos" | "yetersiz";
+            /** Aciklama */
+            aciklama: string;
+        };
+        /** Epic */
+        Epic: {
+            /** Id */
+            id: string;
+            /** Baslik */
+            baslik: string;
+            /**
+             * Aciklama
+             * @default
+             */
+            aciklama: string;
         };
         /** ErrorEnvelope */
         ErrorEnvelope: {
@@ -702,6 +926,40 @@ export interface components {
             /** Installations */
             installations: components["schemas"]["InstallationSummary"][];
         };
+        /**
+         * Kapasite
+         * @description Sprint dağıtımının TEK girdisi — brief'in `kisitlar` alanından türer.
+         */
+        Kapasite: {
+            /** Ekip Buyuklugu */
+            ekip_buyuklugu: number;
+            /** Sprint Sayisi */
+            sprint_sayisi: number;
+            /** Musaitlik */
+            musaitlik?: number[] | null;
+        };
+        /**
+         * Kisitlar
+         * @description §8.5 "Kısıtlar" alanı — tek bir alan ama içi yapılı.
+         *
+         *     Sprint dağıtımı (`sprint_plan.py`) `ekip_buyuklugu` + `sprint_sayisi`
+         *     olmadan bütçe hesaplayamaz; bu yüzden bu ikisi alanın "dolu" sayılması
+         *     için ZORUNLU (bkz. `_kisit_durumu`). Diğerleri bağlam bilgisidir.
+         */
+        Kisitlar: {
+            /** Ekip Buyuklugu */
+            ekip_buyuklugu?: number | null;
+            /** Yetkinlikler */
+            yetkinlikler?: string[];
+            /** Sprint Sayisi */
+            sprint_sayisi?: number | null;
+            /** Sprint Gun */
+            sprint_gun?: number | null;
+            /** Teknolojiler */
+            teknolojiler?: string[];
+            /** Entegrasyonlar */
+            entegrasyonlar?: string[];
+        };
         /** LineRange */
         LineRange: {
             /** Start */
@@ -809,6 +1067,82 @@ export interface components {
              * @default true
              */
             actor_verified: boolean;
+        };
+        /**
+         * OnayKaydi
+         * @description İnsan onayının kaydı. `onaylandi` tek başına yeterli DEĞİL: kimin
+         *     onayladığı da yazılır — `.harness/` bir denetim (audit) yüzeyidir ve
+         *     "bu kapsamı kim dondurdu" sorusunun cevabı dosyada durmalı.
+         */
+        OnayKaydi: {
+            /**
+             * Onaylandi
+             * @default false
+             */
+            onaylandi: boolean;
+            /**
+             * Onaylayan
+             * @default
+             */
+            onaylayan: string;
+        };
+        /**
+         * OnboardingDegraded
+         * @description Bu turda ÜRETİLEMEYEN taslak — `RadarResponse.degraded` deseni (#252).
+         *
+         *     Varlığı "sonuç eksik" demektir. İstemci bunu taslak gibi göstermemeli,
+         *     "üretilemedi + neden" uyarısı olarak göstermelidir. `neden` sağlayıcı
+         *     hatasının ÖZETİDİR (anahtar/sır taşımaz — hata metinleri sağlayıcı
+         *     istemcilerinde zaten sırdan arındırılmış geliyor).
+         */
+        OnboardingDegraded: {
+            /**
+             * Asama
+             * @enum {string}
+             */
+            asama: "brief" | "story";
+            /** Saglayici */
+            saglayici: string;
+            /** Neden */
+            neden: string;
+        };
+        /**
+         * OnboardingDurum
+         * @description Sihirbaz bu kurulumda ne yapabilir — kullanıcı TIKLAMADAN ÖNCE bilsin.
+         *
+         *     "İş yapmayan buton basmıyoruz" (D-34) ilkesinin onboarding karşılığı:
+         *     hosted demoda `uygula` adımı yoktur (yazma yalnız local), sağlayıcı yoksa
+         *     "anlat" modu taslak üretemez. İkisi de sayfada ÖNCEDEN söylenir.
+         */
+        OnboardingDurum: {
+            /**
+             * Mode
+             * @enum {string}
+             */
+            mode: "local" | "hosted";
+            /** Yazma Mumkun */
+            yazma_mumkun: boolean;
+            /** Yazma Kok */
+            yazma_kok: string;
+            /** Yazma Engeli */
+            yazma_engeli?: string | null;
+            /** Harness Var */
+            harness_var: boolean;
+            /** Saglayici */
+            saglayici: string;
+            /** Ai Kullanilabilir */
+            ai_kullanilabilir: boolean;
+            /**
+             * Maks Bosluk Turu
+             * @default 2
+             */
+            maks_bosluk_turu: number;
+        };
+        /** PlanIstegi */
+        PlanIstegi: {
+            /** Storyler */
+            storyler: components["schemas"]["UserStory"][];
+            kapasite: components["schemas"]["Kapasite"];
         };
         /**
          * PresenceEntry
@@ -1087,6 +1421,86 @@ export interface components {
             matched_text?: string | null;
         };
         /**
+         * Soru
+         * @description Tek bir hedefli soru. `coklu=True` -> cevap satır satır listeye ayrılır.
+         */
+        Soru: {
+            /** Alan */
+            alan: string;
+            /** Metin */
+            metin: string;
+            /** Ipucu */
+            ipucu: string;
+            /**
+             * Coklu
+             * @default false
+             */
+            coklu: boolean;
+        };
+        /** SorularIstegi */
+        SorularIstegi: {
+            /**
+             * Mod
+             * @enum {string}
+             */
+            mod: "anlat" | "soru_cevap" | "kendim";
+            /**
+             * Tur
+             * @default 1
+             */
+            tur: number;
+            brief?: components["schemas"]["Brief"];
+        };
+        /** SorularYaniti */
+        SorularYaniti: {
+            /** Sorular */
+            sorular: components["schemas"]["Soru"][];
+            /** Tur */
+            tur: number;
+            /** Tur Bitti */
+            tur_bitti: boolean;
+            /** Eksikler */
+            eksikler: components["schemas"]["Eksik"][];
+        };
+        /** SprintDilimi */
+        SprintDilimi: {
+            /** Sprint */
+            sprint: number;
+            /** Butce */
+            butce: number;
+            /** Yuk */
+            yuk: number;
+            /** Story Idler */
+            story_idler?: string[];
+        };
+        /** SprintPlani */
+        SprintPlani: {
+            /** Dilimler */
+            dilimler: components["schemas"]["SprintDilimi"][];
+            /** Toplam Puan */
+            toplam_puan: number;
+            /** Uyarilar */
+            uyarilar?: string[];
+        };
+        /** StoryTaslagi */
+        StoryTaslagi: {
+            /** Epicler */
+            epicler?: components["schemas"]["Epic"][];
+            /** Storyler */
+            storyler?: components["schemas"]["UserStory"][];
+            /** Dusenler */
+            dusenler?: components["schemas"]["DusenStory"][];
+        };
+        /** TaslakIstegi */
+        TaslakIstegi: {
+            brief: components["schemas"]["Brief"];
+        };
+        /** TaslakYaniti */
+        TaslakYaniti: {
+            taslak: components["schemas"]["StoryTaslagi"];
+            degraded?: components["schemas"]["OnboardingDegraded"] | null;
+        };
+        /**
          * TouchGraph
          * @description GET /graph çıktısı (#104) — sıfır LLM, saf NormalizedEvent + active/ aggregation.
          */
@@ -1097,6 +1511,55 @@ export interface components {
             nodes: components["schemas"]["GraphNode"][];
             /** Edges */
             edges: components["schemas"]["GraphEdge"][];
+        };
+        /**
+         * UserStory
+         * @description Kanonik user-story formu (§8.5) — cümle PARÇALARI ayrı tutulur.
+         *
+         *     Neden tek bir `cumle: str` değil: sprint dağıtımı `puan`a, board `rol`e,
+         *     scope kontrolü `istek`e bakar. Tek metne sıkıştırılsaydı her tüketici
+         *     kendi ayrıştırıcısını yazardı. Cümle `olarak_cumle()` ile TEK yerde
+         *     kurulur (drift yok).
+         */
+        UserStory: {
+            /** Id */
+            id: string;
+            /** Epic Id */
+            epic_id: string;
+            /** Rol */
+            rol: string;
+            /** Istek */
+            istek: string;
+            /** Fayda */
+            fayda: string;
+            /** Kabul Kriterleri */
+            kabul_kriterleri?: string[];
+            /** Puan */
+            puan: number;
+            /**
+             * Oncelik
+             * @default 3
+             */
+            oncelik: number;
+            /** Bagimliliklar */
+            bagimliliklar?: string[];
+        };
+        /**
+         * Uyari
+         * @description Engelleyici olmayan gözlem (ör. 7'den fazla çekirdek özellik).
+         */
+        Uyari: {
+            /** Alan */
+            alan: string;
+            /** Aciklama */
+            aciklama: string;
+        };
+        /** UygulaIstegi */
+        UygulaIstegi: {
+            onay: components["schemas"]["OnayKaydi"];
+            brief: components["schemas"]["Brief"];
+            taslak: components["schemas"]["StoryTaslagi"];
+            plan?: components["schemas"]["SprintPlani"] | null;
         };
         /** ValidationError */
         ValidationError: {
@@ -1110,6 +1573,39 @@ export interface components {
             input?: unknown;
             /** Context */
             ctx?: Record<string, never>;
+        };
+        /**
+         * Varsayim
+         * @description AI'nın kullanıcı adına doldurduğu bir alan — DEĞER değil, İŞARET.
+         *
+         *     "Bununla devam et" dendiğinde üretilir. UI bunu ayrı bir renkte/rozette
+         *     gösterir ki kullanıcı neyi onayladığını bilsin (K6: insan onaylar).
+         */
+        Varsayim: {
+            /** Alan */
+            alan: string;
+            /** Deger Ozeti */
+            deger_ozeti: string;
+            /** Gerekce */
+            gerekce: string;
+        };
+        /** YazmaSonucu */
+        YazmaSonucu: {
+            /** Yazilan */
+            yazilan?: string[];
+            /** Sprint Dosyalari */
+            sprint_dosyalari?: string[];
+            /** Task Dosyalari */
+            task_dosyalari?: string[];
+            /**
+             * Kok
+             * @default
+             */
+            kok: string;
+            /** Projeksiyon Eklenen */
+            projeksiyon_eklenen?: number | null;
+            /** Projeksiyon Notu */
+            projeksiyon_notu?: string | null;
         };
     };
     responses: never;
@@ -3066,6 +3562,585 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Demo istek limiti aşıldı (yalnız DEMO_MODE) */
+            429: {
+                headers: {
+                    /** @description Saniye — pencere kayınca tekrar denenebilir */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Kalici saglayici hatasi (GitHub/Gemini/Ollama) */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Gecici olarak erisilemez */
+            503: {
+                headers: {
+                    /** @description Saniye — yalniz kendiliginden duzelebilir durumlarda */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    durum_onboarding_durum_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OnboardingDurum"];
+                };
+            };
+            /** @description Kapasite tutarsız */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description İnsan onayı yok (K6) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Yazma yalnız local modda vardır */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Hedef dosyalar zaten var */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Demo istek limiti aşıldı (yalnız DEMO_MODE) */
+            429: {
+                headers: {
+                    /** @description Saniye — pencere kayınca tekrar denenebilir */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Kalici saglayici hatasi (GitHub/Gemini/Ollama) */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Gecici olarak erisilemez */
+            503: {
+                headers: {
+                    /** @description Saniye — yalniz kendiliginden duzelebilir durumlarda */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    sorular_onboarding_sorular_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SorularIstegi"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SorularYaniti"];
+                };
+            };
+            /** @description Kapasite tutarsız */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description İnsan onayı yok (K6) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Yazma yalnız local modda vardır */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Hedef dosyalar zaten var */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Demo istek limiti aşıldı (yalnız DEMO_MODE) */
+            429: {
+                headers: {
+                    /** @description Saniye — pencere kayınca tekrar denenebilir */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Kalici saglayici hatasi (GitHub/Gemini/Ollama) */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Gecici olarak erisilemez */
+            503: {
+                headers: {
+                    /** @description Saniye — yalniz kendiliginden duzelebilir durumlarda */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    brief_uret_onboarding_brief_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BriefIstegi"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BriefYaniti"];
+                };
+            };
+            /** @description Kapasite tutarsız */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description İnsan onayı yok (K6) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Yazma yalnız local modda vardır */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Hedef dosyalar zaten var */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Demo istek limiti aşıldı (yalnız DEMO_MODE) */
+            429: {
+                headers: {
+                    /** @description Saniye — pencere kayınca tekrar denenebilir */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Kalici saglayici hatasi (GitHub/Gemini/Ollama) */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Gecici olarak erisilemez */
+            503: {
+                headers: {
+                    /** @description Saniye — yalniz kendiliginden duzelebilir durumlarda */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    taslak_uret_onboarding_taslak_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TaslakIstegi"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaslakYaniti"];
+                };
+            };
+            /** @description Kapasite tutarsız */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description İnsan onayı yok (K6) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Yazma yalnız local modda vardır */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Hedef dosyalar zaten var */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Demo istek limiti aşıldı (yalnız DEMO_MODE) */
+            429: {
+                headers: {
+                    /** @description Saniye — pencere kayınca tekrar denenebilir */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Kalici saglayici hatasi (GitHub/Gemini/Ollama) */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Gecici olarak erisilemez */
+            503: {
+                headers: {
+                    /** @description Saniye — yalniz kendiliginden duzelebilir durumlarda */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    plan_uret_onboarding_plan_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PlanIstegi"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SprintPlani"];
+                };
+            };
+            /** @description Kapasite tutarsız (müsaitlik listesi uzunluğu) */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description İnsan onayı yok (K6) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Yazma yalnız local modda vardır */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Hedef dosyalar zaten var */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Demo istek limiti aşıldı (yalnız DEMO_MODE) */
+            429: {
+                headers: {
+                    /** @description Saniye — pencere kayınca tekrar denenebilir */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Kalici saglayici hatasi (GitHub/Gemini/Ollama) */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Gecici olarak erisilemez */
+            503: {
+                headers: {
+                    /** @description Saniye — yalniz kendiliginden duzelebilir durumlarda */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    uygula_onboarding_uygula_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UygulaIstegi"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["YazmaSonucu"];
+                };
+            };
+            /** @description Kapasite tutarsız */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description İnsan onayı yok (K6) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Yazma yalnız local modda vardır */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Hedef dosyalar zaten var — üzerine yazılmadı */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
             /** @description Demo istek limiti aşıldı (yalnız DEMO_MODE) */

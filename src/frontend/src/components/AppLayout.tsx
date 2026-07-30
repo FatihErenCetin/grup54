@@ -13,6 +13,7 @@ import {
   GraphIcon,
   RadarIcon,
   ScopeIcon,
+  SihirbazIcon,
   SettingsIcon,
 } from "./NavIcons";
 import { ActorChip } from "./ui";
@@ -63,6 +64,10 @@ const NAV = [
   { to: "/graph", label: "Graf", Icon: GraphIcon },
   { to: "/activity", label: "Activity", Icon: ActivityIcon },
   { to: "/ask", label: "Ask", Icon: AskIcon },
+  // #340 — sihirbaz demo anlatiminin BASI ("bos projeden sprint'e"),
+  // ama gunluk kullanimda tek seferlik; bu yuzden listenin SONUNDA.
+  // Ikon ZORUNLU: #316 paritesi her nav linkinde bir <svg> istiyor.
+  { to: "/onboarding", label: "Sihirbaz", Icon: SihirbazIcon },
 ];
 
 /** Ayarlar (/ayarlar, T-309) nav'da YALNIZ backend GERÇEKTEN 200 dönerse

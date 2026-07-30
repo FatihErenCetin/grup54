@@ -100,3 +100,18 @@ export function SettingsIcon({ className }: IconProps) {
     </svg>
   );
 }
+
+
+export function SihirbazIcon({ className }: IconProps) {
+  // Asa + kivilcim: "bos projeden sprint'e" adimini anlatir. Diger ikonlarla
+  // ayni dil (16x16 kutu, ORTAK stroke ayarlari) — tasarim paritesi (#316)
+  // alti linkte ikon istiyordu; yedinci link ikonsuz kalirsa parite bozulur.
+  return (
+    <svg {...ORTAK} className={className}>
+      <path d="M3.2 12.8 10.4 5.6" />
+      <path d="M9.6 4.8l1.6 1.6" />
+      <path d="M12.4 2.2v2.2M11.3 3.3h2.2" />
+      <path d="M6.2 2.6v1.6M5.4 3.4h1.6" />
+    </svg>
+  );
+}

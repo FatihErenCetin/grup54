@@ -53,6 +53,14 @@ from ensemble.config import Settings
 # gerektirmez, genel kovaya düşer).
 AI_METERED_PATHS = frozenset({"/query", "/scope/check"})
 
+# #340: onboarding sihirbazının GERÇEKTEN LLM çağıran iki ucu. POST oldukları
+# için yukarıdaki GET kovasına düşmüyorlardı — bu liste olmadan hosted demoda
+# tamamen SINIRSIZ kalırlardı (kullanıcı-girdili serbest metin + Gemini çağrısı
+# = doğrudan fatura). Sihirbazın diğer uçları (`/onboarding/sorular`, `/plan`,
+# `/durum`) deterministik ve ağsızdır; buraya BİLEREK alınmadı. `/onboarding/
+# uygula` da yok — o zaten hosted'da 404 (yazma yalnız local).
+AI_METERED_POST_PATHS = frozenset({"/onboarding/brief", "/onboarding/taslak"})
+
 # Fly health-check bunu 30 sn'de bir vurur (fly.toml) — asla limitlenmez,
 # yoksa makine unhealthy işaretlenir.
 _EXEMPT_PATHS = frozenset({"/health"})
@@ -179,12 +187,18 @@ class DemoRateLimitMiddleware(BaseHTTPMiddleware):
         )
 
     async def dispatch(self, request: Request, call_next):
-        if request.method != "GET" or request.url.path in _EXEMPT_PATHS:
+        # POST'lar kural olarak ölçülmez (webhook/auth gibi uçlar kendi
+        # korumasını taşır); TEK istisna AI çağıran onboarding uçlarıdır —
+        # aksi halde LLM maliyeti kapaksız kalırdı (#340).
+        ai_post = (
+            request.method == "POST" and request.url.path in AI_METERED_POST_PATHS
+        )
+        if (request.method != "GET" and not ai_post) or request.url.path in _EXEMPT_PATHS:
             return await call_next(request)
 
         ip = client_ip(request)
 
-        if request.url.path in AI_METERED_PATHS:
+        if ai_post or request.url.path in AI_METERED_PATHS:
             allowed_ip, retry_ip = self._ai_counter.allow(ip, self._settings.DEMO_AI_RATE_LIMIT)
             if not allowed_ip:
                 return _rate_limited_response(retry_ip)

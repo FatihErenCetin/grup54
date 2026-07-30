@@ -110,7 +110,22 @@ datas.append((str(BACKEND_SRC / "ensemble" / "store" / "migrations"), "ensemble/
 datas.append((str(SHARED_SRC / "ensemble_shared" / "schemas"), "ensemble_shared/schemas"))
 
 # --- .harness/ tohum kopyası — ilk çalıştırmada kullanıcı veri dizinine kopyalanır ---
-datas.append((str(REPO_ROOT / ".harness"), "harness_seed/.harness"))
+#
+# NEDEN `REPO_ROOT / ".harness"` DEĞİL (ölçüldü, 30 Tem — #340 doğrulama turu):
+# paket eskiden GELİŞTİRİCİ REPOSUNUN kendi `.harness/`'ini tohumluyordu, yani
+# grup54'ün donmuş `scope/sprint-3.md`'si, 22 görev dosyası ve karar kayıtları
+# yeni kullanıcının başlangıç durumu oluyordu. İki somut zarar:
+#   1) Kullanıcı BAŞKA bir projenin iç durumunu kendi projesi sanıyordu.
+#   2) Onboarding sihirbazı 3 sprintlik plan yazmak istediğinde
+#      `scope/sprint-3.md` zaten var olduğu için TÜM yazma 409 ile
+#      reddediliyordu — sihirbaz paketlenmiş uygulamada hiç çalışamıyordu.
+#      (Reddetmenin kendisi doğru: var olan kapsamı sessizce ezmek kullanıcının
+#      işini kaybettirirdi. Yanlış olan tohumun DOLU olmasıydı.)
+#
+# `_verify_harness_boot`'un istediği tek şey klasörlerin OKUNABİLİR olması;
+# boş `scope/tasks/active` meşru bir durumdur ve hata üretmez. Bu yüzden tohum
+# artık `packaging/harness_seed/` altındaki BOŞ iskelet.
+datas.append((str(REPO_ROOT / "packaging" / "harness_seed" / ".harness"), "harness_seed/.harness"))
 
 # --- Frontend production build — build_macos.sh `npm run build` ile üretir ---
 frontend_dist = REPO_ROOT / "src" / "frontend" / "dist"

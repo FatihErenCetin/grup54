@@ -17,6 +17,7 @@ from ensemble.api.routers import (
     events,
     graph,
     health,
+    onboarding,
     query,
     radar,
     scope,
@@ -903,6 +904,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         404: {"model": ErrorEnvelope, "description": "Yalnız local modda vardır (T-307 KURAL 1)"},
     }
     app.include_router(settings_router.router, responses=_settings_responses)
+
+    # #340 onboarding sihirbazı (§8.5). Router HER modda bağlanır (settings
+    # router'ıyla AYNI ilke — openapi.json mod'a göre değişmesin, drift-check
+    # kararlı kalsın); mod farkı `/onboarding/uygula`nın kendi 404'ünde
+    # (yazma yalnız local). 403 = K6 kapısı: insan onayı olmadan yazma yok.
+    _onboarding_responses = {
+        **ERROR_RESPONSES,
+        400: {"model": ErrorEnvelope, "description": "Kapasite tutarsız"},
+        403: {"model": ErrorEnvelope, "description": "İnsan onayı yok (K6)"},
+        404: {"model": ErrorEnvelope, "description": "Yazma yalnız local modda vardır"},
+        409: {"model": ErrorEnvelope, "description": "Hedef dosyalar zaten var"},
+    }
+    app.include_router(onboarding.router, responses=_onboarding_responses)
 
     # T-307 FAZ 3: yerel modda `dist/` (Vite prod build çıktısı) VARSA
     # backend'in KENDİSİ frontend'i servis eder — tek-süreçli masaüstü paketi
