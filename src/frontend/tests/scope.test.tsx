@@ -134,3 +134,42 @@ describe("ScopePage — künye şeridi (#318 tasarım paritesi)", () => {
     expect(rozet).not.toHaveTextContent("Invalid Date");
   });
 });
+
+describe("ScopePage — dar zemin uyarısı (#355)", () => {
+  /** Tek bir karar satırı üretir; `degraded` testin konusudur. */
+  function verdictsWith(degraded: string | null) {
+    return {
+      ...doluVerdicts,
+      data: {
+        verdicts: [
+          {
+            ref: "T-99",
+            verdict: "in_scope",
+            confidence: 0.9,
+            evidence: { quote: "IS-1: Scope-drift bekçisi", section: "goals", item_id: "IS-1", line: 12 },
+            match_none: false,
+            degraded,
+          },
+        ],
+        counts: { in_scope: 1, drift: 0, non_goal_violation: 0 },
+        judged_at: "2026-07-30T16:00:00Z",
+      },
+    };
+  }
+
+  it("degraded DOLU ise karar satırında uyarı basılır", () => {
+    /* AskPage ile AYNI boşluk: `ScopeVerdict.degraded` sözleşmede vardı ama
+       bu sayfa onu hiç basmıyordu (ölçüldü: RadarPage 9 referans, ScopePage 0).
+       MUTASYON KİLİDİ: `KararSatiri`'ndaki `{verdict.degraded && …}` bloğunu
+       sil -> bu test kırılır. */
+    mockUseScopeVerdicts.mockReturnValue(verdictsWith("semantik retrieval kullanılamadı"));
+    render(<ScopePage />);
+    expect(screen.getByText(/eksik dayanaklı olabilir/)).toBeInTheDocument();
+  });
+
+  it("degraded BOŞ ise uyarı YOK", () => {
+    mockUseScopeVerdicts.mockReturnValue(verdictsWith(null));
+    render(<ScopePage />);
+    expect(screen.queryByText(/eksik dayanaklı olabilir/)).not.toBeInTheDocument();
+  });
+});

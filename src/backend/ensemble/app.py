@@ -72,7 +72,11 @@ from ensemble.ports import EmbeddingsPort, GitHubPort, JudgePort, VectorIndexPor
 from ensemble.store.engine import get_engine, get_session_factory
 from ensemble.store.models import DEFAULT_REPO_FULL_NAME
 from ensemble.store.provider_settings import read_provider_settings
-from ensemble.store.vector_store import LocalVectorIndex, build_vector_index
+from ensemble.store.vector_store import (
+    QUERY_VECTOR_TABLE,
+    LocalVectorIndex,
+    build_vector_index,
+)
 from ensemble.tenancy import ServiceTeam, TenantRegistry
 from ensemble_shared.harness import FileHarnessPort, HarnessError
 
@@ -673,11 +677,20 @@ async def lifespan(app: FastAPI):
     app.state.graph_service = GraphService(
         app.state.session_factory, repo_full_name=demo_repo_full_name
     )
+    # #355 — Ask KENDİ vektör tablosunu kullanır. Radar'la paylaştıklarında
+    # radar rebuild'inin `replace_all()`'ı Ask'ın scope/task/decision
+    # vektörlerini sessizce siliyordu (gerekçe: e5b8d2c71a09 migration'ı).
+    app.state.query_vector_index = build_vector_index(
+        settings,
+        session_factory=app.state.session_factory if settings.ENSEMBLE_MODE == "hosted" else None,
+        repo_full_name=demo_repo_full_name,
+        table_name=QUERY_VECTOR_TABLE,
+    )
     app.state.query_service = _build_query_service(
         settings,
         app.state.radar_service,
         session_factory=app.state.session_factory,
-        vector_index=app.state.vector_index,
+        vector_index=app.state.query_vector_index,
     )
     app.state.scope_service = _build_scope_service(settings, app.state.radar_service)
     _verify_harness_boot(app.state.scope_service)

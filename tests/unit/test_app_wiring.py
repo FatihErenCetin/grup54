@@ -195,8 +195,10 @@ def test_query_service_local_vector_indexi_fabrika_uzerinden_kuruyor(monkeypatch
     built_index = LocalVectorIndex()
     calls = []
 
-    def fake_build_vector_index(settings, *, session_factory=None, repo_full_name=None):
-        calls.append((settings.ENSEMBLE_MODE, session_factory))
+    def fake_build_vector_index(
+        settings, *, session_factory=None, repo_full_name=None, table_name="vector_index"
+    ):
+        calls.append((settings.ENSEMBLE_MODE, session_factory, table_name))
         return built_index
 
     monkeypatch.setattr("ensemble.app.build_vector_index", fake_build_vector_index)
@@ -205,7 +207,15 @@ def test_query_service_local_vector_indexi_fabrika_uzerinden_kuruyor(monkeypatch
     with TestClient(app):
         assert app.state.query_service.vector_index is built_index
 
-    assert calls == [("local", None)]
+    # #355 — fabrika İKİ kez çağrılır: radar kendi tablosuna, Ask KENDİ
+    # tablosuna. Paylaştıklarında radar rebuild'inin `replace_all()`'ı Ask'ın
+    # scope/task/decision vektörlerini sessizce siliyordu.
+    # MUTASYON KİLİDİ: app.py'de `table_name=QUERY_VECTOR_TABLE` argümanını
+    # sil -> iki çağrı da "vector_index" olur, bu test kırılır.
+    assert calls == [
+        ("local", None, "vector_index"),
+        ("local", None, "query_vector_index"),
+    ]
 
 
 def test_app_state_lifespan_ile_scope_service_kurulur():

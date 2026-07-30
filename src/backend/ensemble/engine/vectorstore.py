@@ -41,6 +41,15 @@ class InMemoryVectorIndex:
     def meta(self, id: str) -> dict:
         return dict(self._records[id].meta)
 
+    def fingerprints(self) -> dict[str, str]:
+        """Bkz. `VectorIndexPort.fingerprints`. Bellek-içi indekste süreçle
+        birlikte doğal olarak boşalır — vektörler de öyle, tutarlı."""
+        return {
+            id: str(record.meta["fingerprint"])
+            for id, record in self._records.items()
+            if record.meta.get("fingerprint")
+        }
+
     def clear(self) -> None:
         self._records.clear()
 

@@ -46,6 +46,12 @@ class NullHarnessPort:
     def read_active(self) -> list[dict[str, Any]]:
         return []
 
+    def read_decisions(self) -> list[dict[str, Any]]:
+        # `read_tasks`/`read_active` ile AYNI kural: non-demo kiracının
+        # `.harness/`'i yok, ama bu bir HATA değil bir YOKLUK — dürüst-boş
+        # döner. (Fırlatsaydı Ask o kiracıda tamamen çökerdi.)
+        return []
+
     def verify_dir_readable(self, folder: str) -> None:
         raise HarnessError(
             f"bu kiracı için .harness/{folder}/ yapılandırılmamış (çok-kiracılı repo, T-79)"

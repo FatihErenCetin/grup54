@@ -74,6 +74,23 @@ class EmbeddingsPort(Protocol):
 class VectorIndexPort(Protocol):
     def upsert(self, id: str, vec: list[float], meta: dict) -> None: ...
     def query(self, vec: list[float], k: int) -> list[tuple[str, float]]: ...
+
+    def fingerprints(self) -> dict[str, str]:
+        """`id -> meta["fingerprint"]` — hangi belgenin HANGİ HÂLİ gömülü.
+
+        #355: `QueryService` bu haritayı bellekte tutuyordu, vektörler ise
+        kalıcıydı. Sonuç: her süreç başlangıcında (her deploy) TÜM korpus
+        "değişmiş" sayılıp yeniden gömülüyordu — 236 belge × her restart.
+        Gemini'nin ücretsiz embed kotası günde 1000; birkaç deploy onu
+        bitiriyor ve Ask o günün geri kalanında semantik aramasız kalıyor
+        (canlıda 30 Tem'de tam olarak bu oldu).
+
+        Kalıcı bir uygulama gerçek kayıtları döner; bellek-içi olanlar
+        doğal olarak boş başlar — bu DOĞRU davranıştır, çünkü onların
+        vektörleri de süreçle birlikte kaybolur. İkisi de aynı soruyu
+        dürüstçe yanıtlar: "şu an elimde neyin hangi hâli gömülü?"
+        """
+        ...
     def clear(self) -> None:
         """Bağımsız operasyon için; rebuild akışı replace_all kullanır."""
     def replace_all(

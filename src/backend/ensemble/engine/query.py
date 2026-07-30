@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import logging
 import math
 import re
 from collections import Counter
@@ -47,6 +48,8 @@ _STOP_WORDS = {
 }
 _CITATION_TYPES: tuple[CitationType, ...] = ("scope", "task", "decision", "event", "pr")
 
+logger = logging.getLogger("ensemble.query")
+
 
 class QueryError(RuntimeError):
     """Ask motorunun kullanıcıya açık hata tabanı."""
@@ -86,6 +89,8 @@ class QueryService:
         self.top_k = top_k
         self.min_semantic_score = min_semantic_score
         self._indexed_hashes: dict[str, str] = {}
+        # Kalıcı indeksten yükleme YALNIZ BİR KEZ (her sorguda DB'ye gitmesin).
+        self._fingerprints_loaded = False
         self._index_lock = Lock()
 
     def ask(self, question: str) -> QueryResult:
@@ -196,7 +201,35 @@ class QueryService:
             degraded,
         )
 
+    def _parmak_izlerini_yukle(self) -> None:
+        """Kalıcı indeksten "neyin hangi hâli gömülü"yü BİR KEZ okur.
+
+        #355 — bu adım yokken `_indexed_hashes` her süreç başlangıcında boş
+        başlıyor, vektörler ise kalıcı olduğu için TÜM korpus "değişmiş"
+        sayılıp yeniden gömülüyordu: her deploy ~236 embed çağrısı. Gemini'nin
+        ücretsiz günlük embed kotası 1000 — birkaç deploy onu bitiriyor ve Ask
+        günün geri kalanında semantik aramasız kalıyordu (canlıda 30 Tem'de
+        aynen bu oldu, üç örnek sorunun ikisi `not_found` döndü).
+
+        Okuma hatası ÖLÜMCÜL DEĞİL: parmak izleri bir OPTİMİZASYONdur, doğruluk
+        kaynağı değil. Okunamazsa en kötü ihtimalle bu turda fazladan gömme
+        yapılır — cevap yine doğru üretilir. (Yazma yolunda aynı hoşgörü
+        OLMAZDI; burası okuma.)
+        """
+        if self._fingerprints_loaded:
+            return
+        self._fingerprints_loaded = True
+        try:
+            self._indexed_hashes.update(self.vector_index.fingerprints())
+        except Exception:  # noqa: BLE001
+            logger.warning(
+                "vektör indeksinden parmak izleri okunamadı — bu tur fazladan "
+                "gömme yapılabilir (doğruluk etkilenmez)",
+                exc_info=True,
+            )
+
     def _index_documents(self, documents: list[QueryDocument]) -> None:
+        self._parmak_izlerini_yukle()
         changed: list[tuple[QueryDocument, str]] = []
         for document in documents:
             fingerprint = hashlib.sha256(document.text.encode("utf-8")).hexdigest()
@@ -215,7 +248,10 @@ class QueryService:
             self.vector_index.upsert(
                 document.id,
                 vector,
-                {"type": document.type, "ref": document.ref},
+                # `fingerprint` meta'ya YAZILIR — restart sonrası okunacak olan
+                # tek şey bu (bkz. _parmak_izlerini_yukle). Yazmayı unutmak,
+                # okumayı hiç eklememekle aynı sonucu verirdi.
+                {"type": document.type, "ref": document.ref, "fingerprint": fingerprint},
             )
             self._indexed_hashes[document.id] = fingerprint
 

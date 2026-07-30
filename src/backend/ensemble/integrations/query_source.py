@@ -52,7 +52,11 @@ class HarnessEventQuerySource:
         self.repo_full_name = repo_full_name
 
     def load_query_corpus(self) -> QueryCorpus:
-        documents = [*self._scope_documents(), *self._task_documents()]
+        documents = [
+            *self._scope_documents(),
+            *self._task_documents(),
+            *self._decision_documents(),
+        ]
         event_documents, event_last_commit = self._event_documents()
         documents.extend(event_documents)
         return QueryCorpus(
@@ -143,6 +147,67 @@ class HarnessEventQuerySource:
                 )
         return documents
 
+    def _decision_documents(self) -> list[QueryDocument]:
+        """`.harness/decisions/D-NN-*.md` → Ask korpusu.
+
+        Bu kaynağın diğerlerinden FARKI ve neden en değerlisi: scope "ne
+        yapılacak", task "kim yapıyor", event "ne oldu" der. Karar kaydı
+        **NEDEN** der — ve bir kararı DEĞİŞTİREN tek şey başka bir karardır.
+        Korpusta olmadığı sürece ürün, kararla çürütülmüş eski görev metnini
+        hâlâ geçerliymiş gibi cevaplar (ölçüldü: "Fly backend", oysa D-46 ile
+        VDS'e geçilmişti).
+
+        Gövde `text`e girer (aranan), ama `quote` BAŞLIKtır: kullanıcıya
+        gösterilen alıntı 3 sayfalık bir ADR gövdesi değil, kararın kendisi
+        olmalı. Başlık yoksa gövdenin ilk anlamlı satırına düşer — uydurma
+        bir özet ÜRETİLMEZ.
+        """
+        try:
+            decisions = self.harness_port.read_decisions()
+        except HarnessError:
+            # `_scope_documents`/`_task_documents` ile aynı kural: `.harness`
+            # yoksa (non-demo kiracı) Ask çökmez, o kaynak boş kalır.
+            #
+            # `AttributeError` BİLEREK yakalanmıyor: metodu taşımayan bir port
+            # bizim hatamızdır, sağlayıcı arızası değil. Yakalasaydık tam da
+            # bu bug'ın kendisini yeniden üretirdik — kaynak sessizce boş
+            # kalır, makbuz `decision: 0` basar, kimse fark etmez. Kural
+            # (D-63/#330 ile aynı): sağlayıcı arızasında yumuşa, KENDİ
+            # sözleşmemizin ihlalinde patla.
+            return []
+
+        documents: list[QueryDocument] = []
+        for decision in decisions:
+            ref = str(decision.get("id") or "").strip()
+            if not ref:
+                continue
+            title = str(decision.get("title") or "").strip()
+            body = str(decision.get("body") or "").strip()
+            text = "\n".join(part for part in [title, body] if part)
+            if not text:
+                continue
+            documents.append(
+                QueryDocument(
+                    id=f"decision:{ref}",
+                    type="decision",
+                    ref=ref,
+                    quote=title or _ilk_anlamli_satir(body),
+                    text=text,
+                    url=self._decision_url(decision),
+                )
+            )
+        return documents
+
+    def _decision_url(self, decision: dict[str, Any]) -> str | None:
+        """Karar dosyasının GitHub'daki adresi — depo bilinmiyorsa `None`.
+
+        Uydurma bir URL basmaktansa link vermemek doğru (ölü link, yanlış
+        linkten iyidir ama ikisi de kötü; yokluk dürüst olan)."""
+        path = str(decision.get("path") or "").strip()
+        if not path or not self.github_owner or not self.github_repo:
+            return None
+        return f"https://github.com/{self.github_owner}/{self.github_repo}/blob/main/{path}"
+
     def _event_documents(self) -> tuple[list[QueryDocument], str | None]:
         if self.session_factory is None or self.event_limit == 0:
             return [], None
@@ -224,6 +289,18 @@ class HarnessEventQuerySource:
             return None
         commit = result.stdout.strip()
         return commit if result.returncode == 0 and commit else None
+
+
+def _ilk_anlamli_satir(body: str) -> str:
+    """Markdown gövdesinin ilk gerçek cümlesi — başlık işaretleri atılır.
+
+    Alıntı olarak kullanılır (başlığı olmayan karar kaydı için). Uydurma bir
+    özet ÜRETİLMEZ: metnin kendisinden bir satır seçilir, yeniden yazılmaz."""
+    for satir in body.splitlines():
+        temiz = satir.strip().lstrip("#").strip()
+        if temiz:
+            return temiz
+    return ""
 
 
 def _active_text(declaration: dict[str, Any]) -> str:

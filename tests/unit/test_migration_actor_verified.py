@@ -118,7 +118,15 @@ def test_downgrade_kolonu_temiz_kaldirir(tmp_path, _tek_head_dogrulandi):
     up = _run_alembic("upgrade", "head", db_path=db_path)
     assert up.returncode == 0, up.stderr
 
-    down = _run_alembic("downgrade", "-1", db_path=db_path)
+    # `-1` DEĞİL, hedef revizyon ADIYLA geri sarılır. `-1` "head'in bir
+    # öncesi" demektir ve bu testin doğrulamak istediği migration'ın HEAD
+    # OLDUĞUNU varsayar — zincire yeni bir migration eklenince (#355,
+    # e5b8d2c71a09) test sessizce BAŞKA bir migration'ı sınamaya başlar.
+    # `3a2ba7afdced` actor_verified'ı ekleyen revizyon; TAM bir öncesine
+    # (`a1f7c9d4e2b6`) inmek yalnız onu geri alır. Daha geriye inmek
+    # çok-kiracılık migration'ını da geri sarar ve composite PK iddiası
+    # (aşağıda) yanlış sebeple kırılırdı.
+    down = _run_alembic("downgrade", "a1f7c9d4e2b6", db_path=db_path)
     assert down.returncode == 0, down.stderr
 
     conn = sqlite3.connect(db_path)
