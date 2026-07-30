@@ -8,48 +8,57 @@ import {
   SonGuncelleme,
   YuklemeIskeleti,
 } from "../components/ui";
+import GitAgaci from "../components/GitAgaci";
+import GucYonluGraf, { DugumPaneli, dugumAnahtari } from "../components/GucYonluGraf";
+import type { GucDugumu } from "../components/GucYonluGraf";
+import type { SeritOlayi } from "../lib/grafYerlesimi";
 import { ISI_SINIFLARI, isiSinifi } from "../lib/isiRampasi";
+import { useEvents } from "../lib/useEvents";
 import { useGraph } from "../lib/useGraph";
 
 type GraphEdge = components["schemas"]["GraphEdge"];
 type GraphNode = components["schemas"]["GraphNode"];
 
 /* Dokunma grafı sayfası (#105/#130) — "kim nereye dokunuyor" tek-kare resmi.
-   İki çalışan görünüm modu (sekme ailesi, tercih localStorage'da kalıcı):
+   DÖRT görünüm modu (sekme ailesi, tercih localStorage'da kalıcı):
      - Isı matrisi (tasarım paketi /graph modu (b)) — aktör×modül, hücrede
        count DOĞRUDAN yazılı, tıkla → sağda kenar detayı.
-     - Treemap (tasarım paketi /graph modu (c)) — alan = modülün toplam
-       dokunuş sayısı, aynı ısı rampası dolgu, tıkla → sağda modül detayı
-       (kim-dokunuyor avatarları).
-   İkisi de AYNI TouchGraph cevabından (nodes+edges) türer — sıfır yeni endpoint.
+     - Treemap (mod c) — alan = modülün toplam dokunuş sayısı, aynı ısı
+       rampası dolgu, tıkla → sağda modül detayı (kim-dokunuyor avatarları).
+     - Güç-yönlü (mod a) — aynı veri GEOMETRİ olarak: birbirine dokunan işler
+       birbirine yakın düşer. Yerleşim `lib/grafYerlesimi.ts` (kendi yazdığımız
+       Fruchterman-Reingold; d3-force EKLENMEDİ — bağımlılık yasağı korundu).
+     - Git ağacı (mod d) — dal ŞERİTLERİ + zaman sıralı olaylar. Tek farklı
+       veri kaynağı: `GET /events` (diğer üçü `GET /graph`).
+   Sıfır yeni endpoint: ikisi de zaten var olan uçlardan besleniyor.
 
    Ölçek kararı (tasarım paketi, erişilebilirlik): kırmızı-yeşil diverging YASAK
    (~%8 erkek renk körü okuyamaz) → background→primary TEK-TON ramp, 5 kademeye
    QUANTIZE (sürekli gradyan yerine: hücreler/modüller birbirine göre
    karşılaştırılabilir) + görünür legend. Renk asla tek kanal değil: sayı her
    hücrede/modülde yazılı, `is_active_declared` = halka (şekil), bayatlık =
-   opaklık düşüşü.
+   opaklık düşüşü. Güç-yönlüde aynı ilke: aktör=daire, modül=kare.
 
-   Gate'li (eksik DEĞİL, bilinçli — #130 GATE notu): güç-yönlü graf (mod a) ve
-   git ağacı (mod d) sekme ailesine EKLENMEDİ (çalışmayan sekme basmıyoruz,
-   ölü link yok — AppLayout kuralı):
-     - Güç-yönlü: layout için yeni bir kütüphane gerektirir (d3-force ya da
-       eşdeğeri); bu depoda bağımlılık ekleme yasağı var → S3 sonrasına gate.
-     - Git ağacı: şerit/dirsek çizimi gerçek commit DAG'ı (parent_sha) ister;
-       bugünkü kontrat bunu taşımıyor (Ek-B B6 ertelemesi) → uydurma bir ağaç
-       çizmektense dürüstçe gate'li bırakıyoruz.
-   Kenar başına dosya listesi de YOK: GraphEdge kontratı taşımıyor, uydurma
-   alan çizilmez. */
+   Git ağacının SINIRI (#130 GATE notunun kalan yarısı): gerçek commit DAG'ı
+   `parent_sha` ister, olay kontratı bunu taşımıyor (Ek-B B6 ertelemesi) →
+   ebeveyn–çocuk oku ÇİZİLMEZ ve bu sınır ekranda görünür bir cümle olarak
+   yazılıdır (bkz. GitAgaci.tsx). Uydurma ağaç, eksik ağaçtan pahalıdır.
+
+   Kenar başına dosya listesi YOK: GraphEdge kontratı taşımıyor, uydurma
+   alan çizilmez (git ağacı modunda dosya listesi VAR — NormalizedEvent
+   taşıyor; iki uç farklı şey vaat ediyor, ikisi de kendi vaadinde kalıyor). */
 
 const PENCERELER = [7, 14, 30] as const;
 const GUN_MS = 86_400_000;
 
 /* ── Görünüm modu (#130): sekme ailesi + localStorage kalıcılığı ─────────────
-   Yalnızca ÇALIŞAN modlar burada — gate'li olanlar listeye girmiyor (yukarıdaki
-   gerekçe). Üçüncü/dördüncü mod eklenince tek yapılacak şey bu diziye satır. */
+   Yalnızca ÇALIŞAN modlar burada (dead-tab basmıyoruz — AppLayout kuralı).
+   Dördü de çalışıyor; sekme ailesi bu dizinin tek kaynağı. */
 const GORUNUM_MODLARI = [
   { id: "isi", etiket: "Isı matrisi" },
   { id: "treemap", etiket: "Treemap" },
+  { id: "guc", etiket: "Güç-yönlü" },
+  { id: "agac", etiket: "Git ağacı" },
 ] as const;
 type GorunumModu = (typeof GORUNUM_MODLARI)[number]["id"];
 
@@ -113,15 +122,27 @@ export default function GraphPage() {
   // Mod: lazy initializer → localStorage yalnız ilk mount'ta okunur (her render'da değil).
   const [mod, setModHam] = useState<GorunumModu>(okunanMod);
   const [seciliModul, setSeciliModul] = useState<string | null>(null);
+  // Güç-yönlüde seçim AD-ALANLI anahtardır ("a:fatih" / "m:engine") — aynı adlı
+  // aktör ve modül birbirine karışmasın (bkz. dugumAnahtari).
+  const [seciliDugum, setSeciliDugum] = useState<string | null>(null);
   const { data, error, isLoading, isFetching, dataUpdatedAt } = useGraph(pencere);
+  // Olay akışı YALNIZ git-ağacı sekmesindeyken çekilir: ısı matrisine bakan
+  // kullanıcı için 10 sn'de bir olay poll'ü boşuna trafik.
+  const {
+    data: olayVerisi,
+    error: olayHatasi,
+    isLoading: olaylarYukleniyor,
+    dataUpdatedAt: olayGuncelleme,
+  } = useEvents(mod === "agac");
 
-  // Mod değişince her iki modun seçimi de temizlenir — kapalı moddan hayalet
+  // Mod değişince TÜM modların seçimi temizlenir — kapalı moddan hayalet
   // panel kalmaz (isi'nin `secili`'si treemap'te anlamsız, tersi de öyle).
   function modSec(yeni: GorunumModu) {
     setModHam(yeni);
     modKaydet(yeni);
     setSecili(null);
     setSeciliModul(null);
+    setSeciliDugum(null);
   }
 
   // Türetimler erken-return'lerden ÖNCE (hook kuralı). `data` referansına
@@ -206,16 +227,17 @@ export default function GraphPage() {
   }, [seciliModul, seciliModulVar]);
 
   useEffect(() => {
-    if (!secili && !seciliModul) return;
+    if (!secili && !seciliModul && !seciliDugum) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         setSecili(null);
         setSeciliModul(null);
+        setSeciliDugum(null);
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [secili, seciliModul]);
+  }, [secili, seciliModul, seciliDugum]);
 
   // Yaşlar son BAŞARILI verinin anına sabitlenir (SonGuncelleme ile aynı an);
   // render zamanına bağlasaydık sekme arka plandayken sessizce kayardı.
@@ -223,12 +245,111 @@ export default function GraphPage() {
   // Seçili pencere: kullanıcı seçmediyse cevabın kendi söylediği gerçek pencere.
   const etkinPencere = pencere ?? data?.window_days;
 
+  /* ── Güç-yönlü modun girdileri ────────────────────────────────────────────
+     Isı matrisiyle AYNI `veri`den türer: ikinci bir sayım yapmıyoruz, yoksa
+     iki görünüm aynı veri için farklı sayı basabilirdi. */
+  const gucDugumleri = useMemo<GucDugumu[]>(
+    () => [
+      ...veri.satirlar.map(([id, toplam]) => ({
+        id,
+        tip: "aktor" as const,
+        toplam,
+        paylasilan: false, // "paylaşılan" yalnız modüller için tanımlı
+        dogrulandi: veri.aktorDogrulandi.get(id) ?? true,
+      })),
+      ...veri.sutunlar.map(([id, toplam]) => ({
+        id,
+        tip: "modul" as const,
+        toplam,
+        paylasilan: veri.paylasilan.has(id),
+        dogrulandi: true, // #296 yalnız aktörlerde anlamlı
+      })),
+    ],
+    [veri],
+  );
+
+  const gucKenarlari = useMemo(
+    () => [...veri.hucre.values()].flatMap((satir) => [...satir.values()]),
+    [veri],
+  );
+
+  const seciliGucDugumu = useMemo(
+    () =>
+      seciliDugum
+        ? (gucDugumleri.find((d) => dugumAnahtari(d.tip, d.id) === seciliDugum) ?? null)
+        : null,
+    [seciliDugum, gucDugumleri],
+  );
+
+  const seciliDugumKomsulari = useMemo(() => {
+    if (!seciliGucDugumu) return [];
+    const aktorMu = seciliGucDugumu.tip === "aktor";
+    return gucKenarlari
+      .filter((e) => (aktorMu ? e.actor : e.module) === seciliGucDugumu.id)
+      .map((e) => ({
+        id: aktorMu ? e.module : e.actor,
+        count: e.count,
+        is_active_declared: e.is_active_declared,
+      }))
+      .sort((a, b) => b.count - a.count || a.id.localeCompare(b.id, "tr"));
+  }, [seciliGucDugumu, gucKenarlari]);
+
+  /* ── Git ağacı modunun girdisi ────────────────────────────────────────────
+     Yaş çapası graf sorgusunun değil OLAY sorgusunun son başarılı anı (D-34:
+     "yaşlar render zamanına değil, verinin anına sabitlenir"). */
+  const olaySimdi = olayGuncelleme || Date.now();
+  const seritOlaylari = useMemo<SeritOlayi[]>(() => {
+    const ham = olayVerisi?.events ?? [];
+    // Pencere seçici DÖRT modda da aynı şeyi ifade etsin diye olaylar da aynı
+    // pencereye kırpılır. Pencere henüz bilinmiyorsa (graf cevabı gelmedi)
+    // kırpma YAPILMAZ — uydurma bir varsayılan pencere seçmiyoruz.
+    const sinir = etkinPencere ? olaySimdi - etkinPencere * GUN_MS : null;
+    const secilen =
+      sinir === null
+        ? ham
+        : ham.filter((e) => {
+            const t = new Date(e.ts).getTime();
+            // Tarihi okunamayan olay burada ELENMEZ: `seritDizilimi` onu sayıp
+            // ekranda görünür şekilde bildiriyor; burada sessizce düşürseydik
+            // o bildirim de kaybolur, olay hiç var olmamış gibi olurdu.
+            return Number.isNaN(t) || t >= sinir;
+          });
+    return secilen.map((e) => ({
+      id: e.id,
+      tip: e.type,
+      aktor: e.actor,
+      dogrulandi: e.actor_verified ?? true,
+      dal: e.branch,
+      ts: e.ts,
+      ref: e.ref,
+      files: e.files,
+    }));
+  }, [olayVerisi, etkinPencere, olaySimdi]);
+
+  // Hayalet-panel temizliği, güç-yönlü için (isi/treemap'inkiyle aynı kural):
+  // seçili düğüm veriden düşerse panel dürüstçe kapanır.
+  useEffect(() => {
+    if (seciliDugum && !seciliGucDugumu) setSeciliDugum(null);
+  }, [seciliDugum, seciliGucDugumu]);
+
   /* Üç durum: başlık + pencere seçici HER durumda görünür kalır (yükleme
      iskeleti tüm sayfayı yutarsa kullanıcı yeni tıkladığı kontrolü kaybeder),
      üç durumun kendisi gövdede çizilir. Sıra ve semantik RadarPage ile aynı:
      yükleniyor → (hata VE veri yok) → boş → içerik. */
   let govde: ReactNode;
-  if (isLoading) {
+  if (mod === "agac") {
+    /* Git ağacı BAŞKA bir uçtan (GET /events) besleniyor → kendi üç durumu.
+       Graf boşken olay akışı dolu olabilir (ve tersi); ortak zincire
+       sokarsak biri diğerinin boşluğunu sessizce gizlerdi. */
+    if (olaylarYukleniyor) {
+      govde = <YuklemeIskeleti label="Olay akışı yükleniyor" satir={4} />;
+    } else if (olayHatasi != null && olayVerisi === undefined) {
+      govde = <HataDurumu baslik="Olay akışına ulaşılamıyor" hata={olayHatasi} />;
+    } else {
+      // Boş durumu GitAgaci kendi içinde basar (şerit sözlüğüyle birlikte).
+      govde = <GitAgaci olaylar={seritOlaylari} />;
+    }
+  } else if (isLoading) {
     govde = <YuklemeIskeleti label="Dokunma grafı yükleniyor" satir={4} />;
   } else if (error != null && data === undefined) {
     // != null: openapi-fetch boş-gövdeli non-ok cevapta error="" (falsy!)
@@ -248,6 +369,30 @@ export default function GraphPage() {
         ]}
         eta="Pencereyi genişletmeyi dene; veri ingest'ten gelir (#104)."
       />
+    );
+  } else if (mod === "guc") {
+    govde = (
+      <div className="flex items-start gap-4">
+        <div className="min-w-0 flex-1 space-y-3">
+          <Ozet veri={veri} />
+          <GucYonluGraf
+            dugumler={gucDugumleri}
+            kenarlar={gucKenarlari}
+            secili={seciliDugum}
+            onSec={(anahtar) =>
+              setSeciliDugum((s) => (s === anahtar ? null : anahtar))
+            }
+          />
+        </div>
+        {seciliGucDugumu && (
+          <DugumPaneli
+            dugum={seciliGucDugumu}
+            komsular={seciliDugumKomsulari}
+            aktorDogrulandi={veri.aktorDogrulandi}
+            onClose={() => setSeciliDugum(null)}
+          />
+        )}
+      </div>
     );
   } else if (mod === "treemap") {
     govde = (
@@ -338,12 +483,10 @@ export default function GraphPage() {
             </button>
           ))}
         </div>
-        {/* Gate'li modlar (#130): dead-tab basmıyoruz, gerekçe görünür kalsın */}
-        <span
-          className="text-[11px] text-muted-foreground"
-          title="Güç-yönlü: yeni kütüphane gerektirir (bağımlılık yasağı). Git ağacı: gerçek commit DAG'ı (parent_sha) ister, bugünkü kontrat taşımıyor."
-        >
-          Güç-yönlü ve git ağacı gate'li — bkz. #130
+        <span className="text-[11px] text-muted-foreground">
+          {mod === "agac"
+            ? "Kaynak: olay akışı (GET /events)"
+            : "Kaynak: dokunma grafı (GET /graph)"}
         </span>
       </div>
 

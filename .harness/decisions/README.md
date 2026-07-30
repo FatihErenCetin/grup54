@@ -65,3 +65,4 @@ migrasyon notunu bırakıyor.
 | [D-62](D-62-kapsam-metni-turkce-tipografi.md) | 2026-07-29 | Donmuş `sprint-3.md` kapsam metni Türkçe karaktersizdi — tipografik düzeltme (#317) |
 | [D-61](D-61-agentic-github-yazma-yolu.md) | 2026-07-30 | Ürün ilk kez DIŞARIYA yazıyor — radar high-severity → PR'a uyarı yorumu (fail-closed, iki bayrak, idempotent); "MCP write-back" non-goal'undan farkı |
 | [D-63](D-63-vizyon-once-iddiasi-daraltildi.md) | 2026-07-30 | Vizyon §5 "olmadan önce uyarır" iddiası ölçümle daraltıldı → "merge edilmeden önce"; pre-edit uyarısı evre-2 |
+| [D-64](D-64-graph-ek-modlar-kapsama-alindi.md) | 2026-07-30 | Graph'ın kalan iki modu (#130) S3 non-goal'undan kapsama alındı — d3-force EKLENMEDEN, DAG uydurulMADAN; treemap'in daha önce kayıtsız kaydığı da tespit edildi |

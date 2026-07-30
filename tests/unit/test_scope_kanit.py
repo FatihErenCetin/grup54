@@ -152,11 +152,25 @@ def test_sprint_3_madde_sayilari_sabit():
     cap + cached verdict (Ek F, #63)") geçici olarak silindi; test
     `6 == 6 assertion`ında `5 == 6` ile FAIL etti. Madde geri eklenince yeşile
     döndü.
+
+    30 Tem 2026 — beklenen sayı `goals` için 6 → **7**. Bu test bir "sayı asla
+    değişmesin" kuralı DEĞİL; "kapsam sessizce kaymasın" kuralıdır: sayı
+    ancak KAYITLI bir PO kararıyla değişebilir. Değişikliğin kaydı **D-64**
+    (Graph 4 görünüm modu #130, non_goals'tan goals'a taşındı). `non_goals`
+    6'da kalıyor — bir madde silinmedi, YERİNE daha dar bir madde yazıldı
+    (gerçek commit DAG'ı / parent_sha hâlâ kapsam dışı).
+
+    Testi bu commit'te güncellemek, kilidi gevşetmek değil onu ÇALIŞTIRMAKTIR:
+    test kırmızıya döndü, insan gerekçeyi yazdı, kayıt açıldı. Sessizce
+    kayması tam olarak engellenmek istenen şeydi (bkz. D-64'teki treemap
+    bulgusu: aynı madde bir kez kayıtsız kaymıştı).
     """
     scope = FileHarnessPort(_KOK).read_scope("3")
     goals = scope.get("goals") or []
     non_goals = scope.get("non_goals") or []
-    assert len(goals) == 6, f"kapsam içi (goals) madde sayısı değişti: {len(goals)} (beklenen 6)"
+    assert len(goals) == 7, (
+        f"kapsam içi (goals) madde sayısı değişti: {len(goals)} (beklenen 7, bkz. D-64)"
+    )
     assert len(non_goals) == 6, (
         f"kapsam dışı (non_goals) madde sayısı değişti: {len(non_goals)} (beklenen 6)"
     )
