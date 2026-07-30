@@ -22,6 +22,9 @@ const ActivityPage = lazy(() => import("./pages/ActivityPage"));
 const AskPage = lazy(() => import("./pages/AskPage"));
 const ActorPage = lazy(() => import("./pages/ActorPage"));
 const RepoSeciciPage = lazy(() => import("./pages/RepoSeciciPage"));
+// #340 — onboarding sihirbazı (§8.5); sidebar'da GÖRÜNÜR (demo anlatımının
+// başlangıcı: "boş bir projeden sprint'e").
+const OnboardingPage = lazy(() => import("./pages/OnboardingPage"));
 // T-309 — ayarlar sayfası; nav linki + rota AppLayout/AyarlarPage'in kendi
 // mod-kapısına tabi (yalnız local'de görünür), sidebar'da BAŞKA yere girmez.
 const AyarlarPage = lazy(() => import("./pages/AyarlarPage"));
@@ -56,6 +59,8 @@ createRoot(document.getElementById("root")!).render(
               {/* #79/T-79 — repo seçici; sidebar'da YOK (topbar'daki aktif
                   kiracı göstergesinden linklenir, ActorPage kalıbının aynısı) */}
               <Route path="repolar" element={<RepoSeciciPage />} />
+              {/* #340 — onboarding sihirbazı (§8.5) */}
+              <Route path="onboarding" element={<OnboardingPage />} />
               {/* T-309 — ayarlar; sidebar'da KOŞULLU (AppLayout, yalnız
                   `GET /settings/saglayici` 200 dönerse görünür) */}
               <Route path="ayarlar" element={<AyarlarPage />} />
