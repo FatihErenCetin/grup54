@@ -3995,6 +3995,14 @@
               "missing"
             ],
             "title": "Gemini"
+          },
+          "fallback": {
+            "type": "string",
+            "enum": [
+              "configured",
+              "missing"
+            ],
+            "title": "Fallback"
           }
         },
         "type": "object",
@@ -4002,7 +4010,8 @@
           "status",
           "mode",
           "github_auth",
-          "gemini"
+          "gemini",
+          "fallback"
         ],
         "title": "HealthResponse"
       },

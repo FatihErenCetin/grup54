@@ -29,6 +29,7 @@ def test_health_check_fake_adapterlerde_missing_raporlar():
         "mode": "local",
         "github_auth": "missing",
         "gemini": "missing",
+        "fallback": "missing",
     }
 
 
@@ -180,3 +181,92 @@ def test_health_zincirde_gemini_YOKSA_missing():
         radar_service=_radar_service(github_port=FakeGitHubAdapter(), judge_port=zincir),
     )
     assert sonuc.gemini == "missing"
+
+
+# ── #359: yedek saglayici gorunurlugu ────────────────────────────────────────
+
+
+def _groq_judge():
+    """Gercek `GroqJudgeAdapter` — ag cagrisi YOK, yalniz kurulum."""
+    from ensemble.integrations.groq.judge import GroqJudgeAdapter
+
+    return GroqJudgeAdapter(Settings(GROQ_API_KEY="test-anahtari"))
+
+
+def test_health_yedek_zincirde_VARSA_configured():
+    """#359 — Groq zincirin ikincil dalindaysa `fallback: configured`.
+
+    30 Tem olcumu: Gemini'nin gunluk generate kotasi (flash: 20/gun) bitip
+    `/query` 503 donerken "yedek var mi" sorusunun cevabi ancak sunucuya
+    SSH'lenip `ensemble.env` sayilarak bulunabildi — `/health` o sirada
+    `status: ok` diyordu ve yedekten hic bahsetmiyordu.
+
+    MUTASYON KILIDI: `fallback=fallback` alanini `"missing"` sabitine cevir
+    -> bu test kirilir.
+    """
+    from ensemble.engine.fallback import FallbackJudge
+
+    zincir = FallbackJudge(primary=_gemini_judge(), secondary=_groq_judge())
+    sonuc = health_check(
+        settings=Settings(ENSEMBLE_MODE="hosted"),
+        radar_service=_radar_service(github_port=FakeGitHubAdapter(), judge_port=zincir),
+    )
+    assert sonuc.fallback == "configured"
+    assert sonuc.gemini == "configured"  # iki alan birbirini bozmuyor
+
+
+def test_health_ANAHTAR_dolu_ama_yedek_SARILMAMISSA_missing():
+    """Bu alanin ASIL varlik sebebi — `settings.GROQ_API_KEY`'e bakmak YETMEZ.
+
+    `app.py` yedegi yalnizca birincil GERCEK bir Gemini adapteri iken sarar
+    (dahil-etme listesi). Anahtar dolu ama birincil baska bir sey ise yedek
+    DEVREDE DEGILDIR; bugun bu yalnizca bir `logger.warning`'e dusuyor.
+    `/health` bu hali "configured" diye raporlarsa operatore yalan soyler.
+
+    MUTASYON KILIDI: `fallback`i zincir yerine `settings.GROQ_API_KEY`'den
+    turet -> bu test kirilir (anahtar dolu ama zincirde Groq yok).
+    """
+    sonuc = health_check(
+        settings=Settings(ENSEMBLE_MODE="hosted", GROQ_API_KEY="dolu-ama-sarilmadi"),
+        radar_service=_radar_service(
+            github_port=FakeGitHubAdapter(), judge_port=FakeJudgeAdapter()
+        ),
+    )
+    assert sonuc.fallback == "missing"
+
+
+def test_health_yedek_SARMALAYICI_ALTINDA_da_bulunur():
+    """Cache/devre-kesici gibi katmanlar yedegi gizlememeli — zincir yurunur."""
+    from ensemble.engine.cache import CachedConflictJudge
+    from ensemble.engine.fallback import FallbackJudge
+
+    zincir = CachedConflictJudge(
+        FallbackJudge(primary=_gemini_judge(), secondary=_groq_judge()),
+        ttl_s=60,
+        max_entries=8,
+    )
+    sonuc = health_check(
+        settings=Settings(ENSEMBLE_MODE="hosted"),
+        radar_service=_radar_service(github_port=FakeGitHubAdapter(), judge_port=zincir),
+    )
+    assert sonuc.fallback == "configured"
+
+
+def test_health_yanit_govdesi_SIR_sizdirmaz():
+    """Yalniz var/yok — anahtarin kendisi ya da bir parcasi ASLA."""
+    from ensemble.engine.fallback import FallbackJudge
+
+    sir = "gsk-cok-gizli-anahtar-degeri"
+    from ensemble.integrations.groq.judge import GroqJudgeAdapter
+
+    zincir = FallbackJudge(
+        primary=_gemini_judge(), secondary=GroqJudgeAdapter(Settings(GROQ_API_KEY=sir))
+    )
+    sonuc = health_check(
+        settings=Settings(ENSEMBLE_MODE="hosted", GROQ_API_KEY=sir),
+        radar_service=_radar_service(github_port=FakeGitHubAdapter(), judge_port=zincir),
+    )
+    govde = str(sonuc.model_dump())
+    assert sir not in govde
+    assert "gsk" not in govde
+    assert sonuc.fallback == "configured"

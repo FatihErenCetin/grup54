@@ -157,6 +157,7 @@ def test_normal_akis_etkilenmez():
         "mode": "local",
         "github_auth": "missing",
         "gemini": "missing",
+        "fallback": "missing",
     }
 
 
@@ -194,9 +195,7 @@ def test_http_exception_headers_zarfa_tasinir():
 
     @app.get("/__test-headers-route")
     def _patlar():
-        raise HTTPException(
-            status_code=429, detail="test-detay", headers={"Retry-After": "7"}
-        )
+        raise HTTPException(status_code=429, detail="test-detay", headers={"Retry-After": "7"})
 
     resp = TestClient(app).get("/__test-headers-route")
     assert resp.status_code == 429
