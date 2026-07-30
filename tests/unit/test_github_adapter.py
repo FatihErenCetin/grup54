@@ -340,6 +340,51 @@ def test_adapter_fetch_backfill_events_uses_recent_limit_without_since():
     assert all("since" not in request.url.params for request in list_requests)
 
 
+def test_fetch_backfill_resources_HAM_dondurur_ve_PR_leri_issue_lardan_ELER():
+    """#331 — durum geçişi ham alanlardan (state/merged_at/head.ref/body) türer;
+    `NormalizedEvent` bunları ATIYOR, bu yüzden ayrı bir ham yol gerekti.
+
+    KRİTİK: `/issues` ucu PR'ları da döndürür ve numara havuzu ORTAK. Elenmezse
+    "PR #99 kapandı" sinyali `T-99` diye SAHTE bir issue kartı üretirdi
+    (fixture'daki 99, `pull_request` alanı taşıyan bir PR'dır).
+
+    MUTASYON: `_fetch_recent_issues`'daki `"pull_request" not in i` filtresini
+    kaldır -> `issue_numaralari` [50, 99] olur ve bu test kırmızı olur.
+    """
+    adapter = _adapter(with_etag=False)
+
+    resources = adapter.fetch_backfill_resources(limit_per_type=10)
+
+    assert [pr["number"] for pr in resources.prs] == [99, 88]
+    # Ham sözlük: normalize edilmiş değil (durumun türeyeceği alanlar duruyor).
+    assert resources.prs[0]["head"]["ref"] == "T-99-ornek-ozellik"
+
+    issue_numaralari = [i["number"] for i in resources.issues]
+    assert issue_numaralari == [50]
+    assert 99 not in issue_numaralari
+
+
+def test_fetch_backfill_resources_limit_sifirda_AG_A_HIC_DOKUNMAZ():
+    """`limit_per_type<=0` -> boş sonuç, tek HTTP isteği bile YOK
+    (`fetch_backfill_events`'in aynı sözleşmesi)."""
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return _fixture_handler(with_etag=False)(request)
+
+    client = GitHubRestClient(
+        token_provider=lambda: "fake-token",
+        http_client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+    adapter = GitHubAdapter(_settings(), client=client)
+
+    resources = adapter.fetch_backfill_resources(limit_per_type=0)
+
+    assert resources.prs == [] and resources.issues == []
+    assert seen == []
+
+
 def test_adapter_scope_subject_pr_baslik_govde_ve_dosyalarini_tasir():
     requests: list[httpx.Request] = []
 

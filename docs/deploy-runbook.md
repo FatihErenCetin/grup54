@@ -325,6 +325,38 @@ curl -s -i -X OPTIONS https://api.recommend2me.com/board \
 curl -s -I https://www.recommend2me.com/board       # 200 + SPA rewrite kanıtı
 ```
 
+### 🆕 4.1 · `#331` deploy'undan SONRA TEK SEFERLİK `rebuild` ZORUNLU
+
+`#331` board'un **geçmişini** GitHub'ın anlık PR/issue kaynaklarından kurtarır
+ve kart kümesini `.harness/tasks/` dışına açar — ama bunu **yalnız
+`rebuild_projection` yapar**. Webhook tek başına YETMEZ: yalnız o andan
+SONRAKİ olayları görür (issue'nun kök nedeni tam olarak buydu). Yani imaj
+deploy edilip webhook çalışsa bile, rebuild koşulmadan board **22 kartta
+donmuş** kalır ve düzelme "sessizce" gerçekleşmez.
+
+```bash
+ssh fatih@2.59.181.226
+cd /opt/ensemble && docker compose exec api sh -c "cd /app && make rebuild"
+```
+
+Beklenen çıktı (30 Tem ölçümü, uçtan uca doğrulandı):
+
+```
+Rebuilt: {'tasks': 155, 'tasks_from_harness': 22, 'tasks_from_github': 133,
+          ..., 'backfill_transitions': 316, 'orphan_transitions': 12}
+```
+
+Doğrulama — kart sayısı ve tazelik sinyali:
+
+```bash
+curl -s https://api.recommend2me.com/board | jq '{kart: (.cards|length), .last_transition_at, .source}'
+# beklenen: kart ~ repo issue sayısı (22 DEĞİL) · source: "ingest"
+```
+
+`tasks_from_github: 0` görürsen backfill GitHub'a ulaşamamıştır (App
+kimliği/`.pem`) — `ENSEMBLE_ALLOW_FAKE_SEED` ile **geçme**, D-51 fail-closed
+kapısı bilerek oradadır.
+
 ---
 
 ## 5. Rollback

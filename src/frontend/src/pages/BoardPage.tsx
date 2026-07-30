@@ -4,10 +4,12 @@ import {
   ActorChip,
   EmptyState,
   HataDurumu,
-  SonGuncelleme,
   YuklemeIskeleti,
 } from "../components/ui";
 import { useBoard } from "../lib/useBoard";
+// UTC parse TEK yerden (ActivityPage'in "ONU KULLAN" notu) — zone eki olmayan
+// `last_transition_at` `new Date()` ile YEREL saat sanılır ve yaş 3 saat kayar.
+import { parseUtc } from "./ActivityPage";
 
 type BoardCard = components["schemas"]["BoardCard"];
 type Status = BoardCard["status"];
@@ -84,6 +86,93 @@ function kartSirasi(a: BoardCard, b: BoardCard): number {
   return a.task_id.localeCompare(b.task_id, "tr");
 }
 
+/** Göreli yaş DAİMA gerçek saatin YANINDA ikincil bilgi (D-34; ActorPage ile
+    aynı kural). Gün eşiği board için önemli: bayatlık saatlerle değil GÜNLERLE
+    ölçülüyordu (ölçüm: 29 Tem'de board'un en taze verisi 28 Tem'di). */
+export function yasMetni(ms: number): string {
+  const dakika = ms / 60000;
+  if (dakika < 1) return "az önce";
+  if (dakika < 60) return `${Math.floor(dakika)} dk önce`;
+  if (dakika < 60 * 24) return `${Math.floor(dakika / 60)} sa önce`;
+  return `${Math.floor(dakika / (60 * 24))} gün önce`;
+}
+
+/** Board'ın GERÇEK veri yaşı + kaynağı (#331).
+ *
+ * Bu sayfa şimdiye kadar ortak `SonGuncelleme` bileşeniyle İSTEMCİNİN fetch
+ * saatini "Son güncelleme" diye basıyordu. O saat her ~10 sn'de tazelenir:
+ * board üç gündür bayat olsa bile kullanıcı "az önce güncellendi" görürdü.
+ * Gerçek veri yaşı (`last_transition_at`) ve kaynağı (`source`) yanıtta ZATEN
+ * vardı, hiç okunmuyordu — "temiz" ile "temiz diyemiyoruz"u karıştırmama
+ * ilkesinin (D-34) doğrudan ihlaliydi.
+ *
+ * İki saat AYRI AYRI gösterilir, biri diğerinin yerine geçmez:
+ *   • VERİ yaşı  = son GitHub geçişinin zamanı (bayatlığın ölçüsü)
+ *   • son çekim  = istemcinin son başarılı poll'u (bağlantı canlı mı)
+ */
+export function BoardTazeligi({
+  lastTransitionAt,
+  source,
+  dataUpdatedAt,
+  isFetching = false,
+  simdi = Date.now(),
+}: {
+  /** `BoardResponse.last_transition_at` — UTC, zone eki OLMADAN gelebilir */
+  lastTransitionAt: string | null | undefined;
+  source: "seed" | "ingest" | undefined;
+  /** usePolling'den gelen istemci fetch anı (ms epoch); 0 = henüz veri yok */
+  dataUpdatedAt: number;
+  isFetching?: boolean;
+  /** Testlerde sabitlenebilsin diye enjekte edilir (saat uydurulmaz) */
+  simdi?: number;
+}) {
+  const d = lastTransitionAt ? parseUtc(lastTransitionAt) : null;
+  const gecerli = d !== null && !Number.isNaN(d.getTime());
+
+  return (
+    <div className="flex flex-col items-end gap-0.5 text-xs">
+      <span className="inline-flex items-center gap-1.5">
+        <span
+          className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${
+            source === "ingest"
+              ? "bg-status-done/15 text-status-done"
+              : "bg-status-backlog/15 text-status-backlog"
+          }`}
+          title={
+            source === "ingest"
+              ? "Durumlar gerçek GitHub olaylarından katlandı"
+              : "Hiç GitHub geçişi işlenmedi — kartlar yalnız .harness tohumunu gösteriyor"
+          }
+        >
+          {source === "ingest" ? "kaynak: ingest" : "kaynak: yalnız tohum"}
+        </span>
+        <span className="text-muted-foreground">
+          {gecerli ? (
+            <>
+              Veri: {d.toLocaleString("tr-TR", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}{" "}
+              <span className="tabular-nums">({yasMetni(simdi - d.getTime())})</span>
+            </>
+          ) : lastTransitionAt ? (
+            "Veri tarihi okunamadı"
+          ) : (
+            "Veri: hiç geçiş işlenmedi"
+          )}
+        </span>
+      </span>
+      <span className="inline-flex items-center gap-1.5 text-[11px] text-muted-foreground">
+        {isFetching && (
+          <span aria-hidden className="animate-pulse text-primary">
+            ●
+          </span>
+        )}
+        {dataUpdatedAt === 0
+          ? "son çekim: henüz yok"
+          : `son çekim: ${new Date(dataUpdatedAt).toLocaleTimeString("tr-TR")}`}
+      </span>
+    </div>
+  );
+}
+
 function DurumCipi({ kolon }: { kolon: (typeof KOLONLAR)[number] }) {
   return (
     <span
@@ -123,7 +212,11 @@ function KartOgesi({ kart, kolon }: { kart: BoardCard; kolon: (typeof KOLONLAR)[
         {kart.ref && (
           <span
             className="rounded bg-muted px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground"
-            title="Kaynak referansı (.harness/tasks kaydından)"
+            // #331: `ref` artık iki kaynaktan gelebiliyor — `.harness/tasks`
+            // kaydındaki `ref` alanı ya da `.harness`'te dosyası olmayan bir
+            // GitHub issue'sunun numarası (`#331`). Eski metin ("…/tasks
+            // kaydından") ikincisi için YANLIŞ olurdu.
+            title="Kaynak referansı (GitHub issue numarası ya da .harness/tasks kaydı)"
           >
             {kart.ref}
           </span>
@@ -178,7 +271,12 @@ export default function BoardPage() {
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-4">
         <h1 className="text-base font-semibold">Görev panosu</h1>
-        <SonGuncelleme dataUpdatedAt={dataUpdatedAt} isFetching={isFetching} />
+        <BoardTazeligi
+          lastTransitionAt={data?.last_transition_at}
+          source={data?.source}
+          dataUpdatedAt={dataUpdatedAt}
+          isFetching={isFetching}
+        />
       </div>
 
       {/* Ürünün iddiası, boş panoda bile görünür kalır */}
@@ -189,17 +287,18 @@ export default function BoardPage() {
         <p className="text-xs text-muted-foreground">
           Kartlar sürüklenmez — durumu ingest yazar:{" "}
           <span className="font-mono">T-&lt;id&gt;</span> dalına commit düşünce
-          “Devam ediyor”, PR açılınca “İncelemede”. Kaynak:{" "}
-          <span className="font-mono">.harness/tasks/</span> + GitHub olayları.
+          “Devam ediyor”, PR açılınca “İncelemede”. Kart kümesi:{" "}
+          <span className="font-mono">.harness/tasks/</span> kayıtları{" "}
+          <em>ve</em> GitHub issue’ları (#331 — pano artık dosya beklemez).
         </p>
       </div>
 
       {toplam === 0 ? (
         <EmptyState
           title="Pano henüz dolmadı"
-          description="Bu boşluk “veri alınamadı” demek değil: uç canlı ve boş liste döndü. Burada elle kart açılmaz — her kart bir .harness/tasks/T-<id> kaydıdır; projeksiyon kurulup GitHub olayları işlendiğinde beş kolon kendiliğinden dolar."
+          description="Bu boşluk “veri alınamadı” demek değil: uç canlı ve boş liste döndü. Burada elle kart açılmaz — her kart ya bir .harness/tasks/T-<id> kaydı ya da bir GitHub issue’sudur; projeksiyon kurulup GitHub olayları işlendiğinde beş kolon kendiliğinden dolar."
           items={[
-            "○ Backlog — task dosyası var, sıraya girmedi",
+            "○ Backlog — kart açıldı, sıraya girmedi",
             "◔ Yapılacak — sprint kapsamına alındı",
             "◑ Devam ediyor — T-<id> dalına commit düştü",
             "◕ İncelemede — task için PR açıldı",

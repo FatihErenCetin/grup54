@@ -326,12 +326,66 @@ def test_merge_edilen_pr_govdesindeki_closes_ile_karti_done_yapar(client):
     assert _board_status(client, "T-158") == "done"  # board değişmedi
 
 
-def test_eslesmeyen_task_id_webhook_uzerinden_unmatched_sayilir(client):
-    """.harness'te (task_projection'da) karşılığı olmayan bir task_id için
-    webhook 202 + `unmatched=1` döner — sessizce yutulmaz, kart da uydurulmaz."""
+def test_gecisten_kart_UYDURULMAZ_closes_bilinmeyen_issue(client):
+    """Elde GERÇEK issue nesnesi YOKKEN kart uydurulmaz (#331 sonrası da geçerli).
+
+    Senaryo: merge edilmiş bir PR gövdesinde `Closes #424242` var ama 424242
+    numaralı issue bu repoda yok (silinmiş/yanlış yazılmış). Geçiş üretilir,
+    `task_status_events`'e YAZILIR (kaybolmaz) ama `task_projection`'a kart
+    AÇILMAZ — çünkü elimizde yalnız bir task_id var, başlık/assignee yok;
+    açılacak kart uydurma olurdu.
+
+    MUTASYON: `upsert_issue_cards` PR yolunda da çağrılırsa (ya da
+    `apply_transitions` geçişten kart türetmeye başlarsa) bu test kırmızı olur.
+    """
     payload = {
         "action": "closed",
-        "issue": {"number": 424242, "updated_at": "2026-07-25T09:00:00Z", "user": {"login": "esma"}},
+        "pull_request": {
+            "number": 777,
+            "updated_at": "2026-07-25T09:00:00Z",
+            "merged": True,
+            "user": {"login": "esma"},
+            "head": {"ref": "yok-boyle-dal"},
+            "body": "Closes #424242",
+        },
+    }
+    body = json.dumps(payload).encode()
+    resp = client.post(
+        "/webhooks/github",
+        content=body,
+        headers={"X-Hub-Signature-256": _sign(body), "X-GitHub-Event": "pull_request"},
+    )
+    assert resp.status_code == 202
+    data = resp.json()
+    assert data["applied"] == 0
+    assert data["unmatched"] == 1
+    assert data["cards_created"] == 0
+    assert _board_status(client, "T-424242") is None
+
+
+def test_yeni_github_issue_su_KART_URETIR(client):
+    """#331 kabul kriteri: kart kümesi `.harness/tasks/` ile SINIRLI DEĞİL.
+
+    `.harness`'te dosyası OLMAYAN, hiç görülmemiş bir issue kapandığında
+    webhook hem kartı açar hem geçişi uygular → board'da `done` görünür.
+    Eski davranış: `unmatched=1` loglanır, kart HİÇ düşmezdi (repoda ~150
+    issue varken board'da 22 kart olmasının canlı yoldaki sebebi).
+
+    Kart uydurma DEĞİL: başlık/assignee GitHub'ın kendi issue nesnesinden
+    gelir (aşağıdaki assert'ler bunu kilitler).
+
+    MUTASYON: webhook.py'den `upsert_issue_cards` çağrısı silinirse kart
+    açılmaz, `_board_status` None döner ve bu test kırmızı olur.
+    """
+    payload = {
+        "action": "closed",
+        "issue": {
+            "number": 424242,
+            "title": "Board kendiliğinden dolmuyor",
+            "updated_at": "2026-07-25T09:00:00Z",
+            "user": {"login": "esma"},
+            "assignee": {"login": "FatihErenCetin"},
+        },
     }
     body = json.dumps(payload).encode()
     resp = client.post(
@@ -341,9 +395,52 @@ def test_eslesmeyen_task_id_webhook_uzerinden_unmatched_sayilir(client):
     )
     assert resp.status_code == 202
     data = resp.json()
-    assert data["applied"] == 0
-    assert data["unmatched"] == 1
-    assert _board_status(client, "T-424242") is None
+    assert data["cards_created"] == 1
+    assert data["applied"] == 1
+    assert data["unmatched"] == 0
+    assert _board_status(client, "T-424242") == "done"
+
+    kart = next(c for c in client.get("/board").json()["cards"] if c["task_id"] == "T-424242")
+    assert kart["title"] == "Board kendiliğinden dolmuyor"
+    assert kart["assignee"] == "FatihErenCetin"
+    assert kart["ref"] == "#424242"
+
+
+def test_ayni_issue_ikinci_webhookta_kart_COGALTMAZ_ve_harness_basligi_EZILMEZ(client):
+    """İdempotans + `.harness` üstünlüğü tek testte.
+
+    (1) `.harness` tohumlu bir kart (T-158, başlık "Harness başlığı") varken
+    aynı numaralı issue webhook'u gelirse başlık EZİLMEZ — `.harness` kazanır
+    (dizin_yapisi §7).
+    (2) Aynı issue ikinci kez gelirse ikinci kart açılmaz.
+
+    MUTASYON: `upsert_issue_cards` "var olanı da güncelle" (merge/upsert)
+    yapacak şekilde değiştirilirse başlık "GitHub başlığı" olur → kırmızı.
+    """
+    _seed_task(client.app.state.session_factory, "T-158", status="todo", title="Harness başlığı")
+
+    payload = {
+        "action": "closed",
+        "issue": {
+            "number": 158,
+            "title": "GitHub başlığı",
+            "updated_at": "2026-07-25T09:00:00Z",
+            "user": {"login": "esma"},
+        },
+    }
+    body = json.dumps(payload).encode()
+    for _ in range(2):
+        resp = client.post(
+            "/webhooks/github",
+            content=body,
+            headers={"X-Hub-Signature-256": _sign(body), "X-GitHub-Event": "issues"},
+        )
+        assert resp.status_code == 202
+        assert resp.json()["cards_created"] == 0
+
+    kartlar = [c for c in client.get("/board").json()["cards"] if c["task_id"] == "T-158"]
+    assert len(kartlar) == 1
+    assert kartlar[0]["title"] == "Harness başlığı"
 
 
 def test_events_bos_ama_transitions_dolu_olsa_bile_gecisler_uygulanir(client, monkeypatch):

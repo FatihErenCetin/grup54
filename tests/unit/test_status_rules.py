@@ -336,6 +336,71 @@ def test_transitions_from_resources_issue_acik_no_op():
     assert transitions_from_resources([], issues) == []
 
 
+def test_REST_LISTE_sekli_merged_anahtari_YOK_yalniz_merged_at():
+    """#331 — GERÇEK backfill payload'ı: `GET /repos/{o}/{r}/pulls` ucu
+    (`pull-request-simple`) `merged` alanını HİÇ TAŞIMAZ, yalnız `merged_at`.
+
+    Yukarıdaki `test_transitions_from_resources_pr_merged_done` bu tuzağı
+    ıskalıyordu çünkü elle `"merged": True` yazıyor — webhook'un içindeki TAM
+    PR nesnesinin şekli. Ölçüldü (2026-07-30, canlı repo):
+        gh api '/repos/FatihErenCetin/grup54/pulls?state=all' \
+          --jq '.[] | has("merged")'  ->  hepsi false
+    Yani `pr.get("merged")` tek başına bakıldığında backfill'den ÜRETİLEN
+    `done` sayısı SIFIR olurdu ve bu hiçbir hata vermeden olurdu.
+
+    MUTASYON: `status_rules._merged`'i `return bool(pr.get("merged"))`'a geri
+    al -> bu test kırmızı olur (transitions boş döner).
+    """
+    prs = [
+        {
+            "number": 328,
+            "updated_at": "2026-07-29T21:47:45Z",
+            "state": "closed",
+            "merged_at": "2026-07-29T21:47:42Z",  # `merged` anahtarı YOK — bilerek
+            "head": {"ref": "T-327-severity-normalizasyonu"},
+            "body": "Closes #327",
+        }
+    ]
+    transitions = transitions_from_resources(prs, [])
+    assert [t.task_id for t in transitions] == ["T-327"]
+    assert transitions[0].status == "done"
+    assert transitions[0].reason == "pr_merged"
+
+
+def test_merged_at_null_kapali_pr_hala_no_op():
+    """`merged_at: None` (merge edilmeden kapatılmış PR) `done` ÜRETMEZ —
+    `_merged` gevşerken bu tarafın da tutulduğunu kilitler (aksi halde
+    `merged_at in pr` gibi bir kontrol her kapalı PR'ı done sayardı)."""
+    prs = [
+        {
+            "number": 42,
+            "updated_at": "2026-07-20T10:00:00Z",
+            "state": "closed",
+            "merged_at": None,
+            "head": {"ref": "T-99-ornek-dal"},
+        }
+    ]
+    assert transitions_from_resources(prs, []) == []
+
+
+def test_webhook_yolunda_da_merged_at_kabul_edilir():
+    """`_merged` iki yolda da AYNI: webhook payload'ı (nadiren) `merged`
+    taşımayıp `merged_at` taşırsa geçiş yine üretilir — iki yolun tek kural
+    kullandığının kilidi."""
+    payload = {
+        "action": "closed",
+        "pull_request": {
+            "number": 328,
+            "updated_at": "2026-07-29T21:47:45Z",
+            "merged_at": "2026-07-29T21:47:42Z",
+            "head": {"ref": "T-327-severity-normalizasyonu"},
+            "body": "",
+        },
+    }
+    transitions = transitions_from_webhook("pull_request", payload)
+    assert [t.status for t in transitions] == ["done"]
+
+
 # --- next_status monotonluk ---
 
 
