@@ -111,21 +111,47 @@ class AgenticRunResult:
         return bool(self.hatalar or self.sinir_asilanlar)
 
 
-def tespit_isareti(detection_id: str) -> str:
+def kararli_kimlik(pair: DetectionPair) -> str:
+    """Idempotency anahtari — ZAMAN DAMGASINDAN BAGIMSIZ tespit kimligi.
+
+    NEDEN `Detection.id` KULLANILMIYOR (dogrulama turu bulgusu, 30 Tem):
+    `Detection.id` = `f"{a.id}-{b.id}"` ve PR olaylarinin id'si
+    `pr:{numara}:{updated_at}` bicimindedir — yani ICINDE ZAMAN DAMGASI TASIR.
+    PR'a yeni bir commit gelince `updated_at` degisir, id degisir, isaret
+    degisir ve AYNI cakisma icin YENI bir yorum yazilir. Olculdu: dort turda
+    PR basina dort yorum; `updated_at` dondurulunca bir. Yani guard PR'lar
+    HAREKETSIZKEN calisiyordu — tam da calismasi gereken durumda, aktif bir
+    repoda, cokuyordu. Testler bunu goremiyordu cunku hepsi tek turda ve
+    sabit damgayla kosuyordu.
+
+    Kararli kimlik neyden turer: **sirali PR numaralari** + **sirali kesisen
+    dosyalar**. Ikisi de yeni push'tan etkilenmez. Kesisim kumesi DEGISIRSE
+    kimlik de degisir ve yeni bir yorum dogar — bu BILINCLI: artik farkli
+    dosyalar cakisiyorsa bu yeni bir bilgidir, susulmamali.
+    """
+    numaralar = ",".join(str(n) for n in _pr_numaralari(pair))
+    dosyalar = ",".join(sorted(pair.overlap))
+    return f"pr:{numaralar}|files:{dosyalar}"
+
+
+def tespit_isareti(kimlik: str) -> str:
     """Yorum govdesine gomulen MAKINE-OKUNUR isaret (idempotency anahtari).
 
     HTML yorumu secildi cunku GitHub onu render ETMEZ: insan temiz bir uyari
     gorur, urun kendi yazdigini tanir.
 
-    Kimlik neden ham degil de `<temizlenmis>.<sha256[:8]>`: ham `Detection.id`
-    icinde `-->` gecerse HTML yorumu ERKEN kapanir ve isaret bozulur (yani
+    `kimlik` KARARLI olmali (bkz. `kararli_kimlik`) — ham `Detection.id`
+    verilirse zaman damgasi yuzunden her turda yeni isaret dogar.
+
+    Kimlik neden ham degil de `<temizlenmis>.<sha256[:8]>`: ham kimlik icinde
+    `-->` gecerse HTML yorumu ERKEN kapanir ve isaret bozulur (yani
     idempotency sessizce ölür → her turda yeni yorum). Yalniz temizleseydik
-    farkli iki id ayni temiz metne cokebilirdi (`a-b` ve `a_b`) — o zaman
+    farkli iki kimlik ayni temiz metne cokebilirdi (`a-b` ve `a_b`) — o zaman
     B tespiti, A'nin isareti yuzunden SONSUZA KADAR uyarisiz kalirdi. Ozet
     ekleyerek ikisini de kapatiyoruz.
     """
-    temiz = re.sub(r"[^A-Za-z0-9:_.]", "_", detection_id.strip())
-    ozet = hashlib.sha256(detection_id.encode("utf-8")).hexdigest()[:8]
+    temiz = re.sub(r"[^A-Za-z0-9:_.]", "_", kimlik.strip())
+    ozet = hashlib.sha256(kimlik.encode("utf-8")).hexdigest()[:8]
     return f"<!-- {ISARET_ONEKI}: {temiz}.{ozet} -->"
 
 
@@ -177,14 +203,16 @@ def yorum_govdesi(pair: DetectionPair) -> str:
     ters" diyen ama ne yapilacagini soylemeyen bir bildirime doner.
     """
     detection = pair.detection
-    kesisen = ", ".join(f"`{yol}`" for yol in pair.overlap) or "_(kesisim yok)_"
+    # Dosya yollari da notrlestirilir: yol icinde `-->` gecerse isaret erken
+    # kapanir ya da SAHTE isaret dogar (dogrulama turu bulgusu).
+    kesisen = ", ".join(f"`{_yorum_guvenli(yol)}`" for yol in pair.overlap) or "_(kesisim yok)_"
     taraflar = " · ".join(
-        f"**{event.actor}** → {_dal_etiketi(event)} ({event.type} `{event.ref}`)"
+        f"**{_yorum_guvenli(event.actor)}** → {_yorum_guvenli(_dal_etiketi(event))} ({event.type} `{_yorum_guvenli(str(event.ref))}`)"
         for event in (pair.a, pair.b)
     )
     return "\n".join(
         [
-            tespit_isareti(detection.id),
+            tespit_isareti(kararli_kimlik(pair)),
             "### ⚠️ Ensemble — yuksek riskli calisma cakismasi",
             "",
             "Bu PR ile es zamanli ilerleyen baska bir calisma **ayni dosyalara** "
@@ -339,7 +367,7 @@ class AgenticActionService:
                 0,
             )
 
-        isaret = tespit_isareti(detection_id)
+        isaret = tespit_isareti(kararli_kimlik(pair))
         mevcut = self.github_port.list_pull_request_comment_bodies(pr_number)
         if any(isaret in govde for govde in mevcut):
             logger.info(

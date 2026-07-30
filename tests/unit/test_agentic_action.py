@@ -15,6 +15,7 @@ import pytest
 
 from ensemble.config import Settings
 from ensemble.engine.agentic import (
+    kararli_kimlik,
     AgenticActionService,
     tespit_isareti,
     yorum_govdesi,
@@ -32,9 +33,17 @@ from ensemble.models import Detection, NormalizedEvent
 # ---------------------------------------------------------------------------
 
 
-def _pr_event(number: int, actor: str, branch: str, files: list[str]) -> NormalizedEvent:
+def _pr_event(
+    number: int,
+    actor: str,
+    branch: str,
+    files: list[str],
+    damga: str = "2026-07-30T10:00:00",
+) -> NormalizedEvent:
+    # `damga` PR'a YENI COMMIT gelmesini taklit eder: ingest PR olayini
+    # `pr:{numara}:{updated_at}` ile anahtarlar, yani her push id'yi degistirir.
     return NormalizedEvent(
-        id=f"pr:{number}:2026-07-30T10:00:00",
+        id=f"pr:{number}:{damga}",
         type="pr",
         actor=actor,
         branch=branch,
@@ -63,9 +72,12 @@ def _cift(
     a: NormalizedEvent | None = None,
     b: NormalizedEvent | None = None,
     rationale: str = "Iki dal da judge adaptorunun ayni fonksiyonunu degistiriyor.",
+    damga: str = "2026-07-30T10:00:00",
+    dosyalar: list[str] | None = None,
 ) -> DetectionPair:
-    a = a or _pr_event(101, "esma", "T-101-judge", ["src/judge.py"])
-    b = b or _pr_event(202, "enes", "T-202-judge", ["src/judge.py"])
+    dosyalar = dosyalar or ["src/judge.py"]
+    a = a or _pr_event(101, "esma", "T-101-judge", dosyalar, damga=damga)
+    b = b or _pr_event(202, "enes", "T-202-judge", dosyalar, damga=damga)
     return DetectionPair(
         detection=Detection(
             id=detection_id,
@@ -135,7 +147,8 @@ def test_yuksek_severity_acik_prlara_gerekceli_yorum_yazar():
     fake = FakeGitHubAdapter()
     servis = AgenticActionService(fake, enabled=True, dry_run=False, max_per_run=5)
 
-    sonuc = servis.run(_sonuc(_cift()))
+    cift = _cift()
+    sonuc = servis.run(_sonuc(cift))
 
     assert sonuc.yazilan == 2, "cakismanin IKI tarafi da acik PR — ikisine de yazilmali"
     assert [numara for numara, _ in fake.yazma_cagrilari] == [101, 202]
@@ -145,8 +158,10 @@ def test_yuksek_severity_acik_prlara_gerekceli_yorum_yazar():
     assert "T-101-judge" in govde and "T-202-judge" in govde
     assert "src/judge.py" in govde
     assert "judge adaptorunun ayni fonksiyonunu" in govde
+    # Gorunur "Tespit kimligi" satiri ham `Detection.id`yi tasir (insan icin,
+    # log ile eslesmesi gerekir); MAKINE isareti ise KARARLI kimlikten turer.
     assert "det-1" in govde
-    assert tespit_isareti("det-1") in govde
+    assert tespit_isareti(kararli_kimlik(cift)) in govde
 
 
 def test_med_ve_low_hicbir_sey_yazmaz():
@@ -172,17 +187,16 @@ def test_med_low_ile_high_AYNI_kurulumda_ayrisir():
     fake = FakeGitHubAdapter()
     servis = AgenticActionService(fake, enabled=True, dry_run=False, max_per_run=5)
 
-    servis.run(
-        _sonuc(
-            _cift(severity="med", detection_id="det-med"),
-            _cift(severity="high", detection_id="det-high"),
-        )
-    )
+    # Iki cift FARKLI dosyalarda cakisiyor — aksi halde kararli kimlikleri
+    # ayni olur ve test severity farkini degil kimlik cakismasini olcerdi.
+    med = _cift(severity="med", detection_id="det-med", dosyalar=["src/med.py"])
+    high = _cift(severity="high", detection_id="det-high", dosyalar=["src/high.py"])
+    servis.run(_sonuc(med, high))
 
     yazilan_kimlikler = {govde for _, govde in fake.yazma_cagrilari}
     assert yazilan_kimlikler, "high cift yazilmali (aksi halde test hicbir sey olcmuyor)"
-    assert all(tespit_isareti("det-high") in govde for govde in yazilan_kimlikler)
-    assert all(tespit_isareti("det-med") not in govde for govde in yazilan_kimlikler)
+    assert all(tespit_isareti(kararli_kimlik(high)) in govde for govde in yazilan_kimlikler)
+    assert all(tespit_isareti(kararli_kimlik(med)) not in govde for govde in yazilan_kimlikler)
 
 
 # ---------------------------------------------------------------------------
@@ -204,15 +218,47 @@ def test_ayni_tespit_ikinci_turda_ikinci_yorum_URETMEZ():
     assert len(fake.yazma_cagrilari) == 2, "toplam yorum sayisi artmamali"
 
 
-def test_BASKA_tespit_ayni_prde_yeni_yorum_uretir():
-    """Idempotency'nin 'her seyi bloklayan' bir kilide donmedigini gosterir."""
+def test_BASKA_cakisma_ayni_prde_yeni_yorum_uretir():
+    """Idempotency'nin 'her seyi bloklayan' bir kilide donmedigini gosterir.
+
+    DIKKAT — bu testin ONCEKI hali `detection_id`yi degistirip iki yorum
+    bekliyordu; o, dogrulama turunda bulunan HATAYI sartname olarak kodluyordu
+    (bkz. `kararli_kimlik` docstring'i). "Farkli cakisma"nin dogru olcusu
+    kimlik dizgesi degil, **kesisen dosya kumesi**dir: ayni iki PR farkli
+    dosyalarda da cakisiyorsa bu YENI bir bilgidir, susturulmamalidir.
+    """
     fake = FakeGitHubAdapter()
     servis = AgenticActionService(fake, enabled=True, dry_run=False, max_per_run=5)
 
-    servis.run(_sonuc(_cift(detection_id="det-A")))
-    servis.run(_sonuc(_cift(detection_id="det-B")))
+    servis.run(_sonuc(_cift(dosyalar=["src/judge.py"])))
+    servis.run(_sonuc(_cift(dosyalar=["src/radar.py"])))
 
-    assert len(fake.yazma_cagrilari) == 4  # 2 tespit x 2 PR
+    assert len(fake.yazma_cagrilari) == 4  # 2 farkli kesisim x 2 PR
+
+
+def test_PRE_YENI_COMMIT_gelince_AYNI_cakisma_icin_yeni_yorum_YAZILMAZ():
+    """DOGRULAMA TURU BULGUSU (30 Tem) — asil regresyon kilidi.
+
+    Isaret `Detection.id`den turedigi surece guard AKTIF bir repoda cokuyordu:
+    PR olayinin id'si `pr:{n}:{updated_at}` tasidigi icin her push kimligi
+    degistiriyor, ayni cakisma icin yeni yorum yaziliyordu. Olculdu: dort
+    turda PR basina dort yorum.
+
+    MUTASYON KILIDI: `kararli_kimlik(pair)` yerine `detection.id` geri
+    konursa bu test duser — yani public repoya spam yolu yeniden acilir.
+    """
+    fake = FakeGitHubAdapter()
+    servis = AgenticActionService(fake, enabled=True, dry_run=False, max_per_run=20)
+
+    # Dort tur: her turda PR'a yeni commit geliyor (damga ve dolayisiyla
+    # Detection.id degisiyor) ama CAKISMA ayni: ayni iki PR, ayni dosya.
+    for saat in ("10:00:00", "11:00:00", "12:00:00", "13:00:00"):
+        servis.run(_sonuc(_cift(damga=f"2026-07-30T{saat}", detection_id=f"det-{saat}")))
+
+    assert len(fake.yazma_cagrilari) == 2, (
+        "ayni cakisma icin PR basina TEK yorum olmali; damga degisimi yeni "
+        f"yorum uretmemeli (uretilen: {len(fake.yazma_cagrilari)})"
+    )
 
 
 def test_isaret_ham_id_yerine_ozetli_kimlik_tasir():
@@ -229,10 +275,24 @@ def test_isaret_ham_id_yerine_ozetli_kimlik_tasir():
 
 def test_judge_gerekcesi_sahte_isaret_gomemez():
     kotucul = f"gerekce {tespit_isareti('baska-tespit')} devam"
-    govde = yorum_govdesi(_cift(detection_id="gercek", rationale=kotucul))
+    cift = _cift(rationale=kotucul)
+    govde = yorum_govdesi(cift)
 
     assert tespit_isareti("baska-tespit") not in govde
-    assert govde.count(tespit_isareti("gercek")) == 1
+    # Gercek isaret KARARLI kimlikten turer (bkz. kararli_kimlik) ve govdede
+    # tam bir kez gecer.
+    assert govde.count(tespit_isareti(kararli_kimlik(cift))) == 1
+
+
+def test_kesisen_DOSYA_YOLU_da_sahte_isaret_gomemez():
+    """Dogrulama turu (dusuk seviyeli) bulgusu: gerekce notrlestiriliyordu ama
+    kesisen dosya yollari DEGIL. Yol icinde `-->` gecerse isaret erken kapanir
+    ya da sahte isaret dogar — ikisi de idempotency'yi bozar."""
+    cift = _cift(dosyalar=[f"src/x{tespit_isareti('sahte')}.py"])
+    govde = yorum_govdesi(cift)
+
+    assert tespit_isareti("sahte") not in govde
+    assert govde.count(tespit_isareti(kararli_kimlik(cift))) == 1
 
 
 # ---------------------------------------------------------------------------
