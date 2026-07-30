@@ -1,6 +1,6 @@
 """Deploy-sonrası canlı smoke testi (#189) — yalnız stdlib, bağımlılık YOK.
 
-Bir Fly (backend) + Vercel (frontend) deploy'unun **gerçekten** ayakta ve
+Bir backend (self-host VDS) + Vercel (frontend) deploy'unun **gerçekten** ayakta ve
 doğru bağlı olduğunu kanıtlar: `/health` + readiness (#53) + CORS
 (`CORS_ORIGINS` ↔ `VITE_API_BASE_URL` çift-yön kilidi, S3 Ek A2) + 6 SPA
 route'unun doğrudan+refresh deep-link'i (Vercel rewrite kanıtı, S3 Ek E).
@@ -18,7 +18,7 @@ gövdesine alan eklemek S3 Ek A/B FROZEN kontratını ve openapi drift-check'i
 kırar; o yüzden endpoint'e DOKUNULMAZ.
 
 Env sözleşmesi:
-    SMOKE_API_URL   zorunlu.  Backend base URL (örn. https://<app>.fly.dev).
+    SMOKE_API_URL   zorunlu.  Backend base URL (örn. https://api.recommend2me.com).
     SMOKE_WEB_URL    opsiyonel. Frontend base URL (örn. https://<app>.vercel.app).
                      Verilmezse CORS + SPA route blokları ATLANIR (yalnız
                      /health kontrol edilir) — çıktıda büyük bir WARN + "kısmi
@@ -36,14 +36,14 @@ Env sözleşmesi:
                      `mode == "local"` iken degrade (WARN) — geliştirici Fake
                      adapter'larla yeşil kalır.
     SMOKE_TIMEOUT_S  saniye, varsayılan 15.
-    SMOKE_RETRIES    varsayılan 2 — yalnız İLK `/health` denemesi için (Fly
-                     `auto_stop_machines="stop"` soğuk başlangıcı; CORS/SPA
-                     istekleri retry'sız).
+    SMOKE_RETRIES    varsayılan 2 — yalnız İLK `/health` denemesi için
+                     (deploy sonrası konteynerin ilk isteği geç yanıtlayabilir;
+                     CORS/SPA istekleri retry'sız).
     SPA route kontrolleri redirect İZLEMEZ (`allow_redirects=False`) — 3xx
     doğrudan FAIL sayılır (operatör go-live'da sürprize uğramasın).
 
 Kullanım:
-    make smoke SMOKE_API_URL=https://ensemble-api.fly.dev \\
+    make smoke SMOKE_API_URL=https://api.recommend2me.com \\
                SMOKE_WEB_URL=https://ensemble.vercel.app
     # ya da doğrudan:
     SMOKE_API_URL=... SMOKE_WEB_URL=... uv run python scripts/smoke.py
@@ -214,7 +214,7 @@ def _call(fetch: FetchFn, url: str, **kwargs: object) -> Response:
 
 
 def check_http_scheme(url: str, label: str, rep: Report) -> bool:
-    """localhost/127.0.0.1/::1 DIŞINDA `http://` kabul etmez (Fly
+    """localhost/127.0.0.1/::1 DIŞINDA `http://` kabul etmez (public
     `force_https=true` → `http://` verilirse urllib OPTIONS'ta 301'i sessizce
     izlemeyip `HTTPError` fırlatır; bu kafa karıştırıcı hatayı önceden,
     anlamlı bir mesajla önler)."""
@@ -222,7 +222,7 @@ def check_http_scheme(url: str, label: str, rep: Report) -> bool:
     if parsed.scheme == "http" and not _is_local_host(url):
         rep.fail(
             f"{label}: http:// şeması canlı hostta desteklenmez "
-            f"(https:// ver — Fly force_https urllib'i kırar): {url}"
+            f"(https:// ver — HTTP'yi HTTPS'e yönlendiren sunucu urllib'i kırar): {url}"
         )
         return False
     return True
@@ -302,7 +302,7 @@ def check_health(
 def check_cors(api: str, web_origin: str, rep: Report, fetch: FetchFn, *, timeout: float) -> None:
     """K3: preflight VE gerçek GET cevabında `Access-Control-Allow-Origin`
     canlı web origin'iyle TAM eşleşir (`*` ayrı FAIL — #45 "asla yıldız").
-    Preflight 3xx ise (Fly `force_https` + urllib OPTIONS redirect izlemez)
+    Preflight 3xx ise (HTTP→HTTPS yönlendirmesi + urllib OPTIONS redirect izlemez)
     özel mesaj: https:// kullan."""
     url = f"{api}/health"
 
@@ -316,7 +316,7 @@ def check_cors(api: str, web_origin: str, rep: Report, fetch: FetchFn, *, timeou
     if pre.status in _REDIRECT_STATUSES:
         rep.fail(
             f"CORS preflight OPTIONS {url} -> {pre.status} redirect — https:// ver "
-            "(Fly force_https; urllib OPTIONS'ta redirect izlemez)"
+            "(HTTP→HTTPS yönlendirmesi; urllib OPTIONS'ta redirect izlemez)"
         )
     elif pre.status not in (200, 204):
         rep.fail(f"CORS preflight OPTIONS {url} -> {pre.status} (200/204 bekleniyor)")
@@ -501,7 +501,7 @@ def main(
             "HATA: SMOKE_API_URL boş.\n"
             "  Zorunlu: SMOKE_API_URL (backend base URL)\n"
             "  Opsiyonel: SMOKE_WEB_URL (frontend base URL — yoksa CORS+SPA atlanır)\n"
-            "  Örnek: SMOKE_API_URL=https://<app>.fly.dev "
+            "  Örnek: SMOKE_API_URL=https://api.recommend2me.com "
             "SMOKE_WEB_URL=https://<app>.vercel.app make smoke",
             file=sys.stderr,
         )
