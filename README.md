@@ -142,26 +142,26 @@ tablo [`AGENTS.md`](AGENTS.md)'de.
 
 ### Tam-yerel gizlilik modu (Ollama)
 
-`LLM_PROVIDER=ollama` seçildiğinde **çakışma radarının** embeddings ve judge
-çağrıları yerel Ollama API'sine gider; Gemini anahtarı tanımlı olsa bile bu yol
-buluta geri düşmez (ölçüldü: 768 boyutlu gerçek yerel embedding, bulut anahtarları
-tanımlıyken bile çıplak `OllamaAdapter`). `ENSEMBLE_MODE` ayrı bir ayardır: local
-modda Gemini, hosted modda aynı makinedeki Ollama da seçilebilir.
+`LLM_PROVIDER=ollama` seçildiğinde **üç yapay zeka ucunun da** (çakışma radarı ·
+Ask `/query` · kapsam bekçisi `/scope/check`) embeddings ve judge çağrıları yerel
+Ollama API'sine gider; Gemini anahtarı tanımlı olsa bile bu yol buluta geri
+düşmez. `ENSEMBLE_MODE` ayrı bir ayardır: local modda Gemini, hosted modda aynı
+makinedeki Ollama da seçilebilir.
 
-> **⚠️ Kapsamı — ölçüldü (30 Tem):** bu garanti bugün **radar** için geçerlidir.
-> **Ask (`/query`) ve kapsam bekçisi (`/scope/check`)** için Ollama judge'ı
-> **henüz yok**: `build_query_judge`/`build_scope_judge` yalnız Gemini ya da
-> ağsız Fake döndürür, `LLM_PROVIDER`'ı okumaz. Yani `ollama` modunda bile bu iki
-> uç, Gemini anahtarı tanımlıysa **buluta gider**.
-> Takip: [#334](https://github.com/FatihErenCetin/grup54/issues/334). Tam-yerel
-> çalışmak isteyen kullanıcı bugün Gemini anahtarını **tanımsız bırakmalı** —
-> o zaman iki uç da ağa çıkmayan Fake adapter'a düşer (kalite düşer ama bağlam
-> makineden çıkmaz).
+> **Kapsam — ölçüldü (30 Tem):** bu garanti bir dönem yalnız **radar** için
+> geçerliydi ve o sınır burada açıkça yazılıydı. Boşluğun kendisi
+> ([#334](https://github.com/FatihErenCetin/grup54/issues/334)) kapatıldı:
+> `LLM_PROVIDER=ollama` iken Ask ve kapsam bekçisi de yerel judge kullanıyor,
+> **bulut yedeği bu modda hiç kurulmuyor** (`GROQ_API_KEY` dolu olsa bile).
+> Kilit: zincirin tamamı yürünüp hiçbir düğümünde bulut adaptörü olmadığı
+> test ediliyor — tek bir `isinstance` sarmalayıcı eklendiğinde yanıltabilirdi.
 
 Yerel **radar** judge'ı hibrittir: kalibre actor/dosya-kesişimi/semantic similarity
 sinyalleri açık vakaları deterministik sonuçlandırır; yalnız gri vakalar `llama3.2`
 structured output yoluna gider. Her iki yol da yereldir ve repo bağlamı makineden
-çıkmaz.
+çıkmaz. **Ask ve kapsam** judge'ları doğrudan `llama3.2` structured output'una
+gider — Ollama'nın `format` alanı gerçek bir JSON şeması alır, yani şema
+sağlayıcı tarafında zorlanır.
 
 ```bash
 ollama pull nomic-embed-text

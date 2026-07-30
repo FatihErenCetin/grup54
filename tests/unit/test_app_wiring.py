@@ -498,3 +498,120 @@ def test_yedek_yokken_butce_degismez(tmp_path):
     )
     judge = _build_judge_port(settings)
     assert judge.cache.single_flight_wait_s == _gemini_single_flight_wait_s(settings)
+
+
+# ── #334: tam-yerel modda Ask ve scope BULUTA GITMEZ ─────────────────────────
+
+
+def _yerel_ayar(**ek) -> Settings:
+    """`LLM_PROVIDER=ollama` VE bulut anahtarlari DOLU — asil senaryo bu.
+
+    Anahtarlar bos olsaydi test hicbir sey kanitlamazdi: zaten Fake'e
+    duserdi. Aciğin tam tanimi "anahtar tanimli OLMASINA RAGMEN yerel kal".
+    """
+    return Settings(
+        ENSEMBLE_MODE="local",
+        LLM_PROVIDER="ollama",
+        GEMINI_API_KEY="bulut-anahtari-dolu",
+        GROQ_API_KEY="yedek-anahtari-dolu",
+        **ek,
+    )
+
+
+def test_ollama_modunda_ask_judge_BULUT_DEGIL():
+    """#334 — `LLM_PROVIDER=ollama` iken Ask judge'i yerel olmali.
+
+    Olculen acik: `build_query_judge()` yalniz iki dal biliyordu (Gemini
+    varsa Gemini, yoksa Fake) ve `LLM_PROVIDER`i HIC okumuyordu. Radar'in
+    conflict judge'i ayni dali tasiyordu — yani taahhut ucte biri icin
+    tutuluyor, ucte ikisi icin tutulmuyordu. Ask prompt'u task/scope
+    METINLERINI tasir; bu bir GIZLILIK acigiydi.
+
+    MUTASYON KILIDI: `_build_query_judge_port`taki `LLM_PROVIDER == "ollama"`
+    dalini sil -> Gemini adapteri kurulur, bu test kirilir.
+    """
+    from ensemble.app import _build_query_judge_port
+    from ensemble.integrations.ollama.query_judge import OllamaQueryJudgeAdapter
+
+    port = _build_query_judge_port(_yerel_ayar())
+    assert isinstance(port, OllamaQueryJudgeAdapter)
+
+
+def test_ollama_modunda_scope_judge_BULUT_DEGIL():
+    """Ucun sonuncusu — scope prompt'u KAPSAM MADDELERINI tasir.
+
+    MUTASYON KILIDI: `_build_scope_judge_port`taki ollama dalini sil.
+    """
+    from ensemble.app import _build_scope_judge_port
+    from ensemble.integrations.ollama.scope_judge import OllamaScopeJudgeAdapter
+
+    port = _build_scope_judge_port(_yerel_ayar())
+    assert isinstance(port, OllamaScopeJudgeAdapter)
+
+
+def test_ollama_modunda_GROQ_YEDEGI_de_kurulmaz():
+    """Yerel-kal modunda bulut YEDEGI de devreye girmemeli.
+
+    `GROQ_API_KEY` dolu; dahil-etme listesi (`isinstance(...Gemini...)`)
+    sayesinde Ollama portu yakalanmamali. Hariç tutma listesi yazilsaydi
+    (`not isinstance(..., Fake)`) bu dal SESSIZCE buluta acilirdi — o yuzden
+    ayrica kilitleniyor.
+
+    MUTASYON KILIDI: yedek sarmalamasini dahil-etme yerine haric-tutma
+    listesine cevir -> FallbackQueryJudge kurulur, bu test kirilir.
+    """
+    from ensemble.app import _build_query_judge_port, _build_scope_judge_port
+    from ensemble.engine.fallback import FallbackQueryJudge, FallbackScopeJudge
+
+    assert not isinstance(_build_query_judge_port(_yerel_ayar()), FallbackQueryJudge)
+    assert not isinstance(_build_scope_judge_port(_yerel_ayar()), FallbackScopeJudge)
+
+
+def test_ollama_modunda_zincirin_HICBIR_yerinde_bulut_adapteri_yok():
+    """Simetrik ve en guclu kilit: DEMO_MODE cache'i de sarsa zincir temiz kalmali.
+
+    Tek bir `isinstance` kok dugume bakar; sarmalayici eklenince yaniltabilir.
+    Burada zincirin TAMAMI yurunuyor (health.py'deki `_judge_zinciri` ile
+    ayni fikir).
+    """
+    from ensemble.app import _build_query_judge_port
+    from ensemble.integrations.gemini.query_judge import GeminiQueryJudgeAdapter
+    from ensemble.integrations.groq.query_judge import GroqQueryJudgeAdapter
+
+    # DEMO_MODE tek repoya sabitlenmeden acilamaz (Settings validator, #63)
+    port = _build_query_judge_port(
+        _yerel_ayar(DEMO_MODE=True, GITHUB_REPO_OWNER="FatihErenCetin", GITHUB_REPO_NAME="grup54")
+    )
+
+    yigin, gorulen, dugumler = [port], set(), []
+    while yigin:
+        d = yigin.pop()
+        if id(d) in gorulen:
+            continue
+        gorulen.add(id(d))
+        dugumler.append(d)
+        for alan in ("inner", "primary", "secondary"):
+            alt = getattr(d, alan, None)
+            if alt is not None:
+                yigin.append(alt)
+
+    for d in dugumler:
+        assert not isinstance(d, (GeminiQueryJudgeAdapter, GroqQueryJudgeAdapter)), (
+            f"tam-yerel modda zincirde bulut adapteri var: {type(d).__name__}"
+        )
+
+
+def test_gemini_modu_ETKILENMEDI():
+    """Karsi-kilit: varsayilan (bulut) yol aynen calismaya devam etmeli."""
+    from ensemble.app import _build_query_judge_port
+    from ensemble.integrations.gemini.query_judge import GeminiQueryJudgeAdapter
+    from ensemble.engine.fallback import FallbackQueryJudge
+
+    port = _build_query_judge_port(
+        Settings(ENSEMBLE_MODE="local", LLM_PROVIDER="gemini", GEMINI_API_KEY="x")
+    )
+    assert isinstance(port, GeminiQueryJudgeAdapter)
+    yedekli = _build_query_judge_port(
+        Settings(ENSEMBLE_MODE="local", LLM_PROVIDER="gemini", GEMINI_API_KEY="x", GROQ_API_KEY="y")
+    )
+    assert isinstance(yedekli, FallbackQueryJudge)
