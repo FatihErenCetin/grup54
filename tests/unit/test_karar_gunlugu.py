@@ -88,3 +88,28 @@ def test_kararlar_append_only_ruhuna_uygun_ZORUNLU_alanlari_tasir():
         assert metin.startswith("---"), f"{yol.name}: front-matter yok"
         for alan in ("type:", "id:", "title:", "date:"):
             assert alan in metin.split("---", 2)[1], f"{yol.name}: '{alan}' eksik"
+
+
+def test_karar_numaralari_MUKERRER_olamaz() -> None:
+    """İki paralel dal aynı "sıradaki boş numara"yı seçebilir — ölçüldü
+    (30 Tem): #317 ve #331 ikisi de D-60 yazdı, rebase'te yakalandı.
+
+    Numara mükerrerse karar günlüğü **denetim izi olmaktan çıkar**: "D-60"
+    demek artık tek bir kararı işaret etmez. Mevcut testler yalnız
+    indeks↔disk eşitliğini ölçüyordu, bu deliği görmüyordu.
+
+    MUTASYON KİLİDİ: iki dosyaya aynı D-NN numarasını ver → düşer.
+    """
+    import re
+    from collections import Counter
+
+    numaralar = [
+        eslesme.group(1)
+        for yol in _DIZIN.glob("D-*.md")
+        if (eslesme := re.match(r"(D-\d+)", yol.name))
+    ]
+    mukerrer = [n for n, adet in Counter(numaralar).items() if adet > 1]
+    assert not mukerrer, (
+        f"aynı numarayı taşıyan birden çok karar dosyası var: {sorted(mukerrer)} "
+        "— karar günlüğü denetim izi olmaktan çıkar"
+    )

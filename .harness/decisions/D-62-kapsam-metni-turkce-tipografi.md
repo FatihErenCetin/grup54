@@ -1,6 +1,6 @@
 ---
 type: decision
-id: D-60
+id: D-62
 title: "Donmuş `sprint-3.md` kapsam metni Türkçe karaktersizdi — tipografik düzeltme (#317)"
 date: "2026-07-29"
 status: accepted
