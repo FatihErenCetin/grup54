@@ -23,6 +23,10 @@ const saglikDurumu = vi.hoisted(() => ({
 vi.mock("../src/lib/useSaglik", () => ({ useSaglik: () => saglikDurumu }));
 vi.mock("../src/lib/useSettings", () => ({
   useSaglayiciAyarlari: () => ({ data: undefined, error: null, isLoading: false }),
+  // #338 (main) AppLayout'a MCP nav dalini ekledi; bu dosya main'e rebase
+  // edilince mock EKSIK kaldi ve ALTI test birden "No useMcpConfig export"
+  // ile dustu. Kabuk testinin MCP ile isi yok — yalniz bagimliligi karsilar.
+  useMcpConfig: () => ({ data: undefined, error: null, isLoading: false }),
 }));
 vi.mock("../src/lib/useAuth", () => ({
   useAuth: () => ({ kullanici: null, yukleniyor: false, emailEnabled: false, enabled: false }),
