@@ -63,11 +63,16 @@ def _uretilen_komut(tmp_path, monkeypatch) -> tuple[str, list[str]]:
 
 
 def test_uretilen_config_komutu_calisan_bir_mcp_sunucusu_acar(tmp_path, monkeypatch):
-    """MUTASYON KİLİDİ: `mcp_clients.stdio_komutu`'nda modül adını boz
-    (`ensemble_mcp.server` -> `ensemble_mcp.sunucu`) ya da `--directory`
-    argümanını çıkar → alt-süreç tool listesi döndüremez → KIRMIZI. Unit
-    testler (yalnız metni ayrıştıranlar) bu mutasyonda YEŞİL kalır — farkı
-    yakalayan tek yer burası."""
+    """MUTASYON KİLİDİ (ölçüldü, bu iki mutasyon gerçekten çalıştırıldı):
+
+      * `stdio_komutu`'nda yorumlayıcıyı boz (`"python"` -> `"python3.99"`):
+        unit testler **48 passed** (metin hâlâ geçerli JSON/TOML, `args[:2]`
+        ve `args[-2:]` iddiaları tutuyor) — bu test ise `Failed to spawn:
+        python3.99` ile KIRMIZI. Farkı yakalayan TEK yer burası; testin
+        varlık sebebi budur.
+      * `ensemble_mcp.server` -> `ensemble_mcp.sunucu`: bunu unit testler DE
+        yakalar (`args[-2:]` iddiası) — dürüst olmak gerekirse bu mutasyon
+        buranın tek başına kanıtı değildir."""
     komut, args = _uretilen_komut(tmp_path, monkeypatch)
     if shutil.which(komut) is None:
         pytest.skip(f"`{komut}` PATH'te yok")
