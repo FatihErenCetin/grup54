@@ -161,14 +161,19 @@ describe("AskPage — Tarandı şeridi (#319, sıfır-LLM ön-izleme)", () => {
     expect(serit.textContent).toContain("5");
   });
 
-  it("'karar' sayısını HİÇ göstermez — corpus decision indekslemiyor (uydurma yasak)", () => {
-    // MUTASYON KİLİDİ: biri şeride "{say('decision')} karar ✓" eklerse bu
-    // kırılır — backend her zaman 0 döner (.harness/decisions/ okunmuyor),
-    // "0 karar" basmak "karar yok" yalanına dönüşür.
-    ayarlaScan({ data: TEMEL_SCAN });
+  it("'karar' sayısını GERÇEK veriden basar (#355'te gate kalktı)", () => {
+    /* Bu test eskiden karar sayısının GÖSTERİLMEDİĞİNİ kilitliyordu ve o
+       zaman DOĞRUydu: backend `.harness/decisions/`'ı hiç okumuyordu, sayı
+       her zaman 0 gelirdi, "0 karar" basmak "karar yok" yalanına dönerdi.
+       #355 boşluğu kapattı (`read_decisions()` + `_decision_documents()`) →
+       sayı gerçek. Kural değişmedi (uydurma sayı yasak), ÖLÇÜM değişti; o
+       yüzden test silinmedi, tersine çevrildi.
+       MUTASYON KİLİDİ: şeritten "karar" bölümünü kaldır -> bu test kırılır. */
+    ayarlaScan({ data: { ...TEMEL_SCAN, searched: [...TEMEL_SCAN.searched.slice(0, 2), { type: "decision", count: 11 }, ...TEMEL_SCAN.searched.slice(3)] } });
     render(<AskPage />);
 
-    expect(within(screen.getByTestId("tarama-seridi")).queryByText(/karar/i)).toBeNull();
+    const serit = screen.getByTestId("tarama-seridi");
+    expect(serit.textContent).toMatch(/11\s*karar/);
   });
 
   it("olay sayısı kesinken düz basılır — gereksiz '+' yok", () => {
@@ -191,16 +196,18 @@ describe("AskPage — Tarandı şeridi (#319, sıfır-LLM ön-izleme)", () => {
     expect(sayi.getAttribute("title")).toMatch(/alt sınır/i);
   });
 
-  it("boş durum, ARANMAYAN 'karar günlüğü'nü aranıyormuş gibi vaat etmez", () => {
-    // MUTASYON KİLİDİ (#322 review, Semih): açıklamaya "karar günlüğü" geri
-    // eklenirse kırılır. Corpus `.harness/decisions/` okumuyor — şerit decision
-    // sayısını zaten gate'liyor; metnin aksini söylemesi aynı sayfa içinde
-    // kendi kendine çelişkiydi.
+  it("boş durum, GERÇEKTEN aranan kaynakları sayar — karar günlüğü dahil", () => {
+    /* Semih #322 review'unda haklıydı: o an "karar günlüğü" aranmayan bir
+       kaynaktı ve metnin onu vaat etmesi aynı sayfa içinde çelişkiydi;
+       doğru çözüm vaadi KALDIRMAKtı. #355 aynı boşluğu diğer uçtan kapattı —
+       kaynak artık gerçekten aranıyor, dolayısıyla vaat geri geldi.
+       Testin işi aynı: metin ile gerçeğin AYNI şeyi söylediğini kilitlemek.
+       MUTASYON KİLİDİ: açıklamadan "karar günlüğü"nü çıkar -> kırılır. */
     ayarlaScan({ data: TEMEL_SCAN });
     render(<AskPage />);
 
     const aciklama = screen.getByText(/üzerinde aranır/);
-    expect(aciklama.textContent).not.toMatch(/karar günlüğü/i);
+    expect(aciklama.textContent).toMatch(/karar günlüğü/i);
     expect(aciklama.textContent).toMatch(/olay\/PR geçmişi/);
   });
 

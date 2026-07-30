@@ -32,11 +32,11 @@ type CitationType = Citation["type"];
    #319 tasarım paritesi eklentileri (3'ü de GERÇEK veriden):
    1) "Tarandı" şeridi (`TaramaSeridi`) — `GET /query/scan` (LLM'siz, sıfır
       kota), bkz. `useQueryScan`. ÖLÇÜLMÜŞ SINIR: `HarnessEventQuerySource`
-      hiçbir zaman `type="decision"` belgesi üretmiyor (.harness/decisions/
-      okunmuyor) — yani backend'in "decision" sayısı HER ZAMAN 0, "gerçekten
-      0 karar var" demek DEĞİL. Bu yüzden şerit yalnız kapsam/görev/olay
-      gösterir, "karar" GATE'Lİ (uydurma sayı yasak, issue'nun "en önemli
-      kural"ı — backend tarafı: `ensemble.models.QueryScanResult` docstring'i).
+      `type="decision"` belgesi ÜRETMİYORDU (.harness/decisions/ okunmuyordu),
+      o yüzden "karar" ilk turda GATE'Lİ bırakılmıştı — sayı her zaman 0
+      gelirdi ve "0 karar" basmak uydurma olurdu. #355 o boşluğu kapattı
+      (`read_decisions()` + `_decision_documents()`), sayı artık gerçek →
+      gate KALKTI. Kural değişmedi, ölçüm değişti.
    2) "Takip" önerileri (`takipSorulari`) — cevabın GERÇEKTEN dayandığı
       citation'lardan (ya da not_found'da `nearest`'ten) şablonlu soru
       türetir; konu uydurulmaz, yalnız ifade kalıbı sabittir.
@@ -393,10 +393,15 @@ function TaramaSeridi({ scan }: { scan: QueryScanResponse | undefined }) {
         {scan.recent_events_capped ? "+" : ""}
       </span>{" "}
       olay <span aria-hidden>✓</span>
-      {/* "karar" bilinçli GATE'Lİ: backend corpus'u .harness/decisions/ okumuyor
-          (ölçüldü — ensemble.models.QueryScanResult docstring'i), yani sayı
-          HER ZAMAN 0 gelirdi; "0 karar" basmak "karar yok" gibi okunur ve bu
-          uydurma olurdu — göstermemek dürüst olan. */}
+      {/* "karar" GATE'İ #355'te KALKTI. Gerekçesi doğruydu ama artık geçerli
+          değil: o an backend `.harness/decisions/`'ı hiç okumuyordu, yani sayı
+          HER ZAMAN 0 gelirdi ve "0 karar" basmak "karar yok" diye okunurdu.
+          #355 ile `read_decisions()` + `_decision_documents()` eklendi; sayı
+          artık GERÇEK (canlı ölçüm: 11). Gate'i tutmak bu sefer ters yönde
+          yalan olurdu — aranan bir kaynağı aranmıyormuş gibi göstermek. */}
+      <span aria-hidden> · </span>
+      <span className="tabular-nums">{say("decision")}</span> karar{" "}
+      <span aria-hidden>✓</span>
     </p>
   );
 }
@@ -692,14 +697,17 @@ export default function AskPage() {
       <section aria-live="polite" aria-busy={isLoading}>
         {soru === "" ? (
           // Henüz sorulmadı — bu "boş sonuç" değil, davetkâr başlangıç durumu.
-          // `description`'dan "karar günlüğü" BİLEREK çıkarıldı (#322 review,
-          // Semih): corpus `.harness/decisions/`'ı okumuyor (ölçüldü —
-          // QueryScanResult docstring'i), yani orada arama YAPILMIYOR. Şerit
-          // decision sayısını zaten gate'liyordu ama bu metin hâlâ aranıyormuş
-          // gibi söz veriyordu — aynı PR içinde kendi kendine çelişki.
+          // "karar günlüğü" GERİ GELDİ (#355). Semih #322 review'unda haklıydı:
+          // o an corpus `.harness/decisions/`'ı okumuyordu, yani metin
+          // aranmayan bir kaynağa söz veriyordu ve doğru çözüm vaadi
+          // KALDIRMAKTI. #355'te aynı boşluk diğer uçtan kapandı —
+          // `HarnessPort.read_decisions()` + `_decision_documents()` eklendi,
+          // karar kayıtları GERÇEKTEN aranıyor (canlı: makbuz `decision: 11`).
+          // Vaat artık doğru olduğu için geri yazıldı; şerit de decision
+          // sayısını gate'lemeyi bırakabilir (aşağıdaki gate notuna bak).
           <EmptyState
             title="Doğal dille sor, kaynak alıntılı cevap al"
-            description="Soru; dondurulmuş kapsam, görev dosyaları ve olay/PR geçmişi üzerinde aranır. Her cevap dayandığı alıntılarla birlikte gelir — kaynaksız cümle göstermiyoruz."
+            description="Soru; dondurulmuş kapsam, görev dosyaları, karar günlüğü ve olay/PR geçmişi üzerinde aranır. Her cevap dayandığı alıntılarla birlikte gelir — kaynaksız cümle göstermiyoruz."
             items={[
               "Cevap kanonik .harness kayıtlarından üretilir",
               "Her iddia bir alıntıya bağlanır — bağlanamazsa cevap verilmez",
