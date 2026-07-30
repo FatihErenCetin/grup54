@@ -1,0 +1,112 @@
+# Yapilandirma drifti nobeti (#349) — main'deki compose ile CALISAN prod
+# ayrisirsa KIRMIZI.
+#
+# NEDEN AYRI BIR WORKFLOW (deploy.yml'e bir `schedule:` EKLENMEDI): deploy.yml
+# tetikleyicisine `schedule` eklemek CD'yi saatte bir KENDILIGINDEN deploy
+# ettirirdi -- istenmeyen ve tehlikeli bir yan etki. Bu dosya hicbir sey
+# DEGISTIRMEZ, yalnizca OLCER (dogrulayici).
+#
+# NEDEN PERIYODIK (deploy sonrasi kontrol YETMEZ): #349'un zarari iki deploy
+# ARASINDA olusur. 30 Tem'de elle calistirilan bir compose komutu konteyneri
+# 3 gun eski bir yapilandirmayla yeniden yaratti; bir sonraki merge'e kadar
+# hicbir kosu bunu gormedi -- radar uc gun boyunca kisitli ayarlarla kostu ve
+# tamamen bosaldi (0 tespit). deploy.yml'deki KAPI 7 yalnizca deploy ANINDA
+# bakar; bu dosya ARADAKI pencereyi kapatir.
+#
+# YARIS PENCERESI (bilincli, kucuk): main'e bir commit indikten SONRA ama CD
+# o commit'i deploy etmeden ONCE kosarsa bu nobet gercekten ayrisma gorur ve
+# kirmizi yanar -- soyledigi sey DOGRUDUR ("main'deki ayar henuz canlida
+# degil"), yalniz gecicidir. `concurrency.group: deploy` (deploy.yml ile AYNI
+# grup) kosan bir deploy'un ARKASINA kuyruklanmayi saglar, boylece en sik
+# rastlanacak durum (deploy suruyor) zaten elenir.
+#
+# KAPI: `vars.DEPLOY_ENABLED` -- deploy.yml ile BIREBIR ayni fail-safe deseni
+# (env -> step output -> job output -> job `if`). Prod hedefi beyan
+# edilmemisse olculecek bir sey de yoktur, sessizce degil ACIKCA atlanir.
+#
+# NEDEN SELF-HOSTED: olculdu (30 Tem) -- `GET /health` hicbir AYAR degeri
+# dondurmuyor ({"status","mode","github_auth","gemini"}), yani bu drift
+# sinifi DISARIDAN olculemez. Tek dogru cevap konteynerin kendi
+# `Config.Env`'idir; ona yalnizca prod kutusundaki runner erisebilir.
+name: Config Drift (prod)
+
+on:
+  schedule:
+    # 6 saatte bir (dakika 17 -- saat basi tepe yukunden kacinmak icin).
+    - cron: "17 */6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read # `gh api actions/workflows/ci.yml/runs` -- CI-yesil kapisi (asagida)
+
+defaults:
+  run:
+    shell: bash # GitHub'in gercek varsayilani pipefail'siz `bash -e` (deploy.yml ile ayni beyan)
+
+concurrency:
+  group: deploy # deploy.yml ILE AYNI grup: suren bir deploy'un ortasinda olcum yapilmaz
+  cancel-in-progress: false
+
+jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    outputs:
+      has_target: ${{ steps.target.outputs.has_target }}
+      ci_ok: ${{ steps.ci_check.outputs.ci_ok }}
+    steps:
+      - name: Prod hedefi tanimli mi? (vars.DEPLOY_ENABLED)
+        id: target
+        env:
+          DEPLOY_ENABLED: ${{ vars.DEPLOY_ENABLED }}
+        run: |
+          if [ "$DEPLOY_ENABLED" = "true" ]; then
+            echo "has_target=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_target=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::vars.DEPLOY_ENABLED='${DEPLOY_ENABLED}' (beklenen TAM deger: 'true') - drift nobeti atlaniyor (olculecek bir prod hedefi beyan edilmemis)."
+          fi
+
+      # IKINCI KAPI -- CI-yesil. Bu is prod kutusundaki SELF-HOSTED runner'da
+      # repo kodunu (`scripts/config_drift.py`) calistirir; `deploy.yml`in
+      # `test_deploy_eden_her_job_iki_kapiya_bagli` invaryanti "prod'a DOKUNAN
+      # her job hem has_target hem ci_ok kapisina bagli olmali" der ve bu is
+      # de o tanima girer. Kapi KOZMETIK degil: `schedule` main'in O ANDAKI
+      # ucunda kosar -- CI'i kirmizi bir commit'in kodunu prod kutusunda
+      # kosturmak icin bir sebep yok. Desen deploy.yml'in `ci_check` adimiyla
+      # BIREBIR ayni (env -> acik OUTPUT -> job output -> job `if`): `exit 1`
+      # atmaz, ci_ok=false yazar ve gorunur bir ::error:: basar.
+      - name: CI yesilligini dogrula (ci_ok cikisi)
+        id: ci_check
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SHA: ${{ github.sha }} # run govdesine dogrudan enterpole EDILMEZ
+          REPO: ${{ github.repository }}
+        run: |
+          if ! conclusion=$(gh api "repos/$REPO/actions/workflows/ci.yml/runs?head_sha=$SHA&event=push&branch=main&status=completed" --jq '.workflow_runs[0].conclusion // "none"'); then
+            echo "::error::gh api cagrisi basarisiz oldu (SHA=$SHA) -- CI durumu dogrulanamadi, guvenli taraf: nobet atlandi."
+            echo "ci_ok=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [ "$conclusion" != "success" ]; then
+            echo "::error::Bu commit ($SHA) icin basarili bir CI (ci.yml) kosumu bulunamadi (bulunan: $conclusion) -- prod kutusunda repo kodu kosturulmaz."
+            echo "ci_ok=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "ci_ok=true" >> "$GITHUB_OUTPUT"
+
+  drift:
+    needs: preflight
+    if: needs.preflight.outputs.has_target == 'true' && needs.preflight.outputs.ci_ok == 'true'
+    runs-on: [self-hosted, linux, x64, ensemble-prod]
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      # `uv` VDS'te kurulu DEGIL (olculdu) -- sistem python3'u (3.10.12) +
+      # PyYAML 5.4.1 mevcut. Script'in kendisi bagimlilik olarak yalniz
+      # PyYAML ister ve PyYAML yoksa "drift yok" DEMEZ, 2 ile cikar.
+      - name: Yapilandirma driftini olc (konteyner <-> main)
+        env:
+          OPS_CHECKOUT_DIR: ${{ vars.OPS_CHECKOUT_DIR }}
+        run: python3 scripts/config_drift.py --compose deploy/docker-compose.prod.yml

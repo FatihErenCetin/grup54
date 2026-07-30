@@ -121,6 +121,31 @@
 # preflight kapisinda SKIP olur; o, DEGISMEYEN, mesru bir "deploy hic
 # istenmedi" atlamasidir -- burasi BAMBASKA bir kapi.)
 #
+# IMAJ TAZE, YAPILANDIRMA BAYAT (#349 -- olculmus uretim olayi, 30 Tem 2026):
+# bu workflow bugune kadar YALNIZ IMAJI tasidi. Konteyneri YARATAN compose
+# dosyasinin `environment:` blogu ise sunucudaki IKINCI checkout'tan
+# okunuyordu -- cunku sunucuda iki agac var:
+#     /home/fatih/actions-runner/_work/grup54/grup54  -> CD, her kosuda taze
+#     /home/fatih/grup54                              -> ELLE her compose komutu
+# Ikincisi hicbir zaman tazelenmedi (73 commit geride, 26 Tem'de donmus) ve
+# 30 Tem'de bir CORS duzeltmesi icin verilen ELLE komut konteyneri O dosyayla
+# yeniden yaratti. Olculen sonuc: main'de RADAR_WINDOW_DAYS=14 /
+# GITHUB_BACKFILL_LIMIT=150 iken konteynerde 2 / 10 -- #326'nin radar
+# duzeltmesi (29 Tem merge) prod'a HIC ulasmadi, radar 30 Tem'de tamamen
+# bosaldi (0 tespit). Ayni imajla yalniz compose tazelenince: 110 tespit.
+# Yani "merge edildi = canlida gecerli" YANLISTI ve bunu soyleyen HICBIR
+# sinyal yoktu. Iki adim eklendi (govdede KAPI 6 ve KAPI 7):
+#   * KAPI 6 `ops_sync` -- elle-operasyon checkout'unu deploy'dan ONCE
+#     deploy edilen TAM SHA'ya ff-merge eder (yol `vars.OPS_CHECKOUT_DIR`,
+#     sabit kodlu DEGIL; tanimsizsa gorunur `::warning::`, tanimli ama
+#     bozuksa fail-CLOSED),
+#   * KAPI 7 -- `scripts/config_drift.py` ile deploy SONRASI konteynerin
+#     GERCEK env'i ile main'in compose'unu karsilastirir (+ elle-operasyon
+#     checkout'unun compose'unu). Ayrisma = KIRMIZI.
+# Ayni script ayrica `config-drift.yml` ile PERIYODIK kosar: bu sinifin
+# ZARARI iki deploy ARASINDA olusur (elle bir komut prod'u bozar ve bir
+# sonraki merge'e kadar kimse gormez -- bu kez uc gun).
+#
 # SMOKE (deploy-sonrasi canli dogrulama, #189 BAGIMLILIGI, DOGRULAYICI adim):
 # `deploy` basarili olunca `smoke` job'i `make smoke` calistirir (bkz.
 # asagida). Bu dal (#192) #189'dan (T-189-live-smoke, `make smoke` hedefini
@@ -308,6 +333,59 @@ jobs:
           echo "::error::deploy/docker-compose.prod.yml repoda yok (#246 henuz main'e inmemis olabilir). Bu EYLEYICI bir adimdir (deploy'un on kosulu) -- fail-safe ATLANAMAZ: vars.DEPLOY_ENABLED='true' zaten kurulumun bittigi beyanidir, prod manifestinin YOKLUGU bir yanlis-yapilandirmadir. Once #246'yi main'e indir."
           exit 1
 
+      # KAPI 6 (#349) -- ELLE-OPERASYON CHECKOUT'unu tazele. Bu adim
+      # olculmus bir uretim olayinin kapatilmasidir (bkz. dosya basligi,
+      # "IMAJ TAZE, YAPILANDIRMA BAYAT"): sunucuda IKI checkout var; CD
+      # kendi runner checkout'unda kosar, ama INSANIN yazdigi her `docker
+      # compose` komutu digerinde (elle-operasyon dizini) kosar ve konteyneri
+      # ORADAKI compose ile yeniden yaratir. O dizin git ile tazelenmedigi
+      # icin 73 commit bayatlamis, #326'nin radar duzeltmesi prod'a HIC
+      # ulasmamisti. Deploy'dan ONCE tazeleriz: bir sonraki elle komut, CD'nin
+      # deploy ettigi TAM commit'in compose'unu gorsun.
+      #
+      # YOL SABIT KODLU DEGIL: `vars.OPS_CHECKOUT_DIR` (repo variable). Boyle
+      # bir dizin OLMAYAN bir topoloji mesrudur (yalniz CD ile calisan bir
+      # kurulum) -- o durumda adim SESSIZCE gecmez, gorunur bir `::warning::`
+      # basar (deploy'u durdurmaz: deploy'un KENDISI dogru yapilmistir,
+      # yalniz elle-operasyon hijyeni dogrulanmamistir).
+      #
+      # DEGISKEN SET EDILMISSE FAIL-CLOSED (compose_check ile ayni doktrin):
+      # operator bir yol BEYAN ettiyse, o yolun git checkout'u olmamasi ya da
+      # ff-merge'in basarisiz olmasi masum bir eksiklik degil, tam da bu
+      # issue'nun sinifidir (yerel degisiklik/ayrik gecmis = bir sonraki elle
+      # komut prod'u bozar). `--ff-only` BILINCLI: merge commit'i uretmez,
+      # yerel commit varsa sessizce ezmez, gorunur sekilde patlar.
+      # `--hard reset` KULLANILMAZ (operatorun yerel dosyalarini yok etmek CD
+      # nin isi degil) -- kirmizi verip insani cagirmak dogru davranistir.
+      #
+      # HEDEF = deploy edilen TAM SHA (main'in hareketli ucu DEGIL): CD'nin
+      # kendi "CI'in dogruladigi commit" disiplininin aynisi; iki checkout
+      # ayni ana yakinsar, "pull sirasinda main ilerledi" yarisi olusmaz.
+      # NOT: ad CIFT TIRNAKLI -- tirnaksiz bir YAML skalerinde " #349)" bir
+      # YORUM baslatir ve adim adi Actions arayuzunde YARIM gorunur.
+      - name: "Elle-operasyon checkout'unu tazele (yapilandirma drifti, #349)"
+        id: ops_sync
+        env:
+          OPS_CHECKOUT_DIR: ${{ vars.OPS_CHECKOUT_DIR }}
+          SHA: ${{ needs.preflight.outputs.sha }}
+        run: |
+          if [ -z "$OPS_CHECKOUT_DIR" ]; then
+            echo "::warning::vars.OPS_CHECKOUT_DIR tanimli degil -- elle-operasyon checkout'u TAZELENMEDI (#349). Sunucuda elle compose komutu kosturulan bir dizin varsa BAYAT kalir ve bir sonraki elle komut prod'u eski yapilandirmayla yeniden yaratir. Tanimlamak icin: gh variable set OPS_CHECKOUT_DIR --body /home/fatih/grup54"
+            exit 0
+          fi
+          if [ ! -d "$OPS_CHECKOUT_DIR/.git" ]; then
+            echo "::error::vars.OPS_CHECKOUT_DIR='$OPS_CHECKOUT_DIR' bir git checkout'u degil (.git yok). Operator bir yol BEYAN ettiyse o yol gecerli olmali -- fail-CLOSED (compose_check ile ayni doktrin)."
+            exit 1
+          fi
+          onceki=$(git -C "$OPS_CHECKOUT_DIR" rev-parse HEAD)
+          git -C "$OPS_CHECKOUT_DIR" fetch --quiet origin
+          if ! git -C "$OPS_CHECKOUT_DIR" merge --ff-only "$SHA"; then
+            echo "::error::'$OPS_CHECKOUT_DIR' deploy edilen commit'e ($SHA) ileri-sarilamadi: yerel commit, ayrik gecmis ya da calisma agacinda cakisan degisiklik var. Bu tam olarak #349'un sinifidir -- bir sonraki elle compose 'up -d' komutu prod'u BAYAT yapilandirmayla yeniden yaratir. Sunucuda dizini elle temizle (git status) ya da yolu kaldir: gh variable delete OPS_CHECKOUT_DIR"
+            exit 1
+          fi
+          sonraki=$(git -C "$OPS_CHECKOUT_DIR" rev-parse HEAD)
+          echo "::notice::Elle-operasyon checkout'u tazelendi ($OPS_CHECKOUT_DIR): $onceki -> $sonraki"
+
       # Imaji ONCE kur, SONRA recreate et: build patlarsa calisan servis
       # ayakta kalir (kesinti yalnizca `up -d`nin recreate penceresi kadar).
       # `-f` HICBIR ZAMAN atlanmaz: ciplak `docker compose up -d --build`
@@ -339,6 +417,32 @@ jobs:
         env:
           IMAGE_TAG: ${{ needs.preflight.outputs.sha }}
         run: docker compose -f deploy/docker-compose.prod.yml --env-file "$ENSEMBLE_ENV_FILE" up -d --remove-orphans
+
+      # KAPI 7 (#349) -- DEPLOY SONRASI YAPILANDIRMA DRIFTI KILIDI. Bu, "up -d
+      # kostu" ile "CALISAN sistem main'in soyledigi ayarlarla kosuyor"
+      # arasindaki BOSLUGU kapatir; uc gun boyunca kimsenin gormedigi bosluk
+      # tam olarak buydu. Iki bagimsiz kontrol (scripts/config_drift.py):
+      #   A) konteynerin GERCEK `Config.Env`'i <-> repo compose'unun
+      #      `services.api.environment` DUZ anahtarlari,
+      #   B) `vars.OPS_CHECKOUT_DIR`daki compose <-> repo'daki compose.
+      # B, bir onceki adimin (ops_sync) POST-KOSULUDUR ve TOTOLOJI DEGILDIR:
+      # ff-merge, calisma agacinda ELLE DEGISTIRILMIS bir compose dosyasina
+      # dokunmadan da basarili olabilir -- o durumda merge yesil, dosya hala
+      # bozuk, bir sonraki elle komut prod'u yine zehirler. Bu kontrol onu
+      # yakalar.
+      #
+      # NEDEN `uv run` DEGIL: VDS'te `uv` KURULU DEGIL (olculdu: `which uv`
+      # -> bos). Sistem python3'u (3.10.12) + PyYAML 5.4.1 mevcut (olculdu).
+      # Ayni script yerelde `make config-drift` ile uv altinda kosar --
+      # cagrilan DOSYA ayni (capraz-dosya testi bunu kilitler).
+      #
+      # Bu adim DOGRULAYICI ama fail-CLOSED: `continue-on-error` YOK ve
+      # `|| true` YOK -- deploy "basarili" derken calisan yapilandirmanin
+      # main'den farkli olmasi tam da bu issue'nun yalanidir.
+      - name: "Yapilandirma driftini dogrula (konteyner <-> main, #349)"
+        env:
+          OPS_CHECKOUT_DIR: ${{ vars.OPS_CHECKOUT_DIR }}
+        run: python3 scripts/config_drift.py --compose deploy/docker-compose.prod.yml
 
       # Kabul kriteri 4 (#262): disk sismesin -- son IMAGE_KEEP_COUNT SHA
       # etiketi (+ hep en taze imaja isaretli `prod`) tutulur, gerisi budanir.
