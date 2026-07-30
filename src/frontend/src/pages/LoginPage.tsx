@@ -121,6 +121,24 @@ function GirisSecenekleri({
 
       {emailAcik && <EmailGirisFormu />}
 
+      {/* #335: `RegisterPage` VAR ve `/kayit`'a bağlı (main.tsx) ama bu sayfada
+          ona giden hiç link yoktu — yeni kullanıcı için giriş ekranı çıkmaz
+          sokaktı (ölçüm: `grep -c kayit LoginPage.tsx` -> 0).
+          `emailAcik`e bağlı, çünkü üyelik e-posta+parola akışıdır (#297); GitHub
+          akışı ayrı ve kayıt gerektirmez. */}
+      {emailAcik && (
+        <p className="text-xs text-muted-foreground">
+          Hesabın yok mu?{" "}
+          <Link
+            to="/kayit"
+            data-testid="kayit-linki"
+            className="underline hover:text-foreground"
+          >
+            Üye ol →
+          </Link>
+        </p>
+      )}
+
       <p className="text-xs text-muted-foreground">
         Giriş şart değil —{" "}
         <Link to="/radar" className="underline hover:text-foreground">

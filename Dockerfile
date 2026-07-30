@@ -108,4 +108,28 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
 # ulaşır (graceful shutdown; sh'a takılıp grace-period sonunda sert kill riski
 # yok). ${PORT:-8000} genişletmesi korunur, Docker'ın JSONArgsRecommended
 # uyarısı da kalkar.
-CMD ["sh", "-c", "exec uvicorn ensemble.app:create_app --factory --host 0.0.0.0 --port ${PORT:-8000}"]
+### #335 — `--forwarded-allow-ips`: OLMAYINCA GITHUB GIRISI CALISMIYORDU
+#
+# Olcum (29 Tem, canli): `/auth/login`'in GitHub'a yonlendirdigi URL
+#   redirect_uri=http%3A%2F%2Fapi.recommend2me.com%2Fauth%2Fcallback
+# yani HTTP. GitHub'da kayitli callback https:// oldugu icin eslesmiyor ve
+# kullanici "The redirect_uri is not associated with this application" goruyor.
+#
+# Neden: `api/routers/auth.py` `redirect_uri`'yi `request.url_for()` ile
+# uretir; bu da semayi ASGI scope'undan okur. Uvicorn'da `--proxy-headers`
+# varsayilan ACIK ama `--forwarded-allow-ips` varsayilani `127.0.0.1` — Caddy
+# bu container'a docker agindan (127.0.0.1 DEGIL) baglandigi icin
+# `X-Forwarded-Proto: https` basligi SESSIZCE yok sayiliyordu. Bayragin "acik"
+# olmasi yetmiyor; kimden geldigine GUVENMESI gerekiyor.
+#
+# `*` neden guvenli: `deploy/docker-compose.prod.yml`'de api servisi HICBIR
+# port YAYINLAMIYOR — yalniz `ensemble-net` uzerinden erisilebiliyor, yani tek
+# istemcisi kendi Caddy'miz. Caddy de `deploy/caddy/ensemble.caddy`'de gelen
+# `Fly-Client-IP`'yi SILIYOR ve `X-Forwarded-For`'u {remote_host} ile KENDISI
+# yaziyor — yani istemcinin gonderdigi basliklara guvenilmiyor.
+# Port yayinlanmaya baslarsa bu deger DARALTILMALI (proxy'nin ag IP'si).
+#
+# Yan kazanc: `api/rate_limit.py::client_ip()` de ayni sebeple bozuktu (tum
+# istekler proxy IP'sinden geliyor gorunup demo rate-limit'i herkesi tek kovaya
+# koyuyordu); bu duzeltme onu da onarir.
+CMD ["sh", "-c", "exec uvicorn ensemble.app:create_app --factory --host 0.0.0.0 --port ${PORT:-8000} --proxy-headers --forwarded-allow-ips='*'"]
