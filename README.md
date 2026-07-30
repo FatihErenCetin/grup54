@@ -93,16 +93,75 @@ Ensemble, **insanların** (web pano) ve **her üyenin AI aracının** aynı payl
 
 Hedeflenen motor: **Python + FastAPI** (engine) · **Gemini veya Ollama** (embeddings + judge) · **MCP server** · **GitHub App** (webhook). Çalışma modu local-first; demo için tek hosted örnek.
 
+## 🚀 Hızlı başlangıç (local-first)
+
+Ensemble'ı **kendi makinende** çalıştırmak için hosting gerekmez: `.harness/`
+klasörü repoda yaşar, motor localhost'ta açılır.
+
+### Seçenek A — kaynaktan (geliştirici)
+
+```bash
+git clone https://github.com/FatihErenCetin/grup54.git
+cd grup54
+cp .env.example .env      # aşağıdaki üç anahtarı doldur
+make install              # uv sync --all-packages
+make up                   # migrate + backend (:8000) + frontend (:5173)
+```
+
+`.env` içinde **en az** şunlar:
+
+| Anahtar | Ne için | Nasıl alınır |
+|---|---|---|
+| `GEMINI_API_KEY` | embeddings + judge | [aistudio.google.com](https://aistudio.google.com/apikey) — ücretsiz kademe yeterli |
+| `GITHUB_REPO_OWNER` · `GITHUB_REPO_NAME` | hangi repoyu izliyoruz | kendi reponun sahibi/adı |
+| `GITHUB_APP_ID` · `GITHUB_APP_PRIVATE_KEY_PATH` · `GITHUB_APP_INSTALLATION_ID` | GitHub olaylarını okumak | kendi GitHub App'ini kur → `.pem` indir |
+
+> **Anahtarsız denemek istiyorsan:** `GEMINI_API_KEY`'i **boş bırak**. Motor ağa
+> çıkmayan Fake/Hash adapter'lara düşer — çakışma kalitesi düşer ama uygulama
+> açılır ve hiçbir veri makineden çıkmaz.
+>
+> **Tam-yerel çalışmak istiyorsan:** aşağıdaki Ollama bölümüne bak (kapsamı
+> orada açıkça yazılı).
+
+### Seçenek B — macOS masaüstü paketi (kurulum yok)
+
+Sürükle-bırak `.app` / `.dmg`: [`docs/macos-paket-kurulumu.md`](docs/macos-paket-kurulumu.md).
+Python, node, terminal gerekmez.
+
+### AI aracını bağla (MCP)
+
+```bash
+make mcp     # stdio MCP sunucusu: who_is_touching · check_scope
+```
+
+Claude Code · Cursor · Codex CLI · Gemini CLI · Kiro için **araç başına doğru
+dosya yolu ve biçimi** uygulamanın **Ayarlar** sayfasında üretilir; araç-bağımsız
+tablo [`AGENTS.md`](AGENTS.md)'de.
+
+---
+
 ### Tam-yerel gizlilik modu (Ollama)
 
-`LLM_PROVIDER=ollama` seçildiğinde hem embeddings hem judge yerel Ollama API'sini
-kullanır; Gemini anahtarı tanımlı olsa bile buluta geri düşmez. `ENSEMBLE_MODE`
-ayrı bir ayardır: local modda Gemini, hosted modda aynı makinedeki Ollama da
-seçilebilir.
+`LLM_PROVIDER=ollama` seçildiğinde **çakışma radarının** embeddings ve judge
+çağrıları yerel Ollama API'sine gider; Gemini anahtarı tanımlı olsa bile bu yol
+buluta geri düşmez (ölçüldü: 768 boyutlu gerçek yerel embedding, bulut anahtarları
+tanımlıyken bile çıplak `OllamaAdapter`). `ENSEMBLE_MODE` ayrı bir ayardır: local
+modda Gemini, hosted modda aynı makinedeki Ollama da seçilebilir.
 
-Yerel judge hibrittir: kalibre actor/dosya-kesişimi/semantic similarity sinyalleri
-açık vakaları deterministik sonuçlandırır; yalnız gri vakalar `llama3.2` structured
-output yoluna gider. Her iki yol da yereldir ve repo bağlamı makineden çıkmaz.
+> **⚠️ Kapsamı — ölçüldü (30 Tem):** bu garanti bugün **radar** için geçerlidir.
+> **Ask (`/query`) ve kapsam bekçisi (`/scope/check`)** için Ollama judge'ı
+> **henüz yok**: `build_query_judge`/`build_scope_judge` yalnız Gemini ya da
+> ağsız Fake döndürür, `LLM_PROVIDER`'ı okumaz. Yani `ollama` modunda bile bu iki
+> uç, Gemini anahtarı tanımlıysa **buluta gider**.
+> Takip: [#334](https://github.com/FatihErenCetin/grup54/issues/334). Tam-yerel
+> çalışmak isteyen kullanıcı bugün Gemini anahtarını **tanımsız bırakmalı** —
+> o zaman iki uç da ağa çıkmayan Fake adapter'a düşer (kalite düşer ama bağlam
+> makineden çıkmaz).
+
+Yerel **radar** judge'ı hibrittir: kalibre actor/dosya-kesişimi/semantic similarity
+sinyalleri açık vakaları deterministik sonuçlandırır; yalnız gri vakalar `llama3.2`
+structured output yoluna gider. Her iki yol da yereldir ve repo bağlamı makineden
+çıkmaz.
 
 ```bash
 ollama pull nomic-embed-text
@@ -110,8 +169,9 @@ ollama pull llama3.2
 ```
 
 Ardından `.env` içinde `LLM_PROVIDER=ollama` ayarla ve normal şekilde `make dev`
-çalıştır. Varsayılan endpoint `http://127.0.0.1:11434` ile loopback'e sabittir;
-repo bağlamı makineden çıkmaz. Canlı provider kalibrasyonu aynı fixture'larla
+çalıştır. Varsayılan endpoint `http://127.0.0.1:11434` ile loopback'e sabittir
+(config açılışta loopback dışı bir adresi reddeder). Canlı provider kalibrasyonu
+aynı fixture'larla
 `make eval-provider PROVIDER=ollama` komutundan koşar.
 
 ---
@@ -658,7 +718,7 @@ Kaynak veri: [`burndown-sprint2.csv`](ProjectManagement/Sprint2/Burndown/burndow
 | Katman | Teknoloji |
 |---|---|
 | **Engine** | Python 3.12 · FastAPI · katmanlı `engine/` (ingest · conflict · scopedrift · board · query · judge) |
-| **Yapay zeka** | Gemini (embedding + "judge") · **Groq yedek judge** (kota tükenince otomatik devreye girer) · tam-yerel gizlilik modu için Ollama |
+| **Yapay zeka** | Gemini (embedding + "judge") · **Groq yedek judge** (kota tükenince otomatik devreye girer) · radar için tam-yerel gizlilik modu (Ollama; Ask/scope henüz kapsam dışı — #334) |
 | **Veri** | Postgres + **pgvector** (hosted) ↔ FAISS (yerel) · `.harness/` git-senkron ortak bağlam **kanonik**, DB projeksiyon |
 | **Arayüz ×2** | React + Vite + Tailwind (web) · **MCP server** (ajanlar için: `who_is_touching` · `check_scope` · `declare_work`) |
 | **Dağıtım** | self-host VDS (Docker Compose + host'ta Caddy) · Vercel (frontend) · her `main` merge'inde **otomatik deploy** (SHA-etiketli imaj → build'siz rollback) |
