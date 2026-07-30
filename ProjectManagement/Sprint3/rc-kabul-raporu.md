@@ -4,31 +4,29 @@
 
 **Issue:** [#363](https://github.com/FatihErenCetin/grup54/issues/363)
 
-**Sonuç:** **PASS — teslim adayı kabul eşiklerinin tamamını geçti**
+**Sonuç:** **Dar yerel teknik RC PASS · genel teslim kararı KOŞULLU GO**
 
 Bu koşum videoda gösterilecek Radar, Scope, Board, Activity ve Ask yüzeyleriyle
-sınırlıdır. Yeni bir E2E çerçevesi kurulmadı; gerçek Edge tarayıcı motoru geçici
-Chrome DevTools Protocol probuyla gözlendi. Süreler yerel geliştirme sunucusundaki
-gözlemlerdir, performans eşiği değildir.
+sınırlıdır. Yeni bir E2E çerçevesi kurulmadı; görünür gerçek Edge oturumu hem
+makine-okunur Chrome DevTools Protocol probuyla hem de Semih tarafından ekranda
+elle doğrulandı. Süreler yerel geliştirme sunucusundaki gözlemlerdir, performans
+eşiği değildir.
 
 ## Aday ve koşum ortamı
 
-- Aday: `origin/main@2ed2617` üzerine PR
-  [#238](https://github.com/FatihErenCetin/grup54/pull/238)
-  `eac8ae2` ve PR
-  [#322](https://github.com/FatihErenCetin/grup54/pull/322)
-  `44ebe44` başlarının temiz yerel birleşimi.
-- Koşumdan sonra iki PR da main'e birleşti (`61062af`, `4b96c5b`). Bu raporun
-  dal tabanı `origin/main@dde027d` oldu; koşulan ağaçla aradaki tek fark
-  `.gitignore` düzeltmesi ve onun birim testidir (#364), ürün çalışma zamanı
-  kaynaklarında fark yoktur.
-- Tarayıcı: Microsoft Edge `150.0.0.0`, Windows 10/11, headless gerçek Chromium
-  motoru.
+- Son görünür koşum: `T-363-rc-kabul-kosumu@f18f213`. Dalın ürün çalışma
+  zamanı ağacı `origin/main@dde027d` ile aynıdır; tek branch değişikliği bu
+  rapordur.
+- #238 ve #322 main'e sırasıyla `61062af` ve `4b96c5b` merge commit'leriyle
+  birleşmiştir.
+- Tarayıcı: Microsoft Edge `150.0.0.0`, Windows 10/11, **görünür** gerçek
+  Chromium motoru.
 - Frontend: Vite geliştirme sunucusu, `http://127.0.0.1:5173`.
 - Backend: FastAPI/Uvicorn, ayrı SQLite RC projeksiyonu,
   `http://127.0.0.1:8000`.
-- Veri: `.harness/` + deterministik fake GitHub backfill; 22 görev, 3 olay,
-  14 kapsam maddesi ve 11 karar kaydı.
+- Veri: `.harness/` + deterministik fake GitHub backfill; Board'da 22 kart,
+  Activity'de 3 olay; Ask korpusunda 14 kapsam maddesi, 23 görev belgesi ve
+  11 karar kaydı.
 - Dış sağlayıcı anahtarları boş: `GEMINI_API_KEY=` ve `GROQ_API_KEY=`.
   Başlangıç izi `FakeGitHubAdapter`, `FakeJudgeAdapter` ve `HashEmbeddings`
   seçildiğini doğruladı.
@@ -52,15 +50,33 @@ gözlemlerdir, performans eşiği değildir.
 
 | Akış | Beklenen | Gerçek | Gözlenen süre | Sonuç |
 |---|---|---|---:|---|
-| Radar | Sayfa açılır; boş deterministik aday kümesi dürüst “Radar temiz” durumuna gelir. | Başlık ve temiz durum çizildi; `/radar`, `/presence`, `/health` 200; console/network hatası yok. | 600,2 ms | PASS |
-| Scope | Dondurulmuş amaç, kapsam içi/dışı maddeler ve karar paneli görünür. | 14 kapsam maddesi yüklendi; `/scope/current` ve `/scope/verdicts` 200; hata yok. | 485,4 ms | PASS |
-| Board | Kanonik görevler beş kolona projekte edilir. | “22 kart · beş kolon” görünür; `/board` 200; hata yok. | 498,8 ms | PASS |
-| Activity | Olay akışı ve aktör/görünüm filtreleri kullanılabilir. | 3 olay ve iki filtre grubu görünür; `/events` 200; hata yok. | 484,7 ms | PASS |
-| Ask | Soru öncesi tarama makbuzu görünür; soru yerel zincirde kaynaklı cevaplanır. | Makbuz 14 kapsam · 22 görev · 11 karar gösterdi. “Hosted demo kararı nedir?” sorusu `/query` 200 ile iki kaynak alıntılı, orta güvenli cevap döndürdü. | 625,0 ms | PASS |
+| Radar | Gerçek backend zinciri deterministik bir çakışma üretir; kart ve detay paneli açılır. | 3 ortak dosyalı 1 yüksek tespit üretildi; iki aktör, iki branch, %50 confidence ve detay paneli görünür doğrulandı. | 1.015,2 ms | PASS |
+| Scope | Dondurulmuş amaç ve kapsam içi/dışı maddeler görünür. | 14 kapsam maddesi yüklendi. `/scope/check` çağrılmadığı için “henüz kapsam kararı yok” dürüst boş durumu gösterildi. | 767,6 ms | PASS |
+| Board | Kanonik görevler beş kolona projekte edilir. | “22 kart · beş kolon” görünür; hata yok. | 805,5 ms | PASS |
+| Activity | Olay akışı ve aktör/görünüm filtreleri kullanılabilir. | 3 olay ve iki filtre grubu görünür; hata yok. | 780,6 ms | PASS |
+| Ask | Soru öncesi tarama makbuzu görünür; soru yerel zincirde kaynaklı cevaplanır. | Makbuz 14 kapsam · 23 görev · 11 karar gösterdi. “Hosted demo kararı nedir?” sorusu iki kaynak alıntılı, orta güvenli cevap döndürdü. | 933,6 ms | PASS |
 
 Süre, doğrudan route navigasyonundan akış koşulunun ve varsa etkileşimin
 tamamlanmasına kadardır. Vite modül istekleri dâhildir; production performans
 baseline'ı olarak kullanılmamalıdır.
+
+### İnsan görsel kabulü
+
+30 Temmuz 2026, 23:42–23:54 TSİ arasında aynı görünür Edge oturumu Semih
+tarafından ekran ekran kontrol edildi:
+
+| Ekran | İnsan kontrolü | Sonuç |
+|---|---|---|
+| Radar | Yüksek tespit kartı, iki aktör, üç dosya ve sağ detay paneli | PASS |
+| Scope | DONMUŞ v1, kapsam içi/dışı; sıfır-AI nedeniyle dürüst boş karar paneli | PASS |
+| Board | 22 kart ve beş kolon | PASS |
+| Activity | 3 olay ve filtre kontrolleri | PASS |
+| Ask | 14 kapsam · 23 görev · 11 karar makbuzu ve kaynak alıntılı cevap | PASS |
+
+Kalıcı kanıt:
+
+- [Makine-okunur tarayıcı/ağ sonucu](rc-kabul-tarayici-sonucu.json)
+- [Radar tespit ve detay ekran görüntüsü](Screenshots/rc-radar-detay-2026-07-30.png)
 
 ## Eval ve çağrı bütçesi
 
@@ -84,8 +100,11 @@ TP=5 · FP=0 · FN=3 · TN=110 · toplam=118
 `eval-gate` precision/F0.5/korpus eşiklerini geçti. `eval-butce` aynı sabit
 korpusta bir radar koşumunu `5 judge · 5 embed · 11 GitHub çağrısı (10 olay)`
 olarak ölçtü ve `6 · 6 · 12` bütçesinin altında kaldı. Bu RC koşumu eval
-metriklerini yeniden tanımlamadı; depodaki mevcut eval kapısının sonucunu
-alıntıladı.
+eşiklerini veya fixture'larını değiştirmedi. #363 mevcut sonucu alıntılamayı
+istese de aynı issue `make eval` ve `make eval-butce` kapılarını yeşil şart
+koştuğu için Makefile'daki deterministik, ağsız reçeteler yeniden çalıştırıldı;
+değerler mevcut eval sonucuyla aynı kaldı. Canlı provider kalibrasyonu
+çalıştırılmadı.
 
 ## Sıfır dış AI çağrısı kanıtı
 
@@ -96,6 +115,11 @@ alıntıladı.
    `FakeGitHubAdapter`.
 3. Beş akışın tam tarayıcı Network kaydı: gözlenen host yalnız
    `127.0.0.1`; Gemini, Groq, Ollama veya başka bir dış host yok.
+
+Kalıcı JSON izinde yalnız başarılı yanıtlar değil, `requestWillBeSent`,
+`responseReceived`, `loadingFailed`, uncaught exception ve console error
+olayları birlikte gözlendi. Böylece yanıt üretmeden başarısız olan bir dış
+istek de sessizce host sayımından düşmez.
 
 Dolayısıyla RC'nin dış AI çağrı sayısı **0** ve demo/video kotasından harcanan
 generate isteği **0**'dır.
@@ -114,12 +138,17 @@ Production erişilebilirliği için #238'deki AI'sız smoke kanıtı alıntılan
   yakaladığı doğrulandı.
 - [Kırmızı terminal ekran görüntüsü](Screenshots/smoke-kirmizi-terminal-2026-07-30.png).
 
+Bu production kanıtının sınırı açıktır: health, CORS ve SPA kabuğunun
+erişilebilirliğini kanıtlar; production ekranlarının gerçek veriyle uçtan uca
+çalıştığını kanıtlamaz. Canlı AI kotasını koruma kararı nedeniyle bu turda
+production `/query`, `/scope/check` ve soğuk `/radar` kabulü yapılmamıştır.
+
 ## Bulgular ve takip işleri
 
 Ürün kabul akışlarında kusur çıkmadı; bu nedenle hata ekran görüntüsü veya
 yeniden üretim izi gerektiren bir FAIL yok.
 
-Koşum altyapısında iki bloklamayan takip işi açıldı:
+Koşum altyapısında iki takip işi açıldı:
 
 - [#365](https://github.com/FatihErenCetin/grup54/issues/365) — Windows
   CP1252 konsolunda eval çıktısı `UnicodeEncodeError` ile çöküyor.
@@ -128,14 +157,18 @@ Koşum altyapısında iki bloklamayan takip işi açıldı:
 - [#366](https://github.com/FatihErenCetin/grup54/issues/366) —
   `npm audit --omit=dev`, `react-router-dom@7.18.1` ağacında GHSA-qwww-vcr4-c8h2
   için 2 yüksek uyarı bildiriyor. Uygulama RSC/action modu kullanmadığından
-  ilk değerlendirmede RC akışını bloklamıyor; uygulanabilirlik ve güvenli
-  sürüm ayrı issue'da kapatılacak.
+  ilk teknik değerlendirme dar işlevsel RC'yi bloklamıyor; ancak **genel
+  teslim GO kararı**, uygulanabilirlik kapatılana veya PO süreli ve gerekçeli
+  risk kabulü verene kadar koşulludur.
 
 Issue eklemeleri Sprint 3 bağımlılık haritasını bayatlatmış olabilir; harita
 otomasyonunun #363, #365 ve #366'yı içerecek şekilde tazelenmesi gerekir.
 
 ## Karar
 
-**GO.** Donmuş sekiz kapının tamamı geçti. Dar RC kapsamındaki ürün yüzeylerinde
-teslimi bloklayan bir kusur yok; canlı AI kotası korunmuştur. #365 ve #366
-teslim adayının işlevsel kabulünü bloklamayan, görünür takip borçlarıdır.
+**Dar yerel teknik RC: PASS.** Donmuş sekiz kapının tamamı geçti; görünür insan
+kabulü ve dolu Radar detay akışı da doğrulandı. Canlı AI kotası korunmuştur.
+
+**Genel teslim: KOŞULLU GO.** Production smoke veri-yüklü uçtan uca ürün
+kabulü değildir. Ayrıca #366 için PO risk kararı veya teknik kapanış gerekir.
+#365 yerel eval operatör deneyimi borcudur ve dar ürün kabulünü bloklamaz.

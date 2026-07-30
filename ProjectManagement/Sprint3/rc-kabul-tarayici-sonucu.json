@@ -1,0 +1,101 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-07-30T23:42:30+0300",
+  "candidate": {
+    "branch": "T-363-rc-kabul-kosumu",
+    "commit": "f18f213"
+  },
+  "browser": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36 Edg/150.0.0.0",
+  "mode": {
+    "browser_visible": true,
+    "backend": "local",
+    "github": "FakeGitHubAdapter",
+    "judge": "FakeJudgeAdapter",
+    "embeddings": "HashEmbeddings",
+    "gemini_key": "empty",
+    "groq_key": "empty"
+  },
+  "flows": [
+    {
+      "name": "Radar",
+      "path": "/radar",
+      "elapsed_ms": 1015.2,
+      "hosts": [
+        "127.0.0.1"
+      ],
+      "bad_http": [],
+      "browser_errors": [],
+      "interaction": {
+        "detection_count": 1,
+        "detail_opened": true,
+        "detail_excerpt": "▲\nyüksek\n%50\n✕\n\nKural-tabanlı fake: 3 dosya kesişimi, benzerlik=None → severity=high.\n\nDOSYALAR\nsrc/backend/ensemble/app.py\nsrc/backend/ensemble/engine/radar.py\ntests/unit/test_radar.py\nBRANCH'LER · AKTÖRLER\nT-363-rc-kabul-kosumu\nT-365-eval-utf8\nFA\nFatihErenCetin\nAS\nasmarufoglu\nDETERMİNİSTİK SİNYALLER\n\nçakışan dosya: 3 · modül: backend\nconfidence: %50\n\nAksiyonlar (Gördüm · Yanlış alarm · Ertele) S3'te gelir — yazma ucu Ek B6 ertelemesi; iş yapmayan buton basmıyoruz.\n\n↑↓ gezin · Esc kapat"
+      },
+      "passed": true
+    },
+    {
+      "name": "Scope",
+      "path": "/scope",
+      "elapsed_ms": 767.6,
+      "hosts": [
+        "127.0.0.1"
+      ],
+      "bad_http": [],
+      "browser_errors": [],
+      "interaction": {},
+      "passed": true
+    },
+    {
+      "name": "Board",
+      "path": "/board",
+      "elapsed_ms": 805.5,
+      "hosts": [
+        "127.0.0.1"
+      ],
+      "bad_http": [],
+      "browser_errors": [],
+      "interaction": {
+        "board_summary": "22 kart · beş kolon"
+      },
+      "passed": true
+    },
+    {
+      "name": "Activity",
+      "path": "/activity",
+      "elapsed_ms": 780.6,
+      "hosts": [
+        "127.0.0.1"
+      ],
+      "bad_http": [],
+      "browser_errors": [],
+      "interaction": {},
+      "passed": true
+    },
+    {
+      "name": "Ask",
+      "path": "/ask",
+      "elapsed_ms": 933.6,
+      "hosts": [
+        "127.0.0.1"
+      ],
+      "bad_http": [],
+      "browser_errors": [],
+      "interaction": {
+        "scan_receipt": "Tarandı: kapsam ✓ · 23 görev ✓ · son 48 saatte 0 olay ✓ · 11 karar ✓",
+        "question": "Hosted demo kararı nedir?",
+        "answer_excerpt": "Soru: Hosted demo kararı nedir?\n\nHosted demo sertleştirme: tek-repo pin + IP/rate cap + cached verdict (Ek F, #63) [1] Hosted demo: Fly backend + Vercel + webhook [2]\n\norta güven\n·\ncevap anı: 30.07.2026 23:42:30\n·\ncommit aaa1111\nKaynak alıntıları\n1\nkapsam\n.harness/scope/sprint-3.md#item-7\nHosted demo sertleştirme: tek-repo pin + IP/rate cap + cached verdict (Ek F, #63)\n2\ngörev\nT-34\nKaynağı aç ↗\nHosted demo: Fly backend + Vercel + webhook\n\nAranan kaynaklar: 14 kapsam · 23 görev · 11 karar · 2 olay · 1 PR\n\nTakip:\n.harness/scope/sprint-3.md#item-7 kapsam maddesinin gerekçesi nedir?\nT-34 görevinin"
+      },
+      "passed": true
+    }
+  ],
+  "summary": {
+    "passed": 5,
+    "total": 5,
+    "unexpected_http_errors": 0,
+    "unexpected_browser_errors": 0,
+    "observed_hosts": [
+      "127.0.0.1"
+    ],
+    "external_hosts": [],
+    "all_passed": true
+  }
+}
