@@ -1,3 +1,4 @@
+import re
 from functools import lru_cache
 from pathlib import Path
 from typing import Annotated, Literal
@@ -62,6 +63,47 @@ class Settings(BaseSettings):
         if isinstance(v, (list, tuple)) and "*" in v:
             raise ValueError("CORS allowlist '*' içeremez (#45)")
         return v
+
+    # #343 — Vercel PREVIEW origin ailesi. Neden ayrı bir alan ve neden regex:
+    # preview origin'i her dalda DEĞİŞİR (`grup54-git-<dal>-<proje>.vercel.app`),
+    # yani `CORS_ORIGINS` gibi sabit bir allowlist'e yazılamaz. Ölçüldü (30 Tem):
+    # preview sayfası açılıyor ama `/health` ve `/events` CORS'a takılıyor —
+    # frontend PR'ları görsel olarak doğrulanamıyor, review hattı tıkanıyor.
+    #
+    # Bu `*` DEĞİLDİR ve olmamalıdır: desen ÇAPALI olmak ZORUNDA (`^...$`) ve
+    # yalnız kendi Vercel projemizin preview ailesini kapsamalı. O preview'ler
+    # production ile aynı güven seviyesindedir (aynı repo, aynı kod, aynı
+    # derleme hattı) — internetteki rastgele bir origin değil.
+    #
+    # Varsayılan None = KAPALI (fail-closed): set edilmeyen bir kurulumda
+    # hiçbir ek origin kabul edilmez.
+    CORS_PREVIEW_ORIGIN_REGEX: str | None = None
+
+    @field_validator("CORS_PREVIEW_ORIGIN_REGEX", mode="after")
+    @classmethod
+    def _dogrula_preview_regex(cls, v: str | None) -> str | None:
+        if v is None or not v.strip():
+            return None
+        desen = v.strip()
+        # Çapasız desen `re.fullmatch` kullanılmadığında (Starlette `re.match`
+        # kullanır) beklenenden GENİŞ eşleşir: `https://kotucul.example` gibi
+        # bir origin, sonuna bizim domain'i eklemiş bir saldırgan tarafından
+        # kandırılabilir. Çapayı ZORUNLU kılmak bunu kapatır.
+        if not (desen.startswith("^") and desen.endswith("$")):
+            raise ValueError(
+                "CORS_PREVIEW_ORIGIN_REGEX '^' ile başlayıp '$' ile bitmeli "
+                "(çapasız desen beklenenden geniş eşleşir) — verilen: " + desen
+            )
+        if "*" == desen or ".*" in desen.replace("[a-z0-9-]", ""):
+            raise ValueError(
+                "CORS_PREVIEW_ORIGIN_REGEX serbest '.*' içeremez — desen "
+                "yalnız kendi preview ailemizi kapsamalı (#343/#45)"
+            )
+        try:
+            re.compile(desen)
+        except re.error as exc:  # pragma: no cover — pydantic mesajı yeterli
+            raise ValueError(f"CORS_PREVIEW_ORIGIN_REGEX derlenemedi: {exc}") from exc
+        return desen
 
     # Gemini (embeddings + judge) — key yoksa da Settings çökmemeli (fake adapter
     # key gerektirmez); key eksikliği yalnızca ResilientGeminiClient somutlaştırılırken kontrol edilir.

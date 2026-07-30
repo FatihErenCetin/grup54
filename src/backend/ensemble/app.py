@@ -833,9 +833,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # zaten wildcard+credentials kombinasyonunu izin vermez, burada da CORS_ORIGINS
     # "*" içeremiyor (config.py::_decode_cors_origins). POST yalnız /auth/logout
     # için eklendi; diğer TÜM uçlar hâlâ GET (kontrat değişmedi).
+    # #343: `allow_origin_regex` — Vercel preview origin ailesi (her dalda
+    # degisir, sabit allowlist'e yazilamaz). `None` ise Starlette bu yolu hic
+    # kurmaz, yani varsayilan davranis DEGISMEZ. Desenin capali olmasi
+    # config.py'de zorunlu kilinir; `*` hicbir kosulda gecmez.
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.CORS_ORIGINS,
+        allow_origin_regex=settings.CORS_PREVIEW_ORIGIN_REGEX,
         allow_credentials=True,
         allow_methods=["GET", "POST"],
         allow_headers=["*"],

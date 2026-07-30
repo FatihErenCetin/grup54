@@ -50,6 +50,7 @@ Sunucu env dosyası ─env─> FastAPI (ENSEMBLE_MODE=hosted) ─Protocol─> en
 | `RADAR_WINDOW_DAYS` · `RADAR_MIN_JACCARD` · `RADAR_MIN_SIMILARITY` | **Sunucu env dosyası (opsiyonel)** | kalibrasyon çıktısı (#18); kod default'u kanonik |
 | `DEMO_MODE` | **Sunucu env dosyası** = `true` (`/etc/ensemble/ensemble.env`, sır değil ama tek-satırlık açma/kapama bayrağı burada yaşar) | 🆕 #63 — açılışta fail-closed: `true` iken `GITHUB_REPO_OWNER`/`NAME` zorunlu (bkz. Ek F) |
 | `DEMO_RATE_WINDOW_S` · `DEMO_AI_RATE_LIMIT` · `DEMO_AI_GLOBAL_LIMIT` · `DEMO_RATE_LIMIT` · `DEMO_CACHE_TTL_S` · `DEMO_CACHE_MAX_ENTRIES` | **Sunucu env dosyası (opsiyonel)** | 🆕 #63 — kod default'u kanonik; yalnız override gerekince set (bkz. Ek F) |
+| `CORS_PREVIEW_ORIGIN_REGEX` | **Sunucu env dosyası (opsiyonel)** | 🆕 #343 — Vercel **preview** origin ailesi (`grup54-git-<dal>-<proje>.vercel.app`); her dalda değiştiği için sabit allowlist'e yazılamaz. Desen **çapalı** (`^…$`) olmak ZORUNDA ve serbest `.*` içeremez — açılışta reddedilir. Boş = KAPALI (fail-closed). `*` hiçbir koşulda geçmez (#45 aynen geçerli) |
 | `VITE_API_BASE_URL` | **Vercel env (build-time)** | = self-host backend public URL (Caddy/DNS domain, **A2 çift-yön**); origin-only, query/hash yasak |
 | `VITE_MOCK` | **yalnız-local** · Vercel'de **BOŞ** | prod'da fixture chunk'ı sızmasın (yalnız `"1"` mock açar) |
 
@@ -63,6 +64,8 @@ Sunucu env dosyası ─env─> FastAPI (ENSEMBLE_MODE=hosted) ─Protocol─> en
 Sunucu (ensemble.env): CORS_ORIGINS      = https://<vercel-app>.vercel.app     # backend KİMİ kabul eder
 Vercel:                VITE_API_BASE_URL = https://<self-host-domain>         # frontend KİME gider
 ```
+
+> **🆕 Üçüncü taraf (30 Tem, #343):** A2 kilidi ilk kurulduğunda yalnız **production** çifti düşünülmüştü. Preview build'leri de aynı `VITE_API_BASE_URL`'i taşır ama origin'leri farklıdır — bu aile sözleşmede yoktu. Ölçülen sonuç: preview sayfası açılıyor, **veri çekemiyor**; frontend PR'ları görsel doğrulanamıyor ve review hattı tıkanıyor (#322 ikinci kez changes-requested). `CORS_PREVIEW_ORIGIN_REGEX` bu üçüncü tarafı kapatır.
 
 - **Kural:** biri güncellenince diğeri aynı PR/deploy penceresinde güncellenir; tek taraflı değişiklik = tarayıcıda "CORS error" (gerçek hatayı gizler — S2 #45/#150 dersi). Hata cevapları bile `Access-Control-Allow-Origin` taşır (Ek D, S2).
 - **Paralel çalışma:** infra mock Vercel origin'iyle, frontend mock self-host URL'iyle başlar; entegrasyonda ikisi gerçek değerle **aynı anda** set edilir.
