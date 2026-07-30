@@ -20,6 +20,41 @@
 
 Aşağıdaki adımlar **sıralıdır** — atlarsan bir sonraki adım anlamsız bir hatayla patlar. İlk kez deploy ediyorsan §3'ü baştan sona, tek oturumda takip et. Yalnızca bir secret'ı rotate ediyorsan §9'a, yalnızca geri alıyorsan §5'e atla.
 
+### 🛑 0.1 · ELLE `docker compose` KOMUTUNDAN ÖNCE: `git pull` (#349)
+
+> Bu kutu bir öneri değil, **ölçülmüş bir üretim olayının** karşılığıdır. Sunucudaki **her** elle compose komutundan önce çalıştır:
+
+```bash
+ssh fatih@2.59.181.226
+git -C /home/fatih/grup54 pull --ff-only      # ← ATLAMA. Konteyneri yaratan dosya BURADAN okunur.
+cd /home/fatih/grup54/deploy
+docker compose -f docker-compose.prod.yml --env-file .env.production up -d
+```
+
+**Neden (30 Temmuz 2026, ölçülen):** sunucuda **iki** checkout var —
+
+| Yol | Kim kullanıyor | Tazelik |
+|---|---|---|
+| `/home/fatih/actions-runner/_work/grup54/grup54` | otomatik CD (`deploy.yml`) | her koşuda taze |
+| `/home/fatih/grup54` | **elle çalıştırılan her compose komutu** | git ile tazelenmedikçe bayat |
+
+CD **imajı** taşır (`ensemble-api:<sha>`), ama konteyneri **yaratan** compose dosyasının `environment:` bloğu elle-operasyon checkout'undan okunur. O dizin 26 Tem'de donmuş, `origin/main`'den **73 commit geride** kalmıştı. 30 Tem'de bir CORS düzeltmesi için verilen elle komut konteyneri **3 gün eski** compose ile yeniden yarattı:
+
+```
+main'deki compose:   RADAR_WINDOW_DAYS=14 · GITHUB_BACKFILL_LIMIT=150
+konteynerde efektif: RADAR_WINDOW_DAYS=2  · GITHUB_BACKFILL_LIMIT=10
+```
+
+Somut zarar: **#326'nın ölçümle bulunmuş radar düzeltmesi (29 Tem merge) production'a hiç ulaşmadı.** Radar üç gün kısıtlı ayarla koştu ve 30 Tem'de tamamen boşaldı (`0 tespit`) — ürünün manşet özelliği jüriye boş görünecekti. Aynı imajla, yalnız compose tazelendikten sonra: **110 tespit** (`{high:4, med:52, low:54}`, kapsama %2.1 → %7.1).
+
+Ders: **"merge edildi = canlıda geçerli" DEĞİL.** İmaj taze olabilir ama yapılandırma bayat kalır — ve bunu söyleyen hiçbir sinyal yoktu. Bugün üç savunma var (detay §11):
+
+1. **CD tazeliyor** — `deploy.yml`'in `ops_sync` adımı (`vars.OPS_CHECKOUT_DIR`) elle-operasyon checkout'unu deploy edilen **tam SHA**'ya `--ff-only` ileri sarar.
+2. **Deploy sonrası kilit** — `scripts/config_drift.py` konteynerin **gerçek** env'i ile `main`'in compose'unu karşılaştırır; ayrışma = kırmızı.
+3. **Nöbet** — `config-drift.yml` aynı ölçümü 6 saatte bir tekrarlar (bu sınıfın zararı iki deploy **arasında** oluşur).
+
+Yine de yukarıdaki `git pull --ff-only` senin sorumluluğunda: CD yalnızca **merge olduğunda** koşar, sen komutu her an verebilirsin.
+
 Bu dosya `T-190-deploy-runbook` dalının kendisi. Bağımlı/ilişkili işlerin **bugünkü** (bu dal yazılırken ölçülen) gerçek durumu:
 
 | Bağımlı iş | Durum | Bu runbook'taki karşılığı |
@@ -201,8 +236,8 @@ Sıra **bağlayıcı** — atlanamaz. Ön-koşul: VDS'e SSH erişimi (kullanıc�
 #### 1) Repo'yu sunucuya klonla + env dosyasını hazırla
 
 ```bash
-git clone https://github.com/FatihErenCetin/grup54.git
-cd grup54/deploy
+cd /home/fatih && git clone https://github.com/FatihErenCetin/grup54.git   # kanonik elle-operasyon checkout'u: /home/fatih/grup54 (§0.1)
+cd /home/fatih/grup54/deploy
 sudo mkdir -p /etc/ensemble
 sudo cp .env.production.example /etc/ensemble/ensemble.env
 sudo chmod 640 /etc/ensemble/ensemble.env
@@ -227,11 +262,13 @@ ln -s /etc/ensemble/ensemble.env .env.production   # repo'daki deploy/.env.produ
 #### 3) İlk build + up (migration OTOMATİK — elle adım YOK)
 
 ```bash
-cd grup54/deploy
+git -C /home/fatih/grup54 pull --ff-only      # ← §0.1 — konteyneri YARATAN dosya bu checkout'tan okunur (#349)
+cd /home/fatih/grup54/deploy
 docker compose -f docker-compose.prod.yml --env-file .env.production up -d --build
 # = make deploy (Makefile hedefi, repo kökünden `cd deploy && ...` ile aynı komut)
 docker compose -f docker-compose.prod.yml ps
 docker compose -f docker-compose.prod.yml logs -f api
+python3 /home/fatih/grup54/scripts/config_drift.py   # ← koşan sistem main ile aynı mı? (§11)
 ```
 
 **Fly'dan en büyük fark burada:** Fly'da migration `#187` (`release_command`) beklenene kadar elle `fly ssh console` ile koşuyordu. Self-host compose'ta bu **zaten otomatik**: `migrate` servisi (`restart: "no"`, tek atımlık) `alembic upgrade head`'i `api` başlamadan **önce** koşar; `api.depends_on.migrate.condition: service_completed_successfully` migration sıfır-dışı bir kodla biterse `api`'yi **hiç başlatmaz** — Fly'ın `release_command`iyle **aynı fail-closed garanti**, ayrı bir adım gerekmeden. `CREATE EXTENSION IF NOT EXISTS vector` (migration `bfde4c8f644f`) + `vector_index` tablosu (`c4f1d6a2b8e9`) bu ilk `up`'ta kurulur.
@@ -339,8 +376,11 @@ donmuş** kalır ve düzelme "sessizce" gerçekleşmez.
 
 ```bash
 ssh fatih@2.59.181.226
-cd /opt/ensemble && docker compose exec api python -m ensemble.store.rebuild
+cd /home/fatih/grup54/deploy && export COMPOSE_FILE=docker-compose.prod.yml
+docker compose exec api python -m ensemble.store.rebuild
 ```
+
+> ⚠️ **Yol düzeltildi (#349 ölçümü):** bu satır daha önce `/opt/` altındaki bir dizini gösteriyordu — o dizin sunucuda **yok** (`ls -ld` → "No such file or directory", 30 Tem), yani komut kopyalanınca patlıyordu. Kanonik elle-operasyon checkout'u `/home/fatih/grup54` (§0.1). `export COMPOSE_FILE=docker-compose.prod.yml` de eklendi: onsuz Compose üst dizinlere yürüyüp **kök** `docker-compose.yml`'i bulur (yanlış proje → "no such service").
 
 > ⚠️ **`make rebuild` DEĞİL.** Prod imajı `python:3.12-slim` runtime katmanıdır ve
 > yalnız `COPY --from=builder /app /app` alır: `Makefile` hiç kopyalanmaz, `make` ve
@@ -400,19 +440,25 @@ kapısı bilerek oradadır.
 **Kanonik rollback artık build GEREKTİRMEZ** — önceki SHA'nın imajı son 5 deploy içindeyse yereldedir:
 
 ```bash
-cd grup54/deploy
+git -C /home/fatih/grup54 pull --ff-only                       # ← §0.1 (#349): rollback bile BAYAT compose ile yapılmaz
+cd /home/fatih/grup54/deploy
 git log --oneline -10                                          # geri dönülecek iyi SHA'yı bul (kısa/uzun, ikisi de çalışır)
 IMAGE_TAG=<iyi-sha> docker compose -f docker-compose.prod.yml --env-file .env.production up -d --no-build
 ```
 
+> ⚠️ Rollback'te `pull` özellikle kritik: **imajı** geri alıyorsun, **yapılandırmayı** değil. Bayat bir checkout'tan koşulan `up -d`, geri almak istemediğin ayarları da geri alır (#349'un tam olarak yaptığı şey).
+
 `--no-build` ile: compose imajı yerelde `ensemble-api:<iyi-sha>` olarak zaten arar (son 5 deploy'un imajı budanmadı), `migrate` fail-closed zinciri (§3 adım 3) aynen çalışır. `<iyi-sha>` **son 5 deploy'dan eskiyse** (budanmış) bu komut "No such image" ile patlar — o durumda kanonik yol yine git-bazlı yeniden build'e döner:
 
 ```bash
-cd grup54
+cd /home/fatih/grup54
+git fetch origin
 git checkout <iyi-sha>                   # ya da: git revert <bozuk-sha> && git checkout main
 cd deploy
 docker compose -f docker-compose.prod.yml --env-file .env.production up -d --build
 ```
+
+> Bu yol checkout'u **bilerek** `main`'den ayırır (detached HEAD). Rollback bitince mutlaka `git -C /home/fatih/grup54 checkout main && git -C /home/fatih/grup54 pull --ff-only` ile geri dön — aksi halde CD'nin `ops_sync` adımı bir sonraki deploy'da ileri saramaz ve **kırmızı** verir (§11; bu kırmızı doğrudur, checkout gerçekten ayrık kalmıştır).
 
 Rollback sonrası **tekrar smoke doğrulaması** yap (§4).
 
@@ -463,9 +509,9 @@ Rollback **geçicidir**. `main` düzelmeden bir sonraki yeşil CI aynı bozuk s�
 
 | Belirti | Kök neden | Çözüm |
 |---|---|---|
-| Tarayıcıda "CORS error" | `CORS_ORIGINS` (sunucu env dosyası) ↔ `VITE_API_BASE_URL` (Vercel) tek taraflı değişti (A2) | İkisini aynı anda güncelle + Vercel'i redeploy et + sunucuda `docker compose up -d --build` (§3.1 adım 6) |
+| Tarayıcıda "CORS error" | `CORS_ORIGINS` (sunucu env dosyası) ↔ `VITE_API_BASE_URL` (Vercel) tek taraflı değişti (A2) | İkisini aynı anda güncelle + Vercel'i redeploy et + sunucuda **önce** `git -C /home/fatih/grup54 pull --ff-only`, sonra `docker compose up -d --build` (§0.1 · §3.1 adım 6). ⚠️ **#349 tam olarak burada doğdu:** bu satırın eski hâli `pull` demiyordu ve bayat bir checkout'tan koşulan `up -d` radar ayarlarını 3 gün geriye aldı |
 | SPA route'u refresh'te **404** | Vercel Root Directory kökte seçilmiş, `src/frontend` değil | Vercel proje ayarları → Root Directory → `src/frontend` |
-| `/health` → `gemini: "missing"` | **`GEMINI_API_KEY` gerçekten yok / sunucu env dosyasına ulaşmamış.** (R1 — `DEMO_MODE` sarmalayıcı sorunu — #63 ile kapandı, §6.) Bu belirti artık **tek anlama gelir: gerçek bir yapılandırma eksiği.** | `/etc/ensemble/ensemble.env`'de `GEMINI_API_KEY` satırını kontrol et; eksikse doldur, `docker compose up -d --build` ile yeniden başlat, `curl .../health` ile teyit et |
+| `/health` → `gemini: "missing"` | **`GEMINI_API_KEY` gerçekten yok / sunucu env dosyasına ulaşmamış.** (R1 — `DEMO_MODE` sarmalayıcı sorunu — #63 ile kapandı, §6.) Bu belirti artık **tek anlama gelir: gerçek bir yapılandırma eksiği.** | `/etc/ensemble/ensemble.env`'de `GEMINI_API_KEY` satırını kontrol et; eksikse doldur, `git -C /home/fatih/grup54 pull --ff-only` (§0.1) + `docker compose up -d --build` ile yeniden başlat, `curl .../health` ile teyit et |
 | `docker compose up` → "required variable POSTGRES_PASSWORD is missing" | `--env-file .env.production` bayrağı unutuldu, ya da symlink kırık | `deploy/.env.production`'ın `/etc/ensemble/ensemble.env`'e symlink olduğunu (`ls -l`) ve komutun `--env-file`'la çağrıldığını doğrula |
 | `docker compose up` → "bind source path does not exist" (`.harness`) | `.harness/` dizini checkout'ta yok (sparse-checkout / eksik klon) | Repo'yu tam klonla — `#242` ile `.harness/` git-tracked, normal `git clone`'da her zaman gelir |
 | `ModuleNotFoundError: psycopg2` | `DATABASE_URL` DSN'inde `+psycopg` eki yok | Prod'da bu satır elle yazılmaz (compose türetir, §2 #38) — yalnız local `.env`'de görülürse DSN'i `postgresql+psycopg://…` yap |
@@ -482,7 +528,7 @@ Rollback **geçicidir**. `main` düzelmeden bir sonraki yeşil CI aynı bozuk s�
 - Sunucudaki sır dosyasını her zaman `sudo $EDITOR /etc/ensemble/ensemble.env` ile düzenle — değeri **asla** `echo`/`cat`/log satırına yazma.
 - Dosya izinleri `640 root:docker` — `chmod`/`chown`'ı bozma; dünyaya okunabilir yapma.
 - `deploy/.env.production` symlink'i git'e **girmez** (`.gitignore`) — `git add -f` ile zorlamaya çalışma.
-- Rotasyon prosedürü: GitHub App → Settings → Private keys → **yeni üret** → `/etc/ensemble/ensemble.env`'i güncelle → `docker compose up -d --build` (yeniden başlat) → **eskisini sil**. Webhook secret'ı da aynı mantıkla rotate edilir (D-35).
+- Rotasyon prosedürü: GitHub App → Settings → Private keys → **yeni üret** → `/etc/ensemble/ensemble.env`'i güncelle → `git -C /home/fatih/grup54 pull --ff-only` (§0.1) → `docker compose up -d --build` (yeniden başlat) → **eskisini sil**. Webhook secret'ı da aynı mantıkla rotate edilir (D-35).
 - `gitleaks` CI'ı (`.github/workflows/ci.yml`) zaten her PR'da sır taraması yapıyor — bu runbook'a yeni bir secret-tarama adımı **eklenmez**, mevcut kapı yeterli.
 - Fly'dan devralınan hiçbir secret/token **yok** — rotasyon listesi yalnızca yukarıdakiler.
 
@@ -507,16 +553,23 @@ AGENTIC_ACTIONS_DRY_RUN=false     # önce true ile dene, log'da gövdeyi oku
 AGENTIC_ACTIONS_MAX_PER_RUN=3
 ```
 
-Ardından `cd /opt/ensemble && docker compose up -d` (env dosyası
-`env_file:` ile konteynere enjekte edilir; **yeniden başlatma şart** —
-`Settings` süreç açılışında okunur).
+Ardından (§0.1 sırasıyla):
+
+```bash
+git -C /home/fatih/grup54 pull --ff-only
+cd /home/fatih/grup54/deploy && docker compose -f docker-compose.prod.yml --env-file .env.production up -d
+```
+
+(env dosyası `env_file:` ile konteynere enjekte edilir; **yeniden başlatma
+şart** — `Settings` süreç açılışında okunur.)
 
 **3) Çalıştırma** — istek üzerine (ya da bir cron/systemd timer ile):
 
 ```bash
 ssh fatih@2.59.181.226
-cd /opt/ensemble && docker compose exec api python -m ensemble.agentic_cli --kuru-calisma   # önce KURU
-cd /opt/ensemble && docker compose exec api python -m ensemble.agentic_cli                  # sonra gerçek
+cd /home/fatih/grup54/deploy && export COMPOSE_FILE=docker-compose.prod.yml   # §0.1 kanonik dizin + doğru manifest
+docker compose exec api python -m ensemble.agentic_cli --kuru-calisma   # önce KURU
+docker compose exec api python -m ensemble.agentic_cli                  # sonra gerçek
 ```
 
 > ⚠️ **`make agentic` DEĞİL.** Prod imajı `Makefile`'ı **hiç kopyalamaz**
@@ -533,6 +586,76 @@ sahteye yazıp "yazdım" demektense reddedilir, D-51 kapısının aynı ruhu).
 Rapor `stdout`'a basılır: yazılan · kuru çalışma · hata · sınır nedeniyle
 atlanan + her (tespit, PR) için tek satır. Aynı tespit için **ikinci yorum
 asla** yazılmaz (yorum gövdesine gömülü makine-okunur işaret taranır).
+
+---
+
+## 11. Yapılandırma drifti kilidi (`#349`)
+
+**Soru:** "koşan sistem, `main`'in söylediği ayarlarla mı koşuyor?" — 30 Temmuz'a kadar bu soruyu **kimse soramıyordu** (§0.1).
+
+**Neden `make smoke`'a eklenmedi (ölçüldü, 30 Tem):**
+
+```
+curl -s http://127.0.0.1:8001/health
+{"status":"ok","mode":"hosted","github_auth":"configured","gemini":"configured"}
+```
+
+`/health` **hiçbir ayar değeri döndürmüyor** → bu drift sınıfı dışarıdan (GitHub-hosted smoke) ölçülemez. Ayrıca `scripts/smoke.py` bu repoda `main`'de **yok** (#189 / PR #238 hâlâ açık; `Makefile`'da `smoke:` hedefi de yok) — "smoke'a bir kontrol ekle" yolu bugün mevcut değil. Uygulanabilir tek ölçüm noktası **sunucunun kendisi**: self-hosted runner prod kutusunda koşar ve `docker inspect` konteynerin **gerçek** ortamını verir.
+
+**Araç:** `scripts/config_drift.py` — iki bağımsız, fail-closed kontrol:
+
+| | Ne karşılaştırır | Neyi yakalar |
+|---|---|---|
+| **A** | Koşan `api` konteynerinin `Config.Env`'i ↔ `main`'deki `deploy/docker-compose.prod.yml` → `services.api.environment` **düz** anahtarları | "İmaj taze, yapılandırma bayat" — tam olarak #349 |
+| **B** | `OPS_CHECKOUT_DIR`'deki compose ↔ repo'daki compose | Bugün doğru koşsa bile **bir sonraki elle komut** prod'u bozacak mı |
+
+`${...}` içeren değerler (ör. `DATABASE_URL`) bilinçli olarak karşılaştırılmaz — değerleri sunucudaki sır dosyasından gelir, repo'dan bilinemez. **Sessizce atlanmazlar**, raporda ayrı satırda listelenirler.
+
+Çıkış kodları: `0` temiz · `1` drift var · `2` **ölçülemedi** (docker yok / konteyner koşmuyor / compose okunamadı). İkisi de sıfır-dışı: "ölçemedim" sessizce "temiz" sayılmaz.
+
+**Nerede koşar:**
+
+```bash
+# 1) Sunucuda elle (uv YOK — ölçüldü; sistem python3 3.10.12 + PyYAML 5.4.1 var)
+python3 /home/fatih/grup54/scripts/config_drift.py --ops-checkout /home/fatih/grup54
+
+# 2) Yerelde (geliştirici makinesinde 2 ile biter — konteyner yok, BEKLENEN)
+make config-drift
+
+# 3) CD — deploy.yml, `up -d`den SONRA (KAPI 7): deploy "başarılı" derken
+#    koşan yapılandırmanın main'den farklı olması bu issue'nun yalanıydı
+# 4) Nöbet — .github/workflows/config-drift.yml, 6 saatte bir + workflow_dispatch
+#    (bu sınıfın zararı iki deploy ARASINDA oluşur; bu kez üç gün fark edilmedi)
+```
+
+**Kurulum — tek seferlik repo variable:**
+
+```bash
+gh variable set OPS_CHECKOUT_DIR --body /home/fatih/grup54
+gh variable list
+```
+
+✅ **Yapıldı (30 Tem 2026, doğrulandı):**
+
+```
+DEPLOY_ENABLED     true                  2026-07-27
+OPS_CHECKOUT_DIR   /home/fatih/grup54    2026-07-30
+```
+
+> ℹ️ Aynı ölçümün yan bulgusu (bu PR'ın kapsamı dışı, not düşülüyor): `SMOKE_API_URL` / `SMOKE_WEB_URL` **tanımlı değil** → `deploy.yml`'in `smoke` job'ı bugüne kadar her koşuda fail-safe atlanıyor (`::warning::` ile, sessiz değil). Yani deploy'lar **doğrulanmamış**. `#189`/PR #238 ile birlikte ele alınmalı.
+
+`OPS_CHECKOUT_DIR` **tanımsızsa** CD sessizce geçmez, görünür bir `::warning::` basar (yalnız CD ile çalışan bir topoloji meşrudur; ama "doğrulanmadı" ile "doğrulandı" arasında yalan olmaz). **Tanımlıysa ama yol bozuksa/ileri sarılamıyorsa** adım fail-CLOSED'dur — `compose_check` ile aynı doktrin: operatör bir yol **beyan ettiyse** o yol geçerli olmalıdır.
+
+**Kırmızı gördüğünde:**
+
+| Belirti | Anlamı | Düzeltme |
+|---|---|---|
+| `[A efektif-env] RADAR_WINDOW_DAYS: compose='14' · konteyner='2'` | Konteyner bayat bir compose'dan yaratılmış | §0.1: `pull --ff-only` + `up -d`, sonra script'i tekrar koş |
+| `[B elle-operasyon checkout'u] ... repo'daki sürümden FARKLI` | Bugün doğru koşuyor ama **bir sonraki** elle komut bozacak | `git -C /home/fatih/grup54 status` → yerel değişikliği temizle, `pull --ff-only` |
+| `ileri-sarılamadı` (ops_sync adımı) | Yerel commit / ayrık HEAD (ör. yarım kalmış rollback, §5) | `git checkout main && git pull --ff-only` |
+| `OLCULEMEDI: ... KOSAN bir konteyner yok` | `api` ayakta değil | `docker compose -f docker-compose.prod.yml ps` + `logs api` |
+
+> Kilidin **kendisi** `tests/unit/test_config_drift.py` ile kilitli: script'in saf fonksiyonları, `deploy.yml`'in `ops_sync` + drift adımları, nöbet workflow'u ve bu bölümün varlığı test edilir. Mutasyon kanıtı PR gövdesinde.
 
 ---
 

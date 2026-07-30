@@ -136,3 +136,17 @@ paket-macos:
 .PHONY: agentic
 agentic:
 	uv run python -m ensemble.agentic_cli $(ARGS)
+
+# #349 — yapilandirma drifti kilidi: main'deki deploy/docker-compose.prod.yml
+# ile CALISAN prod konteynerinin efektif env'i ayrisirsa KIRMIZI (cikis 1);
+# olcum hic yapilamazsa (docker yok / konteyner kosmuyor) cikis 2. Ikisi de
+# sifir-disi -- "olcemedim" sessizce "temiz" sayilmaz.
+#
+# ⚠️ Bu hedef PROD KUTUSUNDA anlamlidir (docker + kosan `ensemble/api`
+# konteyneri ister); gelistirici makinesinde 2 ile biter, bu BEKLENEN.
+# Sunucuda `uv` KURULU DEGIL (olculdu) -> CD ve nobet workflow'u ayni
+# script'i `python3 scripts/config_drift.py` ile cagirir. Detay:
+# docs/deploy-runbook.md §11.
+.PHONY: config-drift
+config-drift:
+	uv run python scripts/config_drift.py $(ARGS)
