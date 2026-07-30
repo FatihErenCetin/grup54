@@ -53,7 +53,13 @@ export function _birikimSayisi(): number {
   return birikim.size;
 }
 
-export function useEvents() {
+/**
+ * @param etkin `false` → sorgu HİÇ atılmaz. GraphPage'in git-ağacı sekmesi
+ *   için: kullanıcı ısı matrisine bakarken olay akışını 10 sn'de bir çekmek
+ *   boşuna trafik. `["events"]` anahtarı paylaşıldığı için ActivityPage aynı
+ *   anda açıksa onun sorgusu etkilenmez (react-query gözlemci başına bakar).
+ */
+export function useEvents(etkin = true) {
   return usePolling<EventsResponse>(["events"], async () => {
     const { data, error } = await api.GET("/events", {
       params: { query: imlec ? { since: imlec } : {} },
@@ -79,5 +85,5 @@ export function useEvents() {
         latest_ts: imlec,
       },
     };
-  });
+  }, undefined, { enabled: etkin });
 }

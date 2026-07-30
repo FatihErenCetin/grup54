@@ -17,6 +17,9 @@ goals:
 - 'Üç frontend sayfası: Board · Ask · Activity + Actors/Radar ısı matrisi client-side
   (Ek E, #33/#105/#129)'
 - 'Hosted demo sertleştirme: tek-repo pin + IP/rate cap + cached verdict (Ek F, #63)'
+- 'Graph 4 görünüm modu (ısı matrisi · treemap · güç-yönlü · git şeridi) — #130;
+  30 Tem''da PO kararıyla non_goals''tan kapsama ALINDI (D-64). Git ağacı gerçek
+  commit DAG''ı DEĞİL: parent_sha kontratta yok, ok/dirsek çizilmiyor.'
 non_goals:
 - 'MCP write-back (declare_work yazma) — S3''te yalnız read, write-back stretch (Ek
   D sınırı, #32)'
@@ -25,8 +28,8 @@ non_goals:
 - Dağıtık sayaç/cache (Redis) — Ek F5, bilinçli kapsam dışı (kapsam-sinirlari.md queue/worker
   yasağı)
 - WebSocket/SSE push — polling sözleşmesi korunuyor, sahte-canlılık yasak (D-34, kapsam-sinirlari.md)
-- 'Graph ek görünüm modları (git ağacı · güç-yönlü · treemap) — #130, ayrıca S3-stretch
-  etiketli'
+- 'Gerçek commit DAG''ı (parent_sha ile ebeveyn–çocuk okları / merge dirsekleri)
+  — Ek-B B6 ertelemesi; git şeridi bu sınırı EKRANDA yazar, uydurmaz (D-64)'
 - Full observability (Prometheus/Grafana/Sentry/OTel) · K8s/Helm/Terraform/canary
   — kapsam-sinirlari.md
 type: scope
