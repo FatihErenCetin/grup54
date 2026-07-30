@@ -28,7 +28,13 @@ venv/
 *.tmp
 
 # === Node / frontend ===
-node_modules/
+# Sondaki `/` BILEREK YOK (#322 rebase artigi, 30 Tem 2026): `node_modules/`
+# deseni YALNIZ DIZINLERI eler. `node_modules` adinda bir SYMLINK git icin
+# dizin degildir -> desen onu KACIRIR. Deneyle dogrulandi: `node_modules/`
+# ile `ln -s /Users/<isim>/... src/frontend/node_modules` `git add -A`'da
+# STAGE OLDU; slash'siz desende olmadi. Gercek dosyalar (src/frontend/src/...)
+# iki durumda da etkilenmiyor -- asiri eleme yok.
+node_modules
 dist/
 .vite/
 *.local
