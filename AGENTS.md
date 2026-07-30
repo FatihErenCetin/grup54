@@ -59,6 +59,45 @@ Bu repoda çalışan **her AI aracı**, aşağıdaki anlarda ilgili rehberi **ke
 İş bitince `active/` beyanını **temizle**. MCP geldiğinde döngü `who_is_touching` / `declare_work` / `check_scope` araçlarıyla otomatikleşir.
 Şema: `scope/` · `tasks/T-<id>-*.md` (board'ın tek kaynağı) · `active/<handle>.md` · `locks/` · `decisions/`.
 
+## MCP: kendi aracını bağla  🟢 *(#332 — araç-bağımsız)*
+
+`.harness/` döngüsünü elle yapmak yerine aracına yaptır: MCP sunucumuz bugün **`who_is_touching`** (kim neye dokunuyor) ve **`check_scope`** (bu iş kapsam içinde mi) tool'larını verir (read-only; `declare_work` = stretch). Sunucu araç-bağımsızdır — hepsi aynı stdio sürecini açar:
+
+```
+uv run --directory <repo-koku> python -m ensemble_mcp.server
+```
+
+**Önce sunucunun kalktığını gör:** `make mcp` (terminal sessizce bekler = doğru; stdio sunucusu banner basmaz, çıkmak için Ctrl+C. Traceback görüyorsan `uv sync --all-packages` eksik).
+
+**Sonra aracına göre dosyayı yaz.** Gövde aynı — **değişen yalnız dosya yolu ve BİÇİM**:
+
+| Araç | Dosya (proje kapsamı) | Biçim | Not |
+|---|---|---|---|
+| **Claude Code** | `<repo>/.mcp.json` | JSON · `mcpServers` | yeniden başlat; ilk açılışta onay ister. Kısayol: `claude mcp add ensemble -- uv run --directory <repo> python -m ensemble_mcp.server` |
+| **Cursor** | `<repo>/.cursor/mcp.json` | JSON · `mcpServers` | tüm projeler için `~/.cursor/mcp.json` |
+| **Codex CLI** | `~/.codex/config.toml` | **TOML** · `[mcp_servers.ensemble]` | ⚠️ JSON parçacığı BURADA ÇALIŞMAZ; dosyada başka ayarların var, **sona ekle**. Kısayol: `codex mcp add ensemble -- uv run --directory <repo> python -m ensemble_mcp.server` |
+| **Gemini CLI** | `<repo>/.gemini/settings.json` | JSON · `mcpServers` | ⚠️ genel ayar dosyası — üzerine yazma, `mcpServers` anahtarını **ekle**. Doğrulama: oturumda `/mcp` |
+| **Kiro** | `<repo>/.kiro/settings/mcp.json` | JSON · `mcpServers` | tüm projeler için `~/.kiro/settings/mcp.json` (workspace kazanır) |
+
+JSON gövdesi (dört araç için aynı; `<repo-koku>` = **mutlak** yol):
+
+```json
+{ "mcpServers": { "ensemble": { "command": "uv",
+  "args": ["run", "--directory", "<repo-koku>", "python", "-m", "ensemble_mcp.server"] } } }
+```
+
+Codex için aynı şey TOML olarak:
+
+```toml
+[mcp_servers.ensemble]
+command = "uv"
+args = ["run", "--directory", "<repo-koku>", "python", "-m", "ensemble_mcp.server"]
+```
+
+- **Hazır parçacık + mutlak yol:** ürünün kendi **Ayarlar** sayfası (`/ayarlar` → "AI aracına bağlan") aracı seçtirir ve senin makinenin gerçek yolunu doldurur.
+- **Hosted'da (recommend2me.com) MCP yok — sebebi:** sunucu senin diskindeki `.harness/`'ı okuyan bir **stdio süreci**; hosted örnek ne senin diskini görür ne senin adına süreç başlatır. Bağlanmak local kurulum ister (klonla → `uv sync --all-packages` → yukarıdaki dosya). Ayarlar sayfası hosted'da da bu gerekçeyi **yazar** (sessiz 404 yok).
+- Yol/biçim tablosunun kanonik hâli koddadır: `src/backend/ensemble/mcp_clients.py` (her satırın yanında doğrulandığı resmî belge linki). Yeni araç eklerken **oraya** ekle, buraya kopyalama.
+
 ## Ne nereye (repo haritası)
 
 - **`docs/gelistirme-dongusu.md`** — 🟢 **atanmış issue → done TEK rehberi (+ DONE kapısı). İşe başlamadan OKU.**

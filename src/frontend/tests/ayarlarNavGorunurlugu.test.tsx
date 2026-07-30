@@ -1,12 +1,16 @@
-/** T-309 — AppLayout'un "Ayarlar" nav linki: YALNIZ `GET /settings/saglayici`
- * GERÇEKTEN 200 dönerse (yerel kurulum) görünür; 404 (hosted), yükleniyor ya
- * da beklenmeyen hata durumlarının HİÇBİRİNDE gösterilmez — görev brifi §3
- * "hosted'da bu sayfa GÖRÜNMESİN" + "menüde ölü bir Ayarlar bağlantısı
- * bırakma". `repoGostergesi.test.tsx`'in kalıbının AYNISI.
+/** T-309 (+#332) — AppLayout'un "Ayarlar" nav linki: sayfada GERÇEKTEN
+ * gösterilecek bir şey olduğu KANITLANINCA görünür. İki kaynak var:
+ * `GET /settings/saglayici` 200 (yerel kurulum) **ya da** `GET /settings/mcp`
+ * 200 (MCP bağlanma reçetesi — hosted'da da döner, #332). İkisi de yoksa,
+ * yükleniyorsa ya da hata verdiyse GÖSTERİLMEZ — görev brifi §3 "menüde ölü
+ * bir Ayarlar bağlantısı bırakma". `repoGostergesi.test.tsx`'in kalıbı.
  *
  * MUTASYON KİLİTLERİ (görev brifi §Testler):
  *  - `ayarlar.data?.tur === "basarili"` kontrolünü kaldırıp linki HER ZAMAN
- *    basarsan → "hosted'da (404) link GİZLENİR" testi kırılır
+ *    basarsan → "iki uç da yoksa link GİZLENİR" testi kırılır
+ *  - `|| mcp.data?.tur === "basarili"` dalını kaldırırsan (#332 öncesine dön)
+ *    → "hosted'da MCP varsa link GÖRÜNÜR" testi kırılır; o dal olmadan hosted
+ *    kullanıcı bağlanma reçetesine hiç ulaşamaz (uç 200 dönse bile)
  *  - anonim/hosted akışın (radar + demo repo etiketi) BOZULMADIĞINI da ayrıca
  *    kilitler — bu dosyanın asıl amacı SADECE nav linkiyse de mevcut akışın
  *    kazara kırılmadığını doğrular
@@ -31,8 +35,11 @@ vi.mock("../src/lib/useRepoSecici", () => ({
   useRepolar: (enabled: boolean) => mockUseRepolar(enabled),
 }));
 
+const mockUseMcpConfig = vi.fn();
+
 vi.mock("../src/lib/useSettings", () => ({
   useSaglayiciAyarlari: () => mockUseSaglayiciAyarlari(),
+  useMcpConfig: (enabled: boolean) => mockUseMcpConfig(enabled),
 }));
 
 function renderShell(path = "/radar") {
@@ -66,6 +73,7 @@ describe("AppLayout — 'Ayarlar' nav linki (MUTASYON KİLİDİ)", () => {
   it("yerel kurulumda (200/basarili) 'Ayarlar' linki görünür, /ayarlar'a gider", () => {
     mockUseAuth.mockReturnValue(anonimAuth);
     mockUseRepolar.mockReturnValue({ data: undefined, isLoading: false });
+    mockUseMcpConfig.mockReturnValue({ data: { tur: "yok" }, isLoading: false });
     mockUseSaglayiciAyarlari.mockReturnValue({
       data: {
         tur: "basarili",
@@ -82,9 +90,10 @@ describe("AppLayout — 'Ayarlar' nav linki (MUTASYON KİLİDİ)", () => {
     expect(link).toHaveAttribute("href", "/ayarlar");
   });
 
-  it("hosted'da (404 → tur:'yok') 'Ayarlar' linki GİZLİDİR", () => {
+  it("İKİ uç da yoksa (tur:'yok') 'Ayarlar' linki GİZLİDİR", () => {
     mockUseAuth.mockReturnValue(anonimAuth);
     mockUseRepolar.mockReturnValue({ data: undefined, isLoading: false });
+    mockUseMcpConfig.mockReturnValue({ data: { tur: "yok" }, isLoading: false });
     mockUseSaglayiciAyarlari.mockReturnValue({ data: { tur: "yok" }, isLoading: false });
     renderShell();
     expect(screen.queryByRole("link", { name: "Ayarlar" })).not.toBeInTheDocument();
@@ -94,9 +103,24 @@ describe("AppLayout — 'Ayarlar' nav linki (MUTASYON KİLİDİ)", () => {
     }
   });
 
+  it("hosted'da sağlayıcı ucu 404 olsa BİLE MCP reçetesi varsa link GÖRÜNÜR (#332)", () => {
+    // Bu, #332'nin "son santim"i: uç 200 dönüyor ama menüde link yoksa hosted
+    // kullanıcı bağlanma yolunu hiç göremez ("kodda var ≠ çalışıyor").
+    mockUseAuth.mockReturnValue(anonimAuth);
+    mockUseRepolar.mockReturnValue({ data: undefined, isLoading: false });
+    mockUseSaglayiciAyarlari.mockReturnValue({ data: { tur: "yok" }, isLoading: false });
+    mockUseMcpConfig.mockReturnValue({
+      data: { tur: "basarili", mod: "hosted", araclar: [], hosted_notu: "…" },
+      isLoading: false,
+    });
+    renderShell();
+    expect(screen.getByRole("link", { name: "Ayarlar" })).toBeInTheDocument();
+  });
+
   it("henüz yükleniyorsa (data yok) 'Ayarlar' linki GİZLİDİR — emin olmadan gösterme", () => {
     mockUseAuth.mockReturnValue(anonimAuth);
     mockUseRepolar.mockReturnValue({ data: undefined, isLoading: false });
+    mockUseMcpConfig.mockReturnValue({ data: { tur: "yok" }, isLoading: false });
     mockUseSaglayiciAyarlari.mockReturnValue({ data: undefined, isLoading: true });
     renderShell();
     expect(screen.queryByRole("link", { name: "Ayarlar" })).not.toBeInTheDocument();
@@ -105,6 +129,7 @@ describe("AppLayout — 'Ayarlar' nav linki (MUTASYON KİLİDİ)", () => {
   it("beklenmeyen bir hata verirse 'Ayarlar' linki GİZLİDİR (fail-closed)", () => {
     mockUseAuth.mockReturnValue(anonimAuth);
     mockUseRepolar.mockReturnValue({ data: undefined, isLoading: false });
+    mockUseMcpConfig.mockReturnValue({ data: { tur: "yok" }, isLoading: false });
     mockUseSaglayiciAyarlari.mockReturnValue({
       data: { tur: "beklenmeyen", mesaj: "500 patladı" },
       isLoading: false,
@@ -116,6 +141,7 @@ describe("AppLayout — 'Ayarlar' nav linki (MUTASYON KİLİDİ)", () => {
   it("anonim/hosted akış BOZULMAMALI — demo etiketi ve Radar erişimi AYNEN korunur", () => {
     mockUseAuth.mockReturnValue(anonimAuth);
     mockUseRepolar.mockReturnValue({ data: undefined, isLoading: false });
+    mockUseMcpConfig.mockReturnValue({ data: { tur: "yok" }, isLoading: false });
     mockUseSaglayiciAyarlari.mockReturnValue({ data: { tur: "yok" }, isLoading: false });
     renderShell();
     expect(screen.getByText("RADAR SAYFASI")).toBeInTheDocument();

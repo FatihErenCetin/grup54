@@ -231,6 +231,19 @@ check_scope(ref: str) -> ScopeVerdict
 - **Kapsam sınırı:** `declare_work` (yazma, ajanın kendi `active/<handle>-claude.md`'si) = **S3 write-back / stretch** — #32 yalnız **read**. Read tool'lar aynı Protocol'leri (HarnessPort read tarafı + ScopeService) tüketir → HTTP ile bit-bit tutarlı, mock harness fixture'ıyla test edilir.
 - **Tazelik:** MCP okuması da projeksiyon üzerinden; çelişkide `.harness` kazanır (dizin_yapisi §7).
 
+**ADDITIVE NOT (30 Tem, #332 — `GET /settings/mcp`):** tool imzaları DEĞİŞMEDİ; değişen yalnız *bağlanma reçetesini dağıtan* uç. `{config_json, yol}` alanları **aynen duruyor** (eski istemci kırılmaz), yanlarına eklendi:
+
+```
+GET /settings/mcp -> 200 {config_json, yol,            # T-307, DEĞİŞMEDİ (= Claude Code kaydı)
+                          mod: "local"|"hosted",
+                          araclar: [{arac, ad, bicim: "json"|"toml", yol,
+                                     config_metni, paylasimli_dosya, aciklama, kaynak}],
+                          hosted_notu: str|null}
+```
+
+- **Davranış değişikliği (bilinçli):** bu uç hosted'da artık **404 değil**. Gerekçe: anahtar okumaz/yazmaz, dolayısıyla `_require_local_mode`'un koruduğu riski taşımaz; hosted'da 404 kullanıcıya *sessiz bir duvardı*. Şimdi 200 + `hosted_notu` (MCP'nin neden yalnız yerel bir stdio süreci olduğu). **Anahtar uçlarının (`/saglayici`, `/test`) 404'ü YERİNDE** ve testle kilitli.
+- Araç→yol/biçim tablosunun kanonik kaynağı: `src/backend/ensemble/mcp_clients.py` (her satırın yanında doğrulandığı resmî belge). İnsan özeti: `AGENTS.md` §"MCP: kendi aracını bağla".
+
 ---
 
 ## Ek E (20 Tem) — Frontend ↔ backend tüketim haritası (#33 · #105 · #129)

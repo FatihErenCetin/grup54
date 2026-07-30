@@ -5,12 +5,17 @@ Sözleşme (sabit, frontend ajanı bunu üretilen client'a göre tüketiyor):
   GET  /settings/saglayici -> {mode, saglayici, anahtarlar: {gemini, groq}, ollama_url}
   PUT  /settings/saglayici    {saglayici, anahtar?, ollama_url?} -> 200 (aynı zarf)
   POST /settings/test         {saglayici} -> {calisiyor, mesaj}
-  GET  /settings/mcp       -> {config_json, yol}
+  GET  /settings/mcp       -> {config_json, yol, mod, araclar[], hosted_notu}
+                              (#332: `araclar`/`mod`/`hosted_notu` ADDITIVE)
 
 BEŞ GÜVENLİK KURALI (görev brifingi, T-307):
-  1. `ENSEMBLE_MODE != "local"` -> bu uçların HEPSİ 404 (`_require_local_mode`).
-     Hosted'da bu uçlar var olsaydı, siteye giren HERKES sunucunun gerçek
-     API anahtarlarını değiştirebilir/okuyabilirdi.
+  1. `ENSEMBLE_MODE != "local"` -> ANAHTAR uçlarının hepsi 404
+     (`_require_local_mode`: GET/PUT /saglayici + POST /test). Hosted'da bu
+     uçlar var olsaydı, siteye giren HERKES sunucunun gerçek API anahtarlarını
+     değiştirebilir/okuyabilirdi.
+     İSTİSNA (#332): `GET /mcp` anahtar okumaz/yazmaz — hosted'da 404 yerine
+     200 + `hosted_notu` döner (sessiz duvar yerine gerekçe). Ayrıntı:
+     `get_mcp_config` docstring'i.
   2. `GET` anahtarı ASLA tam döndürmez — yalnız maskelenmiş (`_mask_key`).
   3. Anahtarlar repoda/git'te/DB'de DEĞİL — `store/provider_settings.py`
      (`~/.ensemble/ayarlar.json`, izin 0600).
@@ -32,7 +37,6 @@ import edilir — o ana kadar `ensemble.app` zaten tam yüklenmiş olur.
 
 from __future__ import annotations
 
-import json
 import logging
 from pathlib import Path
 from typing import Literal
@@ -44,6 +48,7 @@ from google.genai import errors as genai_errors
 from google.genai.types import HttpOptions
 from pydantic import BaseModel
 
+from ensemble import mcp_clients
 from ensemble.api.deps import SettingsDep
 from ensemble.config import Settings, normalize_local_ollama_url
 from ensemble.store.provider_settings import read_provider_settings, write_provider_settings
@@ -115,9 +120,32 @@ class ProviderTestResponse(BaseModel):
     mesaj: str
 
 
+class McpAracConfig(BaseModel):
+    """Tek bir AI aracı için yapıştırılacak metin + hedef yol (#332).
+
+    `bicim` kritik: Codex CLI TOML okur, diğer dördü JSON — aynı gövdeyi
+    hepsine vermek sessizce çalışmaz.
+    """
+
+    arac: str
+    ad: str
+    bicim: Literal["json", "toml"]
+    yol: str
+    config_metni: str
+    paylasimli_dosya: bool
+    aciklama: str
+    kaynak: str
+
+
 class McpConfigResponse(BaseModel):
+    # `config_json` + `yol`: donmuş sözleşmenin (docs/sprint3-kontratlar.md)
+    # T-307 alanları — Claude Code parçacığı. #332 bunları KALDIRMAZ, yanına
+    # `araclar`/`mod`/`hosted_notu` EKLER (additive; eski istemci kırılmaz).
     config_json: str
     yol: str
+    mod: Literal["local", "hosted"]
+    araclar: list[McpAracConfig]
+    hosted_notu: str | None = None
 
 
 def _current_response(settings: Settings) -> ProviderSettingsResponse:
@@ -264,30 +292,59 @@ def test_provider(payload: ProviderTestRequest, settings: SettingsDep) -> Provid
     return _test_ollama(settings)
 
 
+_HOSTED_NOTU = (
+    "MCP burada, tarayıcıda çalışmaz — sunucu senin makinende bir stdio süreci "
+    "olarak açılır ve senin diskindeki `.harness/` dosyalarını okur. Bu hosted "
+    "örnek ne senin diskini görebilir ne de senin adına süreç başlatabilir; bu "
+    "yüzden aşağıdaki yollarda repo kökü YER TUTUCU. Bağlanmak için: repoyu "
+    "klonla → `uv sync --all-packages` → `<repo-koku>` yerine kendi mutlak "
+    "yolunu yaz → `make mcp` ile sunucunun ayağa kalktığını gör."
+)
+
+
 @router.get("/mcp")
 def get_mcp_config(settings: SettingsDep) -> McpConfigResponse:
-    """T-307 FAZ 4 — hazır `.mcp.json` parçacığı, MUTLAK yol ile (kullanıcının
-    kendi makinesindeki gerçek repo kökü). Sahte "bağlandı" durumu ÜRETMEZ —
-    yalnız yapıştırılacak içeriği + hedef dosya yolunu döner; Claude Code'un
-    (ya da başka bir MCP istemcisinin) bunu OKUMASI için yeniden başlatılması
-    GEREKİR (bu uç bunu doğrulayamaz/garanti edemez, dürüstçe belirtir)."""
-    _require_local_mode(settings)
-    config = {
-        "mcpServers": {
-            "ensemble": {
-                "command": "uv",
-                "args": [
-                    "run",
-                    "--directory",
-                    str(_REPO_ROOT),
-                    "python",
-                    "-m",
-                    "ensemble_mcp.server",
-                ],
-            }
-        }
-    }
+    """T-307 FAZ 4 + #332 — araç başına hazır MCP parçacığı + hedef dosya yolu.
+
+    Sahte "bağlandı" durumu ÜRETMEZ — yalnız yapıştırılacak içeriği + hedef
+    dosya yolunu döner; aracın bunu OKUMASI için (çoğunda) yeniden başlatılması
+    GEREKİR (bu uç bunu doğrulayamaz/garanti edemez, dürüstçe belirtir).
+
+    #332 — DİĞER ÜÇ UÇTAN FARKLI OLARAK burada `_require_local_mode` YOK:
+
+      * Gerekçe (KURAL 1'in amacı): o kural sunucunun GERÇEK API ANAHTARLARINI
+        hosted'da herkese açmamak için var. Bu uç anahtar okumaz/yazmaz —
+        yalnız bir reçete metni üretir, dolayısıyla o riski taşımaz.
+      * Eski davranış (hosted'da 404) kullanıcıya sessiz bir duvardı: "MCP
+        neden yok?" sorusunun cevabı hiçbir yerde yazmıyordu (SESSİZ DÜŞÜŞ).
+        Artık hosted'da da 200 döner + `hosted_notu` NEDENİNİ söyler.
+      * Buna karşılık hosted'da sunucunun KENDİ dosya yolu ifşa EDİLMEZ
+        (`_REPO_ROOT` yerine `YER_TUTUCU_REPO`) — hosted'da o yol zaten
+        kullanıcının değil, sunucunun yolu; hem yanlış hem gereksiz bilgi.
+    """
+    local = settings.ENSEMBLE_MODE == "local"
+    repo_koku = str(_REPO_ROOT) if local else mcp_clients.YER_TUTUCU_REPO
+
+    araclar = [
+        McpAracConfig(
+            arac=recete.arac,
+            ad=recete.ad,
+            bicim=recete.bicim,
+            yol=recete.yol(repo_koku),
+            config_metni=mcp_clients.config_metni(recete, repo_koku),
+            paylasimli_dosya=recete.paylasimli_dosya,
+            aciklama=recete.aciklama(repo_koku),
+            kaynak=recete.kaynak,
+        )
+        for recete in mcp_clients.ARACLAR
+    ]
+    # Donmuş T-307 alanları = listedeki Claude Code kaydı (tek kaynak; iki ayrı
+    # üretim yolu bırakılsaydı biri güncellenip diğeri bayatlardı).
+    claude = next(a for a in araclar if a.arac == "claude-code")
     return McpConfigResponse(
-        config_json=json.dumps(config, indent=2, ensure_ascii=False),
-        yol=str(_REPO_ROOT / ".mcp.json"),
+        config_json=claude.config_metni,
+        yol=claude.yol,
+        mod=settings.ENSEMBLE_MODE,
+        araclar=araclar,
+        hosted_notu=None if local else _HOSTED_NOTU,
     )

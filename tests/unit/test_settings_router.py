@@ -54,14 +54,18 @@ def _make_app(tmp_path, monkeypatch, *, mode: str = "local", **overrides):
         ("get", "/settings/saglayici", None),
         ("put", "/settings/saglayici", {"saglayici": "gemini"}),
         ("post", "/settings/test", {"saglayici": "gemini"}),
-        ("get", "/settings/mcp", None),
     ],
 )
-def test_hosted_modda_DORT_UCUN_DE_404_dondugu(tmp_path, monkeypatch, method, path, json_body):
+def test_hosted_modda_ANAHTAR_UCLARININ_404_dondugu(tmp_path, monkeypatch, method, path, json_body):
     """MUTASYON KİLİDİ: `_require_local_mode`'daki `!=` kontrolünü kaldır
-    (ya da `raise` satırını sil) → bu dört test KIRMIZI olur (hosted'da
+    (ya da `raise` satırını sil) → bu üç test KIRMIZI olur (hosted'da
     200/başka bir kod dönmeye başlar) — görev brifinginin "kapıyı kaldır →
-    hosted'da uç erişilebilir → kırmızı" mutasyonunun ta kendisi."""
+    hosted'da uç erişilebilir → kırmızı" mutasyonunun ta kendisi.
+
+    #332 NOTU: `GET /settings/mcp` bu listeden ÇIKARILDI — o uç anahtar
+    okumaz/yazmaz, hosted'da artık 200 + gerekçe döner (aşağıdaki
+    `test_mcp_hosted_*`). ANAHTAR uçlarının kapısı yerinde duruyor; bu testin
+    varlık sebebi de tam olarak o ayrımın yanlışlıkla genişletilmemesi."""
     app, _ = _make_app(tmp_path, monkeypatch, mode="hosted")
     with TestClient(app) as client:
         resp = getattr(client, method)(path, json=json_body) if json_body is not None else getattr(
@@ -460,5 +464,117 @@ def test_mcp_config_mutlak_yol_ve_gecerli_json_doner(tmp_path, monkeypatch):
     assert "ensemble" in config["mcpServers"]
     args = config["mcpServers"]["ensemble"]["args"]
     assert "ensemble_mcp.server" in " ".join(args)
-    # Sahte bir "bağlandı" durumu YOK — yalnız {config_json, yol} sözleşmesi.
-    assert set(body.keys()) == {"config_json", "yol"}
+    # Sahte bir "bağlandı" durumu YOK — T-307 sözleşmesi (config_json/yol)
+    # #332'de KALDIRILMADI, üzerine additive alanlar eklendi.
+    assert {"config_json", "yol"} <= set(body.keys())
+    assert "baglandi" not in body and "connected" not in body
+
+
+# ---------------------------------------------------------------------------
+# #332 — araç başına MCP config (Claude Code + Cursor + Codex + Gemini CLI + Kiro)
+# ---------------------------------------------------------------------------
+
+
+def _mcp_body(tmp_path, monkeypatch, *, mode: str = "local") -> dict:
+    app, _ = _make_app(tmp_path, monkeypatch, mode=mode)
+    with TestClient(app) as client:
+        resp = client.get("/settings/mcp")
+    assert resp.status_code == 200
+    return resp.json()
+
+
+#: Beş aracın DOĞRULANMIŞ yol son eki (kaynaklar: mcp_clients.py modül
+#: docstring'i). Bu tablo testte AYRICA yazılıyor — üretim tablosundan import
+#: edilseydi yol yanlışa dönse bile test onunla birlikte kayar ve hiçbir şey
+#: yakalanmazdı (totolojik test).
+BEKLENEN_YOLLAR = {
+    "claude-code": ("/.mcp.json", "json"),
+    "cursor": ("/.cursor/mcp.json", "json"),
+    "codex": ("~/.codex/config.toml", "toml"),
+    "gemini-cli": ("/.gemini/settings.json", "json"),
+    "kiro": ("/.kiro/settings/mcp.json", "json"),
+}
+
+
+def test_mcp_bes_arac_da_donuyor(tmp_path, monkeypatch):
+    body = _mcp_body(tmp_path, monkeypatch)
+    assert [a["arac"] for a in body["araclar"]] == list(BEKLENEN_YOLLAR)
+
+
+@pytest.mark.parametrize("arac", list(BEKLENEN_YOLLAR))
+def test_mcp_her_aracin_yolu_ve_bicimi_dogru(tmp_path, monkeypatch, arac):
+    """MUTASYON KİLİDİ: `mcp_clients.ARACLAR`'da bir yolu boz (ör. Cursor'ı
+    `{repo}/.mcp.json` yap ya da Codex'in `bicim`ini `json`a çevir) → bu test
+    KIRMIZI. Yanlış yol yazmak hiç yazmamaktan kötü: kullanıcı dosyayı
+    oluşturur, araç okumaz, sebebini bulamaz."""
+    body = _mcp_body(tmp_path, monkeypatch)
+    kayit = next(a for a in body["araclar"] if a["arac"] == arac)
+    son_ek, bicim = BEKLENEN_YOLLAR[arac]
+    assert kayit["yol"].endswith(son_ek), kayit["yol"]
+    assert kayit["bicim"] == bicim
+    assert kayit["kaynak"].startswith("https://"), "yolun doğrulandığı belge linki zorunlu"
+
+
+@pytest.mark.parametrize("arac", list(BEKLENEN_YOLLAR))
+def test_mcp_uretilen_config_GERCEKTEN_parse_edilebilir(tmp_path, monkeypatch, arac):
+    """KABUL KRİTERİ: "üretilen her config gerçekten parse edilebilir".
+
+    JSON'ı `json.loads`, TOML'u `tomllib.loads` ile GERÇEKTEN ayrıştırır —
+    "metinde şu geçiyor mu" kontrolü DEĞİL. MUTASYON KİLİDİ: `_toml_config`'i
+    `_json_config`'e döndür → Codex parametresi `TOMLDecodeError` ile kırılır
+    (bugünkü hatanın ta kendisi: aynı JSON gövdesini beş araca da vermek)."""
+    import json as json_module
+    import tomllib
+
+    body = _mcp_body(tmp_path, monkeypatch)
+    kayit = next(a for a in body["araclar"] if a["arac"] == arac)
+
+    if kayit["bicim"] == "toml":
+        cozulmus = tomllib.loads(kayit["config_metni"])
+        sunucu = cozulmus["mcp_servers"]["ensemble"]
+    else:
+        cozulmus = json_module.loads(kayit["config_metni"])
+        sunucu = cozulmus["mcpServers"]["ensemble"]
+
+    assert sunucu["command"] == "uv"
+    assert sunucu["args"][:2] == ["run", "--directory"]
+    assert sunucu["args"][-2:] == ["-m", "ensemble_mcp.server"]
+
+
+def test_mcp_local_modda_yollar_MUTLAK(tmp_path, monkeypatch):
+    body = _mcp_body(tmp_path, monkeypatch, mode="local")
+    assert body["mod"] == "local"
+    assert body["hosted_notu"] is None
+    for kayit in body["araclar"]:
+        if kayit["arac"] == "codex":
+            assert kayit["yol"].startswith("~/"), "Codex ev dizini kapsamlı"
+            continue
+        assert kayit["yol"].startswith("/"), f"{kayit['arac']} yolu MUTLAK olmalı"
+
+
+def test_mcp_hosted_modda_404_YERINE_gerekce_doner(tmp_path, monkeypatch):
+    """KABUL KRİTERİ: "hosted'da bir bağlanma yolu ya sunulur ya da nedeni
+    açıkça yazılır — sessiz 404 kalmaz".
+
+    MUTASYON KİLİDİ: `get_mcp_config`'e `_require_local_mode(settings)` geri
+    koy → 404 döner → `_mcp_body`'nin `status_code == 200` iddiası KIRMIZI
+    (bugünkü hata: hosted kullanıcı yalnız 404 görüyor)."""
+    body = _mcp_body(tmp_path, monkeypatch, mode="hosted")
+    assert body["mod"] == "hosted"
+    assert body["hosted_notu"], "hosted'da gerekçe BOŞ bırakılamaz"
+    assert "stdio" in body["hosted_notu"]
+    assert len(body["araclar"]) == len(BEKLENEN_YOLLAR)
+
+
+def test_mcp_hosted_modda_SUNUCUNUN_yolu_sizmaz(tmp_path, monkeypatch):
+    """Hosted'da repo kökü kullanıcının değil SUNUCUNUN yolu — hem yanlış hem
+    gereksiz bilgi. MUTASYON KİLİDİ: `repo_koku`'nü moddan bağımsız
+    `str(_REPO_ROOT)` yap → sunucu yolu gövdede görünür → KIRMIZI."""
+    from ensemble.api.routers.settings import _REPO_ROOT
+
+    body = _mcp_body(tmp_path, monkeypatch, mode="hosted")
+    govde = repr(body)
+    assert str(_REPO_ROOT) not in govde
+    for kayit in body["araclar"]:
+        if kayit["arac"] != "codex":
+            assert kayit["yol"].startswith("<repo-koku>"), kayit["yol"]

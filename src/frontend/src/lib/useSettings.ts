@@ -8,10 +8,11 @@
  *   GET  /settings/saglayici -> 200 {mode, saglayici, anahtarlar:{gemini,groq}, ollama_url} | 404
  *   PUT  /settings/saglayici    {saglayici, anahtar?, ollama_url?} -> 200 (aynı zarf) | 404 | 422
  *   POST /settings/test         {saglayici} -> 200 {calisiyor, mesaj} | 404 | 422
- *   GET  /settings/mcp       -> 200 {config_json, yol} | 404
+ *   GET  /settings/mcp       -> 200 {config_json, yol, mod, araclar[], hosted_notu}
  *
- * KURAL 1 (backend, settings.py): `ENSEMBLE_MODE != "local"` ise DÖRDÜ DE 404
- * döner — frontend bunu "bu kurulumda ayarlar sayfası YOK" olarak okur
+ * KURAL 1 (backend, settings.py): `ENSEMBLE_MODE != "local"` ise ANAHTAR uçları
+ * (saglayici/test) 404 döner — frontend bunu "bu kurulumda ayarlar sayfası YOK"
+ * olarak okur
  * (`tur: "yok"`). Bu, sayfanın/nav linkinin var olup olmayacağının TEK
  * doğruluk kaynağıdır — `config.mode` (Vite BUILD modu, #19) DEĞİL: prod
  * build'in kendisi hosted'da `ENSEMBLE_MODE=local` bir masaüstü paketiyle
@@ -177,21 +178,44 @@ export async function saglayiciTestEt(saglayici: SaglayiciTuru): Promise<Saglayi
   }
 }
 
+/** Araç başına bağlanma reçetesi (#332) — `bicim` kritik: Codex TOML okur,
+    diğer dördü JSON; aynı parçacığı hepsine vermek SESSİZCE çalışmaz. */
+export type McpAracConfig = components["schemas"]["McpAracConfig"];
+
 export type McpConfigSonucu =
-  | { tur: "basarili"; config_json: string; yol: string }
-  | { tur: "yok" } // 404
+  | {
+      tur: "basarili";
+      config_json: string;
+      yol: string;
+      mod: "local" | "hosted";
+      araclar: McpAracConfig[];
+      hosted_notu: string | null;
+    }
+  | { tur: "yok" } // 404 — bu sürümde uç yok (eski backend)
   | { tur: "beklenmeyen"; mesaj: string };
 
-/** GET /settings/mcp — hazır `.mcp.json` parçacığı + hedef MUTLAK yol. Sahte
+/** GET /settings/mcp — araç başına hazır parçacık + hedef yol. Sahte
     "bağlandı" durumu YOK (backend docstring'i) — bu fonksiyon da İCAT ETMEZ,
     yalnız içerik + yol taşır; "bağlantı kuruldu mu" sorusuna sayfa HİÇBİR
-    ZAMAN evet demez (görev brifi §DÜRÜSTLÜK). */
+    ZAMAN evet demez (görev brifi §DÜRÜSTLÜK).
+
+    #332: bu uç hosted'da ARTIK 404 değil — `mod: "hosted"` + `hosted_notu`
+    (MCP'nin neden yalnız yerel bir stdio süreciyle çalıştığı) döner. `"yok"`
+    dalı yine de duruyor: uç eklenmeden önceki bir backend'e karşı çalışan
+    frontend sessizce çökmesin. */
 export async function mcpConfigGetir(): Promise<McpConfigSonucu> {
   try {
     const { data, error, response } = await api.GET("/settings/mcp");
     if (error === undefined || error === null) {
       if (!data) return { tur: "beklenmeyen", mesaj: "Sunucu boş yanıt döndü." };
-      return { tur: "basarili", config_json: data.config_json, yol: data.yol };
+      return {
+        tur: "basarili",
+        config_json: data.config_json,
+        yol: data.yol,
+        mod: data.mod,
+        araclar: data.araclar,
+        hosted_notu: data.hosted_notu ?? null,
+      };
     }
     if (response.status === 404) return { tur: "yok" };
     return {
