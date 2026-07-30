@@ -456,8 +456,16 @@ def test_drift_dogrulamasi_up_dden_SONRA_kosar_ve_hata_bastirmaz():
     assert "set +e" not in govde, (
         "`set +e` adimin geri kalaninda cikis kodunu etkisizlestirir."
     )
+    # #353 — govde artik bir VARLIK KONTROLU de tasiyor
+    # (`if [ ! -f scripts/config_drift.py ]; then ... fi`). O satirdaki `;`
+    # bash sozdizimidir, cikis kodunu yutan bir yapi DEGIL. Bu yuzden tarama
+    # dizgiyle degil, satirin `python3` ile BASLAMASIYLA daraltiliyor:
+    # olculen sey hala AYNI (gercek cagri yumusatilmis mi), yalniz hedefi
+    # kesinlesti. Gevsetme DEGIL — asagida varlik kontrolunun kendisi de
+    # ayrica dogrulaniyor.
     drift_satirlari = [
-        s for s in govde.splitlines() if "config_drift.py" in s
+        s for s in govde.splitlines()
+        if s.strip().startswith("python3") and "config_drift.py" in s
     ]
     assert drift_satirlari, "drift adimi config_drift.py'yi hic calistirmiyor"
     for satir in drift_satirlari:
@@ -479,7 +487,14 @@ def test_cd_uv_kullanmaz_cunku_sunucuda_uv_yok():
     5.4.1. `uv run` yazilsaydi adim ilk kosuda "command not found" ile
     patlardi."""
     govde = _drift_step()["run"]
-    assert govde.strip().startswith("python3 "), f"Drift adimi govdesi: {govde!r}"
+    # #353 sonrasi govde bir varlik kontroluyle BASLIYOR; olculen sey
+    # "govde python3 ile mi basliyor" degil, "CAGRI python3 ile mi yapiliyor".
+    cagri = [
+        s for s in govde.splitlines()
+        if s.strip().startswith(("python3", "uv ", "python ")) and "config_drift.py" in s
+    ]
+    assert cagri, f"Drift adimi govdesi: {govde!r}"
+    assert all(s.strip().startswith("python3 ") for s in cagri), f"cagri: {cagri!r}"
     assert "uv run" not in govde
 
 
