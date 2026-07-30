@@ -27,6 +27,20 @@ class HealthResponse(BaseModel):
     # patlar). Canli dogrulama icin: #58/spot-check (kalibrasyon-raporu §4).
     github_auth: Literal["configured", "missing"]
     gemini: Literal["configured", "missing"]
+    # #359 — YEDEK saglayici GERCEKTEN devrede mi. `gemini`/`github_auth` ile
+    # AYNI anlam sozlesmesi: "kuruldu", "dogrulandi" DEGIL.
+    #
+    # Neden anahtarin dolu olup olmamasi YETMEZ (bu alanin varlik sebebi):
+    # app.py yedegi yalnizca birincil GERCEK bir Gemini adapteri iken sarar
+    # (dahil-etme listesi, isinstance). `GROQ_API_KEY` dolu ama birincil
+    # baska bir sey ise yedek DEVREDE DEGILDIR ve bugun bu yalnizca log'a
+    # dusuyor. O yuzden deger `settings`ten degil, judge ZINCIRINDEN turer.
+    #
+    # Neden onemli (30 Tem olcumu): Gemini'nin gunluk generate kotasi (flash:
+    # 20/gun) bitip `/query` 503 donerken "yedek var mi" sorusunun cevabi
+    # ancak sunucuya SSH'lenerek bulunabildi — `/health` o sirada `status: ok`
+    # diyordu. Sir SIZMAZ: yalniz var/yok, anahtarin kendisi asla.
+    fallback: Literal["configured", "missing"]
 
 
 class RadarDegraded(BaseModel):

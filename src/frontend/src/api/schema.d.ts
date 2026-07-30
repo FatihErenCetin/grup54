@@ -906,6 +906,11 @@ export interface components {
              * @enum {string}
              */
             gemini: "configured" | "missing";
+            /**
+             * Fallback
+             * @enum {string}
+             */
+            fallback: "configured" | "missing";
         };
         /** InstallUrlResponse */
         InstallUrlResponse: {

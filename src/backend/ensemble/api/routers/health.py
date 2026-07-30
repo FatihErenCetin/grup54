@@ -3,6 +3,7 @@ from fastapi import APIRouter
 from ensemble.api.deps import RadarServiceDep, SettingsDep
 from ensemble.api.schemas import HealthResponse
 from ensemble.integrations.gemini.judge import GeminiJudgeAdapter
+from ensemble.integrations.groq.judge import GroqJudgeAdapter
 from ensemble.integrations.github.adapter import GitHubAdapter
 
 router = APIRouter(tags=["health"])
@@ -74,9 +75,20 @@ def health_check(settings: SettingsDep, radar_service: RadarServiceDep) -> Healt
         if any(isinstance(d, GeminiJudgeAdapter) for d in _judge_zinciri(radar_service.judge_port))
         else "missing"
     )
+    # #359 — yedek saglayici. `gemini` ile AYNI teknikle (zinciri yuru), ama
+    # sorusu farkli: "Groq adapteri zincirde GERCEKTEN var mi". Bu, ayni
+    # zamanda "yedek SARILDI mi" sorusudur — app.py onu yalnizca birincil
+    # gercek Gemini iken sarar, yani `GROQ_API_KEY` dolu olsa bile zincirde
+    # olmayabilir. Anahtara degil zincire bakmamizin sebebi tam olarak bu.
+    fallback = (
+        "configured"
+        if any(isinstance(d, GroqJudgeAdapter) for d in _judge_zinciri(radar_service.judge_port))
+        else "missing"
+    )
     return HealthResponse(
         status="ok",
         mode=settings.ENSEMBLE_MODE,
         github_auth=github_auth,
         gemini=gemini,
+        fallback=fallback,
     )
