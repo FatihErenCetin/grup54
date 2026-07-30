@@ -2535,7 +2535,7 @@
           "settings"
         ],
         "summary": "Get Mcp Config",
-        "description": "T-307 FAZ 4 — hazır `.mcp.json` parçacığı, MUTLAK yol ile (kullanıcının\nkendi makinesindeki gerçek repo kökü). Sahte \"bağlandı\" durumu ÜRETMEZ —\nyalnız yapıştırılacak içeriği + hedef dosya yolunu döner; Claude Code'un\n(ya da başka bir MCP istemcisinin) bunu OKUMASI için yeniden başlatılması\nGEREKİR (bu uç bunu doğrulayamaz/garanti edemez, dürüstçe belirtir).",
+        "description": "T-307 FAZ 4 + #332 — araç başına hazır MCP parçacığı + hedef dosya yolu.\n\nSahte \"bağlandı\" durumu ÜRETMEZ — yalnız yapıştırılacak içeriği + hedef\ndosya yolunu döner; aracın bunu OKUMASI için (çoğunda) yeniden başlatılması\nGEREKİR (bu uç bunu doğrulayamaz/garanti edemez, dürüstçe belirtir).\n\n#332 — DİĞER ÜÇ UÇTAN FARKLI OLARAK burada `_require_local_mode` YOK:\n\n  * Gerekçe (KURAL 1'in amacı): o kural sunucunun GERÇEK API ANAHTARLARINI\n    hosted'da herkese açmamak için var. Bu uç anahtar okumaz/yazmaz —\n    yalnız bir reçete metni üretir, dolayısıyla o riski taşımaz.\n  * Eski davranış (hosted'da 404) kullanıcıya sessiz bir duvardı: \"MCP\n    neden yok?\" sorusunun cevabı hiçbir yerde yazmıyordu (SESSİZ DÜŞÜŞ).\n    Artık hosted'da da 200 döner + `hosted_notu` NEDENİNİ söyler.\n  * Buna karşılık hosted'da sunucunun KENDİ dosya yolu ifşa EDİLMEZ\n    (`_REPO_ROOT` yerine `YER_TUTUCU_REPO`) — hosted'da o yol zaten\n    kullanıcının değil, sunucunun yolu; hem yanlış hem gereksiz bilgi.",
         "operationId": "get_mcp_config_settings_mcp_get",
         "responses": {
           "200": {
@@ -3180,6 +3180,59 @@
         ],
         "title": "LoginRequest"
       },
+      "McpAracConfig": {
+        "properties": {
+          "arac": {
+            "type": "string",
+            "title": "Arac"
+          },
+          "ad": {
+            "type": "string",
+            "title": "Ad"
+          },
+          "bicim": {
+            "type": "string",
+            "enum": [
+              "json",
+              "toml"
+            ],
+            "title": "Bicim"
+          },
+          "yol": {
+            "type": "string",
+            "title": "Yol"
+          },
+          "config_metni": {
+            "type": "string",
+            "title": "Config Metni"
+          },
+          "paylasimli_dosya": {
+            "type": "boolean",
+            "title": "Paylasimli Dosya"
+          },
+          "aciklama": {
+            "type": "string",
+            "title": "Aciklama"
+          },
+          "kaynak": {
+            "type": "string",
+            "title": "Kaynak"
+          }
+        },
+        "type": "object",
+        "required": [
+          "arac",
+          "ad",
+          "bicim",
+          "yol",
+          "config_metni",
+          "paylasimli_dosya",
+          "aciklama",
+          "kaynak"
+        ],
+        "title": "McpAracConfig",
+        "description": "Tek bir AI aracı için yapıştırılacak metin + hedef yol (#332).\n\n`bicim` kritik: Codex CLI TOML okur, diğer dördü JSON — aynı gövdeyi\nhepsine vermek sessizce çalışmaz."
+      },
       "McpConfigResponse": {
         "properties": {
           "config_json": {
@@ -3189,12 +3242,40 @@
           "yol": {
             "type": "string",
             "title": "Yol"
+          },
+          "mod": {
+            "type": "string",
+            "enum": [
+              "local",
+              "hosted"
+            ],
+            "title": "Mod"
+          },
+          "araclar": {
+            "items": {
+              "$ref": "#/components/schemas/McpAracConfig"
+            },
+            "type": "array",
+            "title": "Araclar"
+          },
+          "hosted_notu": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hosted Notu"
           }
         },
         "type": "object",
         "required": [
           "config_json",
-          "yol"
+          "yol",
+          "mod",
+          "araclar"
         ],
         "title": "McpConfigResponse"
       },

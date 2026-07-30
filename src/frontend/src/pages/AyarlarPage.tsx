@@ -6,6 +6,8 @@ import {
   saglayiciTestEt,
   useMcpConfig,
   useSaglayiciAyarlari,
+  type McpAracConfig,
+  type McpConfigSonucu,
   type SaglayiciAyarlari,
   type SaglayiciGuncelleSonucu,
   type SaglayiciTestSonucu,
@@ -19,46 +21,82 @@ import {
    Route guard YOK ama BAŞKA bir kapı var (RepoSeciciPage'in "giriş gerekli"
    kapısının SİMETRİĞİ, oturum yerine MOD): `GET /settings/saglayici` yalnız
    local modda 200 döner, hosted'da 404 — bu sayfa doğrudan `/ayarlar`'a
-   giden biri için (nav linki zaten AppLayout'ta gizli) 404'ü Radar'a yumuşak
-   bir Navigate'e çevirir; "ölü sayfa" göstermez ("çalışmayan sekme basmıyoruz"
-   ilkesi, AppLayout dosya-başı yorumu).
+   giden biri için 404'ü Radar'a yumuşak bir Navigate'e çevirir; "ölü sayfa"
+   göstermez ("çalışmayan sekme basmıyoruz" ilkesi, AppLayout dosya-başı
+   yorumu).
+
+   #332 — O KAPI DARALDI: sayfada artık moddan BAĞIMSIZ çalışan bir bölüm var
+   (MCP bağlanma reçetesi; `GET /settings/mcp` hosted'da da 200 döner, çünkü
+   MCP her hâlükârda kullanıcının KENDİ makinesinde bir stdio süreci olarak
+   koşar). Bu yüzden Radar'a yönlendirme artık "sağlayıcı ucu 404" ile değil,
+   "gösterilecek HİÇBİR şey yok" (sağlayıcı YOK **ve** MCP YOK) ile tetiklenir
+   — aksi hâlde hosted kullanıcı bağlanma yolunu hiç göremezdi (kabul kriteri:
+   "sessiz 404 kalmaz").
 
    Sahte-canlılık yasak (D-34): kaydetme SONRASI yerel durum backend'in
    DÖNDÜĞÜ tam zarfla değiştirilir (RepoSeciciFormu'nun aynı kalıbı) —
    iyimser güncelleme YOK. */
 export default function AyarlarPage() {
   const ayarlar = useSaglayiciAyarlari();
+  const mcpSorgu = useMcpConfig(true);
 
-  if (ayarlar.isLoading || !ayarlar.data) {
+  if (ayarlar.isLoading || !ayarlar.data || mcpSorgu.isLoading) {
     return <YuklemeIskeleti label="Ayarlar yükleniyor" satir={4} />;
   }
-  if (ayarlar.data.tur === "yok") return <Navigate to="/radar" replace />;
+  const mcp = mcpSorgu.data;
+  if (ayarlar.data.tur === "yok" && mcp?.tur !== "basarili") {
+    return <Navigate to="/radar" replace />;
+  }
   if (ayarlar.data.tur === "beklenmeyen") {
     return <HataDurumu baslik="Ayarlar alınamıyor" hata={ayarlar.data.mesaj} />;
   }
 
-  return <AyarlarGovde ayar={ayarlar.data} />;
+  return (
+    <AyarlarGovde ayar={ayarlar.data.tur === "basarili" ? ayarlar.data : null} mcp={mcp} />
+  );
 }
 
-function AyarlarGovde({ ayar }: { ayar: { tur: "basarili" } & SaglayiciAyarlari }) {
-  const [durum, setDurum] = useState<SaglayiciAyarlari>(ayar);
-
+function AyarlarGovde({
+  ayar,
+  mcp,
+}: {
+  ayar: ({ tur: "basarili" } & SaglayiciAyarlari) | null;
+  mcp: McpConfigSonucu | undefined;
+}) {
   return (
     <div className="max-w-2xl space-y-6">
       <div>
         <h1 className="text-base font-semibold">Ayarlar</h1>
         <p className="mt-1 text-xs text-muted-foreground">
-          Kendi API anahtarını gir ya da Claude Code'u bu projeye bağla.
-          Anahtarlar bu makinede kalır (
-          <span className="font-mono">~/.ensemble/ayarlar.json</span>), repoya/
-          sunucuya asla gönderilmez.
+          {ayar ? (
+            <>
+              Kendi API anahtarını gir ya da AI aracını bu projeye bağla.
+              Anahtarlar bu makinede kalır (
+              <span className="font-mono">~/.ensemble/ayarlar.json</span>),
+              repoya/sunucuya asla gönderilmez.
+            </>
+          ) : (
+            // Hosted: sağlayıcı ayarları YOK (anahtarlar sunucunun, kimseye
+            // açılmaz) — ama MCP bağlanma reçetesi var. Bunu söylemeden
+            // yalnız yarım sayfa göstermek sessiz düşüş olurdu.
+            <>
+              Bu kurulumda API anahtarı ayarları yok (anahtarlar sunucuya ait,
+              tarayıcıdan değiştirilemez). Aşağıda AI aracını kendi makinende
+              bu projeye nasıl bağlayacağın yazıyor.
+            </>
+          )}
         </p>
       </div>
 
-      <SaglayiciBolumu durum={durum} onGuncelle={setDurum} />
-      <McpBolumu />
+      {ayar && <SaglayiciBolumuKapsayici ayar={ayar} />}
+      <McpBolumu mcp={mcp} />
     </div>
   );
+}
+
+function SaglayiciBolumuKapsayici({ ayar }: { ayar: { tur: "basarili" } & SaglayiciAyarlari }) {
+  const [durum, setDurum] = useState<SaglayiciAyarlari>(ayar);
+  return <SaglayiciBolumu durum={durum} onGuncelle={setDurum} />;
 }
 
 function SonucMesaji({ mesaj, ton }: { mesaj: string; ton: "hata" | "basarili" }) {
@@ -387,14 +425,19 @@ function GroqKarti({
   );
 }
 
-/** Claude Code (MCP) bağlama — GET /settings/mcp'den hazır parçacık + yol.
+/** AI aracına bağlanma (MCP) — GET /settings/mcp'den ARAÇ BAŞINA parçacık + yol.
+
+    #332: eskiden başlık birebir "Claude Code'a bağlan"dı ve tek bir yol
+    (`<repo>/.mcp.json`) üretiyordu; oysa ürünün vaadi "HERKESİN aracı".
+    Burada araç seçilir, yol/biçim ona göre değişir — özellikle **Codex TOML
+    okur**, JSON parçacığını oraya yapıştırmak sessizce çalışmaz.
+
     DÜRÜSTLÜK (görev brifi, atlanamaz): backend bu bağlantıyı DOĞRULAYAMAZ —
     sahte "bağlandı ✓" durumu burada ASLA üretilmez, yalnız ne yapılması
-    gerektiği (yapıştır + Claude Code'u YENİDEN BAŞLAT) söylenir. Bu uyarı
-    kopyalama eylemine BAĞLI değil, HER ZAMAN görünür. */
-function McpBolumu() {
-  const mcpSorgu = useMcpConfig(true);
-  const veri = mcpSorgu.data;
+    gerektiği söylenir. Bu uyarı kopyalama eylemine BAĞLI değil, HER ZAMAN
+    görünür. */
+function McpBolumu({ mcp }: { mcp: McpConfigSonucu | undefined }) {
+  const [secili, setSecili] = useState<string | null>(null);
   const [kopyalandi, setKopyalandi] = useState(false);
 
   async function kopyala(metin: string) {
@@ -412,37 +455,123 @@ function McpBolumu() {
 
   return (
     <div className="space-y-3 rounded-lg border border-border bg-card p-4">
-      <h2 className="text-sm font-semibold">Claude Code'a bağlan</h2>
-      {!veri ? (
+      <h2 className="text-sm font-semibold">AI aracına bağlan (MCP)</h2>
+      {!mcp ? (
         <YuklemeIskeleti label="MCP yapılandırması yükleniyor" satir={1} />
-      ) : veri.tur === "yok" ? (
-        <p className="text-xs text-muted-foreground">Bu uç bu kurulumda yok (hosted).</p>
-      ) : veri.tur === "beklenmeyen" ? (
-        <HataDurumu baslik="MCP yapılandırması alınamıyor" hata={veri.mesaj} />
+      ) : mcp.tur === "yok" ? (
+        <p className="text-xs text-muted-foreground">
+          Bu sunucu sürümünde MCP ucu yok — güncelledikten sonra tekrar bak.
+        </p>
+      ) : mcp.tur === "beklenmeyen" ? (
+        <HataDurumu baslik="MCP yapılandırması alınamıyor" hata={mcp.mesaj} />
       ) : (
-        <>
-          <p className="text-xs text-muted-foreground">
-            Aşağıdaki parçacığı şu dosyaya yapıştır, ardından{" "}
-            <strong>Claude Code'u yeniden başlat</strong> — yalnız yeniden
-            başlatınca okur:
-          </p>
-          <p className="break-all rounded bg-muted px-2 py-1 font-mono text-xs">{veri.yol}</p>
-          <pre className="overflow-x-auto rounded-lg border border-border bg-background p-3 text-xs">
-            <code>{veri.config_json}</code>
-          </pre>
-          <button
-            type="button"
-            onClick={() => void kopyala(veri.config_json)}
-            className="rounded-lg border border-border px-3 py-1.5 text-xs font-medium hover:bg-muted/50"
-          >
-            {kopyalandi ? "Kopyalandı ✓" : "Kopyala"}
-          </button>
-          <p className="rounded-lg border border-status-in-review/40 bg-status-in-review/10 px-3 py-2 text-xs text-status-in-review">
-            Bu sayfa bağlantının kurulduğunu DOĞRULAYAMAZ — yapıştırıp Claude
-            Code'u yeniden başlattıktan sonra kendi ajanında kontrol et.
-          </p>
-        </>
+        <McpReceteleri
+          araclar={mcp.araclar}
+          hostedNotu={mcp.hosted_notu}
+          secili={secili ?? mcp.araclar[0]?.arac ?? null}
+          onSec={(a) => {
+            setSecili(a);
+            setKopyalandi(false);
+          }}
+          kopyalandi={kopyalandi}
+          onKopyala={kopyala}
+        />
       )}
     </div>
+  );
+}
+
+function McpReceteleri({
+  araclar,
+  hostedNotu,
+  secili,
+  onSec,
+  kopyalandi,
+  onKopyala,
+}: {
+  araclar: McpAracConfig[];
+  hostedNotu: string | null;
+  secili: string | null;
+  onSec: (arac: string) => void;
+  kopyalandi: boolean;
+  onKopyala: (metin: string) => void | Promise<void>;
+}) {
+  const kayit = araclar.find((a) => a.arac === secili) ?? araclar[0];
+  if (!kayit) return null;
+
+  return (
+    <>
+      {/* Hosted: 404 yerine GEREKÇE (kabul kriteri) — "MCP yok" demek yerine
+          neden yalnız yerelde çalıştığını ve ne yapılacağını söyler. */}
+      {hostedNotu && (
+        <p className="rounded-lg border border-status-in-review/40 bg-status-in-review/10 px-3 py-2 text-xs text-status-in-review">
+          {hostedNotu}
+        </p>
+      )}
+
+      <div role="group" aria-label="AI aracı seç" className="flex flex-wrap gap-1.5">
+        {araclar.map((a) => (
+          <button
+            key={a.arac}
+            type="button"
+            aria-pressed={a.arac === kayit.arac}
+            onClick={() => onSec(a.arac)}
+            className={
+              a.arac === kayit.arac
+                ? "rounded-lg border border-foreground/25 bg-muted px-2.5 py-1 text-xs font-medium"
+                : "rounded-lg border border-border px-2.5 py-1 text-xs text-muted-foreground hover:bg-muted/50"
+            }
+          >
+            {a.ad}
+          </button>
+        ))}
+      </div>
+
+      <p className="text-xs text-muted-foreground">
+        Aşağıdaki parçacığı şu dosyaya{" "}
+        <strong>{kayit.paylasimli_dosya ? "EKLE (üzerine yazma)" : "yapıştır"}</strong>:
+      </p>
+      <p className="break-all rounded bg-muted px-2 py-1 font-mono text-xs">
+        {kayit.yol}
+        <span className="ml-2 rounded bg-background px-1.5 py-0.5 text-[10px] uppercase text-muted-foreground">
+          {kayit.bicim}
+        </span>
+      </p>
+      {/* Biçim uyarısı, dosya paylaşımlıysa: bu dosyada BAŞKA ayarlar da yaşar
+          (Gemini CLI settings.json · Codex config.toml) — üzerine yazmak
+          kullanıcının mevcut ayarlarını siler. */}
+      {kayit.paylasimli_dosya && (
+        <p className="rounded-lg border border-severity-high/40 bg-severity-high/10 px-3 py-2 text-xs text-severity-high">
+          Bu dosyada başka ayarların da var — üzerine YAZMA, mevcut içeriğe ekle.
+        </p>
+      )}
+      <pre className="overflow-x-auto rounded-lg border border-border bg-background p-3 text-xs">
+        <code>{kayit.config_metni}</code>
+      </pre>
+      <button
+        type="button"
+        onClick={() => void onKopyala(kayit.config_metni)}
+        className="rounded-lg border border-border px-3 py-1.5 text-xs font-medium hover:bg-muted/50"
+      >
+        {kopyalandi ? "Kopyalandı ✓" : "Kopyala"}
+      </button>
+      <p className="text-xs text-muted-foreground">{kayit.aciklama}</p>
+      <p className="rounded-lg border border-status-in-review/40 bg-status-in-review/10 px-3 py-2 text-xs text-status-in-review">
+        Bu sayfa bağlantının kurulduğunu DOĞRULAYAMAZ — yapıştırdıktan sonra
+        kendi aracında kontrol et. Sunucunun tek başına kalktığını görmek için:{" "}
+        <span className="font-mono">make mcp</span>.
+      </p>
+      <p className="text-[11px] text-muted-foreground">
+        Yol kaynağı:{" "}
+        <a
+          href={kayit.kaynak}
+          target="_blank"
+          rel="noreferrer"
+          className="underline hover:text-foreground"
+        >
+          {kayit.ad} belgeleri
+        </a>
+      </p>
+    </>
   );
 }

@@ -14,6 +14,12 @@
  *    'basarili' yaparsan) → "test başarısızsa dürüstçe gösterilir" testi kırılır
  *  - MCP dürüstlük uyarısını kopyalama sonrasına koşullarsan (yalnız
  *    `kopyalandi` iken göster) → "uyarı HER ZAMAN görünür" testi kırılır
+ *
+ * #332 EK KİLİTLER (araç-bağımsız MCP):
+ *  - Araç seçimini yok sayıp hep ilk aracın parçacığını basarsan → "araç
+ *    değişince YOL ve BİÇİM de değişir" testi kırılır (Codex TOML okur)
+ *  - `mcp?.tur !== "basarili"` koşulunu kaldırıp eski koşulsuz Navigate'e
+ *    dönersen → "hosted'da SESSİZ 404 yok" testi kırılır
  */
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -52,10 +58,36 @@ const ayarBasarili = {
   ollama_url: "http://localhost:11434",
 };
 
+const mcpAraclar = [
+  {
+    arac: "claude-code",
+    ad: "Claude Code",
+    bicim: "json" as const,
+    yol: "/Users/x/grup54/.mcp.json",
+    config_metni: '{\n  "mcpServers": {}\n}',
+    paylasimli_dosya: false,
+    aciklama: "Yapıştırdıktan sonra Claude Code'u YENİDEN BAŞLAT.",
+    kaynak: "https://code.claude.com/docs/en/mcp",
+  },
+  {
+    arac: "codex",
+    ad: "Codex CLI",
+    bicim: "toml" as const,
+    yol: "~/.codex/config.toml",
+    config_metni: '[mcp_servers.ensemble]\ncommand = "uv"\n',
+    paylasimli_dosya: true,
+    aciklama: "Codex JSON DEĞİL TOML okur.",
+    kaynak: "https://developers.openai.com/codex/mcp",
+  },
+];
+
 const mcpBasarili = {
   tur: "basarili" as const,
   config_json: '{\n  "mcpServers": {}\n}',
   yol: "/Users/x/grup54/.mcp.json",
+  mod: "local" as const,
+  araclar: mcpAraclar,
+  hosted_notu: null,
 };
 
 afterEach(() => {
@@ -71,9 +103,9 @@ describe("AyarlarPage — hosted gizleme (MUTASYON KİLİDİ)", () => {
     expect(screen.queryByText("RADAR SAYFASI")).not.toBeInTheDocument();
   });
 
-  it("tur 'yok' (404 — hosted) ise sessizce /radar'a yönlendirir", () => {
+  it("GÖSTERİLECEK HİÇBİR ŞEY yoksa (iki uç da 'yok') sessizce /radar'a yönlendirir", () => {
     mockUseSaglayiciAyarlari.mockReturnValue({ data: { tur: "yok" }, isLoading: false });
-    mockUseMcpConfig.mockReturnValue({ data: undefined, isLoading: true });
+    mockUseMcpConfig.mockReturnValue({ data: { tur: "yok" }, isLoading: false });
     renderPage();
     expect(screen.getByText("RADAR SAYFASI")).toBeInTheDocument();
     expect(screen.queryByText("Ayarlar")).not.toBeInTheDocument();
@@ -84,7 +116,7 @@ describe("AyarlarPage — hosted gizleme (MUTASYON KİLİDİ)", () => {
       data: { tur: "beklenmeyen", mesaj: "500 patladı" },
       isLoading: false,
     });
-    mockUseMcpConfig.mockReturnValue({ data: undefined, isLoading: true });
+    mockUseMcpConfig.mockReturnValue({ data: { tur: "yok" }, isLoading: false });
     renderPage();
     expect(screen.getByText("Ayarlar alınamıyor")).toBeInTheDocument();
   });
@@ -254,13 +286,49 @@ describe("AyarlarPage — bağlantı testi (sahte-başarı YASAK, MUTASYON KİL�
   });
 });
 
-describe("AyarlarPage — Claude Code (MCP) bölümü", () => {
-  it("yapılandırma yüklenince yol + parçacık gösterilir", () => {
+describe("AyarlarPage — AI aracına bağlanma (MCP) bölümü", () => {
+  it("yapılandırma yüklenince İLK aracın yolu + parçacığı gösterilir", () => {
     mockUseSaglayiciAyarlari.mockReturnValue({ data: ayarBasarili, isLoading: false });
     mockUseMcpConfig.mockReturnValue({ data: mcpBasarili, isLoading: false });
     renderPage();
-    expect(screen.getByText("/Users/x/grup54/.mcp.json")).toBeInTheDocument();
+    expect(screen.getByText(/\/Users\/x\/grup54\/\.mcp\.json/)).toBeInTheDocument();
     expect(screen.getByText(/mcpServers/)).toBeInTheDocument();
+  });
+
+  it("başlık TEK bir aracı adlandırmaz + beş aracın hepsi seçilebilir (#332 MUTASYON KİLİDİ)", () => {
+    // Bugünkü hata birebir buydu: başlık "Claude Code'a bağlan", tek yol.
+    // `araclar.map(...)` yerine sabit tek bir araca dönersen → KIRMIZI.
+    mockUseSaglayiciAyarlari.mockReturnValue({ data: ayarBasarili, isLoading: false });
+    mockUseMcpConfig.mockReturnValue({ data: mcpBasarili, isLoading: false });
+    renderPage();
+    expect(screen.getByRole("heading", { name: "AI aracına bağlan (MCP)" })).toBeInTheDocument();
+    const secici = screen.getByRole("group", { name: "AI aracı seç" });
+    for (const a of mcpAraclar) {
+      expect(within(secici).getByRole("button", { name: a.ad })).toBeInTheDocument();
+    }
+  });
+
+  it("araç değişince YOL ve BİÇİM de değişir — Codex TOML gösterir (#332 MUTASYON KİLİDİ)", async () => {
+    // Seçimi yok sayıp hep ilk aracın parçacığını basarsan → KIRMIZI. Bu,
+    // "aynı JSON'ı beş araca da ver" hatasının UI tarafındaki kilidi.
+    mockUseSaglayiciAyarlari.mockReturnValue({ data: ayarBasarili, isLoading: false });
+    mockUseMcpConfig.mockReturnValue({ data: mcpBasarili, isLoading: false });
+    const user = userEvent.setup();
+    renderPage();
+    await user.click(screen.getByRole("button", { name: "Codex CLI" }));
+    expect(screen.getByText(/~\/\.codex\/config\.toml/)).toBeInTheDocument();
+    expect(screen.getByText(/mcp_servers\.ensemble/)).toBeInTheDocument();
+    expect(screen.queryByText(/mcpServers/)).not.toBeInTheDocument();
+  });
+
+  it("paylaşımlı dosyada 'üzerine YAZMA' uyarısı çıkar, olmayanda ÇIKMAZ", async () => {
+    mockUseSaglayiciAyarlari.mockReturnValue({ data: ayarBasarili, isLoading: false });
+    mockUseMcpConfig.mockReturnValue({ data: mcpBasarili, isLoading: false });
+    const user = userEvent.setup();
+    renderPage();
+    expect(screen.queryByText(/üzerine YAZMA/)).not.toBeInTheDocument(); // Claude Code
+    await user.click(screen.getByRole("button", { name: "Codex CLI" }));
+    expect(screen.getByText(/üzerine YAZMA/)).toBeInTheDocument(); // Codex config.toml
   });
 
   it("Kopyala tıklanınca panoya yazılır ve GEÇİCİ onay gösterilir", async () => {
@@ -277,7 +345,7 @@ describe("AyarlarPage — Claude Code (MCP) bölümü", () => {
     });
     renderPage();
     await user.click(screen.getByRole("button", { name: "Kopyala" }));
-    expect(writeText).toHaveBeenCalledWith(mcpBasarili.config_json);
+    expect(writeText).toHaveBeenCalledWith(mcpAraclar[0].config_metni);
     expect(await screen.findByText("Kopyalandı ✓")).toBeInTheDocument();
   });
 
@@ -289,15 +357,43 @@ describe("AyarlarPage — Claude Code (MCP) bölümü", () => {
     // Uyarı, bir "yeniden başlat" talimatı İÇEREN dürüstlük cümlesiyle birlikte
     // basılır — kopyalama eylemine bağlı DEĞİL, ilk render'da zaten görünür.
     expect(
-      screen.getByText(/Bu sayfa bağlantının kurulduğunu DOĞRULAYAMAZ.*yeniden başlattıktan/),
+      screen.getByText(/Bu sayfa bağlantının kurulduğunu DOĞRULAYAMAZ.*kendi aracında kontrol et/),
     ).toBeInTheDocument();
   });
 
-  it("hosted'da (404) bölüm 'bu uç yok' der, çökmez", () => {
+  it("hosted'da SESSİZ 404 yok — sağlayıcı ucu yokken bile MCP gerekçesi + reçete basılır (#332 MUTASYON KİLİDİ)", () => {
+    // Eski davranış: sağlayıcı 404 → sayfa /radar'a yönleniyordu, kullanıcı
+    // MCP'yi hiç göremiyordu. `mcp?.tur !== "basarili"` koşulunu kaldırıp
+    // eski koşulsuz Navigate'e dönersen → "RADAR SAYFASI" basılır → KIRMIZI.
+    mockUseSaglayiciAyarlari.mockReturnValue({ data: { tur: "yok" }, isLoading: false });
+    mockUseMcpConfig.mockReturnValue({
+      data: {
+        ...mcpBasarili,
+        mod: "hosted" as const,
+        hosted_notu: "MCP senin makinende bir stdio süreci olarak çalışır.",
+      },
+      isLoading: false,
+    });
+    renderPage();
+    expect(screen.queryByText("RADAR SAYFASI")).not.toBeInTheDocument();
+    expect(screen.getByText(/stdio süreci olarak çalışır/)).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "AI aracına bağlan (MCP)" })).toBeInTheDocument();
+    // Sağlayıcı kartları hosted'da GÖRÜNMEZ (anahtarlar sunucunun).
+    expect(screen.queryByRole("heading", { name: "Gemini" })).not.toBeInTheDocument();
+  });
+
+  it("İKİ uç da yoksa hâlâ /radar'a yönlendirir (ölü sayfa basma kuralı korunur)", () => {
+    mockUseSaglayiciAyarlari.mockReturnValue({ data: { tur: "yok" }, isLoading: false });
+    mockUseMcpConfig.mockReturnValue({ data: { tur: "yok" }, isLoading: false });
+    renderPage();
+    expect(screen.getByText("RADAR SAYFASI")).toBeInTheDocument();
+  });
+
+  it("MCP ucu yoksa (eski sunucu) bölüm çökmez, dürüstçe söyler", () => {
     mockUseSaglayiciAyarlari.mockReturnValue({ data: ayarBasarili, isLoading: false });
     mockUseMcpConfig.mockReturnValue({ data: { tur: "yok" }, isLoading: false });
     renderPage();
-    expect(screen.getByText("Bu uç bu kurulumda yok (hosted).")).toBeInTheDocument();
+    expect(screen.getByText(/Bu sunucu sürümünde MCP ucu yok/)).toBeInTheDocument();
   });
 
   it("beklenmeyen hata verirse HataDurumu basılır", () => {

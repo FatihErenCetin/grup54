@@ -3,7 +3,7 @@ import { config } from "../lib/config";
 import { useSaglik } from "../lib/useSaglik";
 import { gorunenAd, useAuth, useCikisYap } from "../lib/useAuth";
 import { useRepolar } from "../lib/useRepoSecici";
-import { useSaglayiciAyarlari } from "../lib/useSettings";
+import { useMcpConfig, useSaglayiciAyarlari } from "../lib/useSettings";
 import { ActorChip } from "./ui";
 
 /* Bugünkü sabit demo etiketi (D-23) — anonim ziyaretçi/giriş yapılandırılmamış/
@@ -59,10 +59,17 @@ const NAV = [
     (Vite BUILD modu) DEĞİL, `GET /settings/saglayici`nin CANLI yanıtı kaynak
     (useSettings.ts dosya-başı yorumu — ikisi teorik olarak AYRIŞABİLİR).
     Yükleniyor/hata durumunda da GÖSTERİLMEZ (fail-closed: emin olmadan ölü
-    link basma riski, emin olduktan sonra göstermekten daha ucuz). */
+    link basma riski, emin olduktan sonra göstermekten daha ucuz).
+
+    #332 — İKİNCİ KAYNAK: sayfada artık moddan bağımsız çalışan bir bölüm var
+    (MCP bağlanma reçetesi, `GET /settings/mcp` hosted'da da 200). Link YALNIZ
+    sağlayıcı ucuna bağlı kalsaydı hosted kullanıcı sayfayı hiç göremez, yeni
+    bağlanma yolu ulaşılamaz kalırdı ("kodda var ama çalışmıyor"). Kural aynı:
+    link, sayfada GERÇEKTEN gösterilecek bir şey olduğu KANITLANINCA basılır. */
 function useAyarlarGorunurMu(): boolean {
   const ayarlar = useSaglayiciAyarlari();
-  return ayarlar.data?.tur === "basarili";
+  const mcp = useMcpConfig(true);
+  return ayarlar.data?.tur === "basarili" || mcp.data?.tur === "basarili";
 }
 
 /* Başlıktaki KÜÇÜK auth göstergesi (#79, T-294 ile GitHub+email ikisini de

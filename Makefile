@@ -1,4 +1,4 @@
-.PHONY: install dev test lint openapi contracts eval-dataset eval-run eval-sweep eval eval-gate eval-butce eval-provider eval-model-secimi scope-eval harness-init frontend-build-guard deploy paket-macos up
+.PHONY: install dev test lint mcp openapi contracts eval-dataset eval-run eval-sweep eval eval-gate eval-butce eval-provider eval-model-secimi scope-eval harness-init frontend-build-guard deploy paket-macos up
 
 install:
 	uv sync --all-packages
@@ -22,6 +22,16 @@ test:
 
 lint:
 	uv run ruff check .
+
+# #332 — MCP sunucusunu ELDE ayağa kaldırır (stdio). Normalde AI aracın bu
+# komutu SENİN yerine çalıştırır (config'teki `command`/`args` birebir budur);
+# bu hedef "sunucu gerçekten kalkıyor mu / hata veriyor mu" sorusunu araç
+# olmadan yanıtlaman içindir. Beklenen: terminal SESSİZCE bekler (stdio
+# sunucusu stdin'den JSON-RPC bekler, banner basmaz) — çıkmak için Ctrl+C.
+# Traceback görüyorsan bağlanma da başarısız olurdu.
+# Araç başına dosya yolu/biçimi: AGENTS.md "MCP: kendi aracını bağla".
+mcp:
+	uv run python -m ensemble_mcp.server
 
 migrate:
 	cd src/backend && uv run alembic upgrade head

@@ -19,6 +19,7 @@ vi.mock("../src/lib/useSaglik", () => ({ useSaglik: () => saglikDurumu }));
 // kabugu render ediyoruz, ayni bagimliliklari karsilamak gerekiyor.
 vi.mock("../src/lib/useSettings", () => ({
   useSaglayiciAyarlari: () => ({ data: undefined, error: null, isLoading: false }),
+  useMcpConfig: () => ({ data: undefined, error: null, isLoading: false }),
 }));
 vi.mock("../src/lib/useAuth", () => ({
   useAuth: () => ({ kullanici: null, yukleniyor: false, emailEnabled: false, enabled: false }),

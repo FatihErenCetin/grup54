@@ -196,21 +196,70 @@ describe("saglayiciTestEt — POST /settings/test eşlemesi", () => {
   });
 });
 
+const araclarOrnegi = [
+  {
+    arac: "claude-code",
+    ad: "Claude Code",
+    bicim: "json" as const,
+    yol: "/Users/x/repo/.mcp.json",
+    config_metni: '{"mcpServers":{}}',
+    paylasimli_dosya: false,
+    aciklama: "yeniden başlat",
+    kaynak: "https://code.claude.com/docs/en/mcp",
+  },
+  {
+    arac: "codex",
+    ad: "Codex CLI",
+    bicim: "toml" as const,
+    yol: "~/.codex/config.toml",
+    config_metni: "[mcp_servers.ensemble]\n",
+    paylasimli_dosya: true,
+    aciklama: "TOML",
+    kaynak: "https://developers.openai.com/codex/mcp",
+  },
+];
+
 describe("mcpConfigGetir — GET /settings/mcp eşlemesi", () => {
-  it("200 → basarili + config_json/yol taşınır", async () => {
+  it("200 → basarili + araclar/mod/hosted_notu TAŞINIR (#332)", async () => {
     mockGet.mockResolvedValue(
-      basarili({ config_json: '{"mcpServers":{}}', yol: "/Users/x/repo/.mcp.json" }),
+      basarili({
+        config_json: '{"mcpServers":{}}',
+        yol: "/Users/x/repo/.mcp.json",
+        mod: "local",
+        araclar: araclarOrnegi,
+        hosted_notu: null,
+      }),
     );
     const s = await mcpConfigGetir();
     expect(s).toEqual({
       tur: "basarili",
       config_json: '{"mcpServers":{}}',
       yol: "/Users/x/repo/.mcp.json",
+      mod: "local",
+      araclar: araclarOrnegi,
+      hosted_notu: null,
     });
     expect(mockGet).toHaveBeenCalledWith("/settings/mcp");
   });
 
-  it("404 → yok (hosted)", async () => {
+  it("hosted 200 → gerekçe (hosted_notu) DÜŞMEZ — sessiz 404'ün yerine geçen şey bu", async () => {
+    mockGet.mockResolvedValue(
+      basarili({
+        config_json: "{}",
+        yol: "<repo-koku>/.mcp.json",
+        mod: "hosted",
+        araclar: araclarOrnegi,
+        hosted_notu: "MCP burada çalışmaz çünkü stdio süreci senin makinende açılır.",
+      }),
+    );
+    const s = await mcpConfigGetir();
+    expect(s.tur).toBe("basarili");
+    if (s.tur !== "basarili") return;
+    expect(s.mod).toBe("hosted");
+    expect(s.hosted_notu).toContain("stdio");
+  });
+
+  it("404 → yok (uç bulunmayan eski sunucu)", async () => {
     mockGet.mockResolvedValue(
       basarisiz(404, { error: "http_404", message: "Bu uç yalnız local modda vardır.", status: 404 }),
     );

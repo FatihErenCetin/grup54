@@ -449,11 +449,23 @@ export interface paths {
         };
         /**
          * Get Mcp Config
-         * @description T-307 FAZ 4 — hazır `.mcp.json` parçacığı, MUTLAK yol ile (kullanıcının
-         *     kendi makinesindeki gerçek repo kökü). Sahte "bağlandı" durumu ÜRETMEZ —
-         *     yalnız yapıştırılacak içeriği + hedef dosya yolunu döner; Claude Code'un
-         *     (ya da başka bir MCP istemcisinin) bunu OKUMASI için yeniden başlatılması
+         * @description T-307 FAZ 4 + #332 — araç başına hazır MCP parçacığı + hedef dosya yolu.
+         *
+         *     Sahte "bağlandı" durumu ÜRETMEZ — yalnız yapıştırılacak içeriği + hedef
+         *     dosya yolunu döner; aracın bunu OKUMASI için (çoğunda) yeniden başlatılması
          *     GEREKİR (bu uç bunu doğrulayamaz/garanti edemez, dürüstçe belirtir).
+         *
+         *     #332 — DİĞER ÜÇ UÇTAN FARKLI OLARAK burada `_require_local_mode` YOK:
+         *
+         *       * Gerekçe (KURAL 1'in amacı): o kural sunucunun GERÇEK API ANAHTARLARINI
+         *         hosted'da herkese açmamak için var. Bu uç anahtar okumaz/yazmaz —
+         *         yalnız bir reçete metni üretir, dolayısıyla o riski taşımaz.
+         *       * Eski davranış (hosted'da 404) kullanıcıya sessiz bir duvardı: "MCP
+         *         neden yok?" sorusunun cevabı hiçbir yerde yazmıyordu (SESSİZ DÜŞÜŞ).
+         *         Artık hosted'da da 200 döner + `hosted_notu` NEDENİNİ söyler.
+         *       * Buna karşılık hosted'da sunucunun KENDİ dosya yolu ifşa EDİLMEZ
+         *         (`_REPO_ROOT` yerine `YER_TUTUCU_REPO`) — hosted'da o yol zaten
+         *         kullanıcının değil, sunucunun yolu; hem yanlış hem gereksiz bilgi.
          */
         get: operations["get_mcp_config_settings_mcp_get"];
         put?: never;
@@ -704,12 +716,49 @@ export interface components {
             /** Password */
             password: string;
         };
+        /**
+         * McpAracConfig
+         * @description Tek bir AI aracı için yapıştırılacak metin + hedef yol (#332).
+         *
+         *     `bicim` kritik: Codex CLI TOML okur, diğer dördü JSON — aynı gövdeyi
+         *     hepsine vermek sessizce çalışmaz.
+         */
+        McpAracConfig: {
+            /** Arac */
+            arac: string;
+            /** Ad */
+            ad: string;
+            /**
+             * Bicim
+             * @enum {string}
+             */
+            bicim: "json" | "toml";
+            /** Yol */
+            yol: string;
+            /** Config Metni */
+            config_metni: string;
+            /** Paylasimli Dosya */
+            paylasimli_dosya: boolean;
+            /** Aciklama */
+            aciklama: string;
+            /** Kaynak */
+            kaynak: string;
+        };
         /** McpConfigResponse */
         McpConfigResponse: {
             /** Config Json */
             config_json: string;
             /** Yol */
             yol: string;
+            /**
+             * Mod
+             * @enum {string}
+             */
+            mod: "local" | "hosted";
+            /** Araclar */
+            araclar: components["schemas"]["McpAracConfig"][];
+            /** Hosted Notu */
+            hosted_notu?: string | null;
         };
         /** NearestRef */
         NearestRef: {
