@@ -709,7 +709,139 @@ Kaynak veri: [`burndown-sprint2.csv`](ProjectManagement/Sprint2/Burndown/burndow
 
 # Sprint 3
 
-*(20 Temmuz – 2 Ağustos 2026)* — **Plan:** kabuk (board/ask) · scope-drift dedektörü · MCP araçları · hosted demo · 3 dk video · **long-reach (sprint-içi stretch, gate'li):** hosted kullanıcı senaryosu — canlı "GitHub ile gir" + üyelik (#79). *(Sprint sonunda 6 başlık burada doldurulacak.)*
+> **Tarih:** 20 Temmuz – 2 Ağustos 2026 · **Takım:** grup54 (PO Fatih Eren Çetin · SM Esma Fazilet Karagülle · Dev Enes Talha Erdem · Dev Semih Marufoğlu)
+
+- **Sprint Notları**:
+
+**Sprint hedefi:** **Go-live** — ürünü canlıya almak ve web MVP'nin gerisini tamamlamak. Sprint 2 çekirdeği (radar + eval) çalışır ve kalibre hale getirmişti; bu sprintin işi onu *gerçek bir kullanıcının açıp kullanabileceği* bir ürüne çevirmekti: kalan API router'ları, üç frontend sayfası, MCP okuma yüzü, ve deploy mekaniği.
+
+**Tahmin edilen puan:** hedef 10/10 (tam puan) — gerçekleşen puan bootcamp değerlendirmesiyle netleşecek.
+
+**Bu sprintte alınan teknik/süreç kararları (kısa özet — tam kayıt [`.harness/decisions/`](.harness/decisions/))**
+
+- **D-46 — Barındırma Fly.io'dan kendi sunucumuza taşındı.** Ekipte boşta bekleyen bir sunucu vardı → maliyet sıfır, tam kontrol. `fly.toml` kalktı; CI/CD'nin platformdan bağımsız kısmı (CI-yeşil kapısı · yalnız-`main` dispatch · concurrency) **korundu**, yalnız deploy adımı değişti. Bedeli kabul edildi: HTTPS artık bizim işimiz (Vercel'in HTTPS sayfasından HTTP API'ye tarayıcı izin vermez).
+- **D-57 / D-58 — üyelik ve çok-kiracılık S3'e alındı.** Email+parola üyeliği ve `?repo=` ile çok-kiracılı repo seçimi, "hosted demo tek repoya çakılı" sınırını kaldırdı.
+- **D-61 — ürün ilk kez DIŞARIYA yazıyor.** Yüksek şiddetli radar tespiti → PR'a uyarı yorumu. Üç emniyet: iki ayrı bayrak (varsayılan kapalı) · idempotent işaret (aynı çift iki kez yorumlanmaz) · **fail-closed** (emin değilse yazmaz).
+- **D-63 — vizyon iddiası ölçümle daraltıldı.** *"Dokunmak üzereyken, olmadan önce uyarır"* → *"aynı anda ilerleyen işleri kıyaslar ve **merge edilmeden önce** uyarır"*. Ölçüm: radarın girdisi GitHub olayları; commit'ler `sha=main` ile çekiliyor, yani zaten merge edilmiş iş. Vaat **düşürülmedi, kesinleştirildi** — CodeRabbit'ten farkı duruyor (o tek bir PR'ın içine bakar, biz iki iş arasındaki kesişime).
+- **D-64 — graf ek görünüm modları kapsama alındı.** Kararın kendisinden önemli olan bulgu: treemap, `non_goals`'ta yazılı olduğu hâlde çoktan sevk edilmişti. Yani kapsam kayması bir kez **sessizce** olmuştu. Kendi deposunda scope-drift bulmak iddianın zayıflığı değil **testi**dir.
+- **D-65 — Ask altı yerden kırıktı, hepsi kapandı.** En ağırı sessizdi: radar'ın rebuild'i Ask'ın vektörlerini siliyor, `_indexed_hashes` bellekte olduğu için ürün bunu fark etmiyor ve **istisna fırlamadığı için** `degraded` de dolmuyordu — tam yetenek iddia ederken leksikal çalışıyordu. Ölçüm: `vector_index` 661 satır, Ask korpusundan **0**.
+- **Süreç dersi (D-46'nın kuyruğu):** bir karar yalnız ekip-içi bir kayıtta yaşıyorsa **ürün için var değildir.** Ask, Fly'ın bırakıldığını bilmediği için eski cevabı veriyordu; kayıt jüriye açık `.harness/decisions/`'a taşınınca ürün kendi kendini düzeltti.
+
+**User story'ler nerede tutuluyor:** Sprint 1–2'deki gibi **GitHub Issues** ("Bir `<rol>` olarak `<istek>` istiyorum, böylece `<fayda>`"), `story`(🔵)/`task`(🔴) label'ı + `Sprint 3` milestone + epic etiketi.
+
+**Kullanılan araçlar:**
+
+| Araç | Kullanım |
+|---|---|
+| **GitHub** | Repo · Issues (story/backlog) · Projects (kanban + otomasyon) · Actions (CI + otomatik deploy) |
+| **WhatsApp + Slack** | Günlük scrum (async, sabit saat yok) — ekip-içi WhatsApp, danışman-dahil Slack |
+| **Pencil** | UI tasarımı (`design/ensemble.pen`) — sprint sonunda canlı ürünle sayfa sayfa karşılaştırıldı (tasarım-parite turu) |
+| **AI araçları** (heterojen) | Çok-araçlı geliştirme + **adversarial doğrulama**: Claude Code ×2 · Gemini CLI · Codex · Antigravity · Kiro |
+| **Kendi ürünümüz** | Dogfood: `.harness/` ortak bağlam, kendi board'umuz kendi ingest'imizden doldu, kendi radar'ımız kendi çakışmalarımızı gösterdi |
+
+---
+
+- **Backlog düzeni ve Story seçimleri**:
+
+Sprint 3'e **43 açık issue** ile girildi; sprint sonunda **50 issue kapatıldı, 2 açık kaldı** (milestone `Sprint 3`, 52 kalem). Kapananların büyük kısmı sprint içinde açılan takip işleriydi — review ve ölçüm yeni iş üretti, bu bilinçliydi.
+
+Sıralama mantığı **bağımlılığa** göre kuruldu, konuya göre değil:
+
+1. **Önce kontratlar donduruldu** (`docs/sprint3-kontratlar.md` Ek A–F). Dört kişi paralel çalışacaksa arayüzün sprint başında sabitlenmesi gerekiyordu — Sprint 2 retro aksiyonu R2'nin uygulanması.
+2. **Sonra go-live mekaniği** (deploy · TLS · CORS · smoke). Ürün canlı değilken üstüne özellik koymak, sonunda hepsini birden kırma riski demekti.
+3. **Sonra kalan router'lar + üç sayfa** (Board · Ask · Activity), çünkü kabuk olmadan çekirdek jüriye görünmüyor.
+4. **En son cila ve tasarım paritesi** — Pencil dosyasıyla canlı ürünü sayfa sayfa karşılaştırma turu, ve ölçüm turları (RC kabul koşumu #363).
+
+**Story başına puan sprint hedefinin yarısını geçmedi** (S1'den beri aynı kural). Sprint içinde iki kez kapsam değişti ve ikisi de kayda geçti: graf ek modları `non_goals`'tan `goals`'a (D-64), üyelik+çok-kiracılık S3'e alındı (D-57/D-58).
+
+---
+
+- **Daily Scrum**:
+
+**Platform:** WhatsApp (ekip-içi, async — sabit saat yok) + Slack (danışman dahil). Sabit saat yerine async seçilmesinin sebebi ekibin farklı çalışma saatleri; karar Sprint 1'de alındı ve üç sprint boyunca korundu.
+
+**Kanıt:** [`ProjectManagement/Sprint3/DailyScrum/`](ProjectManagement/Sprint3/DailyScrum/) — **9 günlük ekran görüntüsü** (`daily-2026-07-20` … `daily-2026-07-28`) + gün gün yazılı özet: [`daily-scrum-log.md`](ProjectManagement/Sprint3/DailyScrum/daily-scrum-log.md).
+
+Log yalnız "kim ne yaptı" değil, **kararların nerede alındığını** da taşıyor: 29 Temmuz'daki tasarım-parite turu, Semih'in #322 review bulguları, toplantının Marmaray kısıtı yüzünden ertelenmesi — hepsi tarihli.
+
+---
+
+- **Sprint board update**:
+
+**Araç:** GitHub Projects. **Sütunlar:** Backlog · To Do · In Progress · In Review · Done (+ Rejected). **Renk kodu:** 🔵 mavi = story, 🔴 kırmızı = task (S1'den beri aynı).
+
+Bu sprintte board'un kendisi **ürünün bir çıktısı** hâline geldi: kartlar `Closes T-<id>` PR'larıyla otomatik oynadı, ve aynı veri bizim kendi `/board` ekranımızı besledi. Sprint sonunda canlı üründe **39 kart, beş kolon**, kaynağı `ingest` — kimse kart sürüklemedi.
+
+Kanıt görselleri → [`ProjectManagement/Sprint3/Board/`](ProjectManagement/Sprint3/Board/)
+
+---
+
+- **Ürün Durumu**:
+
+Sprint 3 sonunda ürün **canlıda ve çalışıyor**: <https://recommend2me.com> (API: `api.recommend2me.com`).
+
+Teslim öncesi **dar RC kabul koşumu** yapıldı (#363 → rapor: [`rc-kabul-raporu.md`](ProjectManagement/Sprint3/rc-kabul-raporu.md)) — beş kritik yüzey gerçek tarayıcıda, **sıfır dış AI çağrısı** harcanarak doğrulandı:
+
+| Yüzey | Durum |
+|---|---|
+| **Radar** — çakışma tespiti | ✅ canlıda **201 tespit** (3 yüksek · 101 orta · 97 düşük); detay panelinde aktörler, kesişen dosyalar, güven skoru ve **Türkçe AI gerekçesi** |
+| **Scope** — kapsam bekçisi | ✅ donmuş kapsam + alıntı kanıtlı karar satırları |
+| **Board** — kendiliğinden dolan | ✅ 39 kart, beş kolon, kaynak `ingest` |
+| **Activity** — olay akışı | ✅ commit/PR/issue tek akışta, aktör+tür filtreli |
+| **Ask** — doğal dille sor | ✅ kaynak alıntılı cevap; karar günlüğünü de tarıyor (`decision: 11`) |
+| **Graf** — dokunma grafı | ✅ dört görünüm modu (ısı matrisi · treemap · güç-yönlü · git şeridi) |
+| **MCP** — ajan arayüzü | ✅ iki okuma aracı: `who_is_touching` · `check_scope` |
+
+**Kalite kapıları:** **1286 backend + 389 frontend test** yeşil · `ruff` temiz · eval kapısı `precision 1.0000 · F0.5 0.8929 · korpus 118` (tabanlar `0.90 / 0.89 / 100`) · her `main` merge'inde otomatik deploy + **deploy sonrası canlı smoke** (`make smoke`, #189).
+
+Ekran görüntüleri → [`ProjectManagement/Sprint3/Screenshots/`](ProjectManagement/Sprint3/Screenshots/)
+
+---
+
+- **Sprint Review**:
+
+**Katılımcılar:** Fatih Eren Çetin (PO) · Esma Fazilet Karagülle (SM) · Enes Talha Erdem (Dev) · Semih Marufoğlu (Dev).
+
+**Gösterilen:** canlı üründe uçtan uca akış — radar tespiti ve gerekçesi, kapsam kararı, kendiliğinden dolan board, doğal dille soru + kaynaklı cevap, dört modlu graf.
+
+**Alınan kararlar:**
+
+- **Go-live hedefi tutmuş sayıldı.** Ürün canlı, otomatik deploy çalışıyor, deploy sonrası smoke yeşil.
+- **Teslim öncesi ayrı bir kabul koşumu yapılacak** (#363) — sayfaları elle gezmek yerine kritik akışları gerçek tarayıcıda ölçmek. Canlı AI bütçesi **0 çağrı** olarak donduruldu; sebebi ölçüldü: Gemini ücretsiz *generate* kotası **20 istek/gün** ve prova sorguları onu bitiriyor.
+- **Kapsam dışı bırakılanlar kayda geçti:** MCP write-back (`declare_work`), gerçek commit DAG'ı (`parent_sha` kontratta yok), dağıtık sayaç/Redis, WebSocket push. Hiçbiri "unutuldu" değil, hepsi **yazılı non-goal**.
+- **İki takip borcu görünür bırakıldı:** #365 (Windows'ta eval çıktısı UTF-8) ve #366 (React Router audit uyarısı) — teslimi bloklamıyor, gizlenmiyor.
+
+---
+
+- **Sprint Retrospective**:
+
+**İyi gidenler**
+
+- **Ölçmeden "bitti" dememe disiplini yerleşti.** Sprint boyunca birçok "düzeltildi" iddiası canlı ölçümle sınandı ve bir kısmı çürüdü. En öğreticisi: Ask'ın karar günlüğünü okuyamaması kodla düzeltildi ama cevap **değişmedi** — çünkü asıl eksik olan kaydın kendisiydi. İki farklı katmandaki eksik aynı belirtiyi veriyordu.
+- **Review gerçek hata buldu, ve karşılıklı.** Semih #322'de kişisel makineye bağlı bir symlink'i yakaladı (CI yeşil olduğu için hiçbir test sormamıştı); aynı turda RC raporundaki bir çıkış kodu çelişkisi de review'la çıktı. Onay hiçbir zaman "gövdesiz approve" olmadı.
+- **Kendi ürünümüzü kendi üzerimizde kullandık.** Board kendi ingest'imizden doldu, radar kendi çakışmalarımızı gösterdi, Ask kendi karar kaydımızı okudu — ve kendi scope-drift'imizi kendi kapsam dosyamızda bulduk (D-64).
+
+**İyi gitmeyenler**
+
+- **Sağlayıcı kotası bir kez ürünü fiilen bozdu.** Ücretsiz katmanın günlük sınırları (embed 1000 · generate 20) ölçülmeden plan yapılmıştı; bir gün içinde bitince Ask uyarı şeridiyle çalıştı. Kök sebep kotanın kendisi değil, **her yeniden başlatmada tüm korpusun yeniden gömülmesiydi** — parmak izi bellekteydi, vektörler kalıcı.
+- **"Son santim" deseni sprint boyunca en az altı kez tekrarladı.** Tip ilan edilmiş/okuyucu yok · alan üretilmiş/basmayan arayüz · vektör yazılmış/parmak izi kalıcı değil. Hiçbiri hata vermiyordu, çünkü eksik olan bir *hata* değil bir *yokluk*tu.
+- **PM kanıtı en sona kaldı.** Ürün tarafı erken ve düzenli ilerlerken sprint raporu ve board/toplantı görselleri sprintin son gününe bırakıldı — S1 retrosundaki "kanıt toplama dağınıklığı" aksiyonu tam olarak kapanmadı.
+
+**Sonraki sprint için somut aksiyonlar**
+
+1. **R-S3-1 — Kota bütçesi plana girsin.** Sağlayıcı günlük limitleri sprint başında ölçülüp yazılacak; bir özellik "kota harcıyor" ise kabul kriterine çağrı bütçesi eklenecek (#363'ün "0 çağrı" kapısı bunun ilk uygulaması).
+2. **R-S3-2 — "Son santim" için kontrol listesi.** Yeni bir tip/alan/kayıt eklenirken: *üreten var mı · okuyan var mı · arayüzde görünüyor mu · testi var mı*. Dördü işaretlenmeden issue kapanmayacak.
+3. **R-S3-3 — PM kanıtı haftalık toplanacak.** Board ve toplantı görselleri sprint sonuna bırakılmayacak; SM her hafta sonu klasöre ekleyecek (S1 aksiyonunun tekrarı — bu sefer takvimli).
+4. **R-S3-4 — Sağlık kontrolü üç zinciri de kapsasın.** `/health` bugün yalnız radar'ın judge zincirini yansıtıyor; Ask ve scope'a yapısal olarak kör (#359).
+
+---
+
+- **Burndown Chart** *(bonus)*:
+
+Sprint 3 burndown'ı açık issue sayısının gün bazında düşüşünü gösterir; kaynak `.csv` ile birlikte commit'lendi. Eğri **20 Temmuz'da 43 açık** ile başladı, sprintin ilk yarısında ideal çizginin **altında** seyretti (plandan hızlı), 31 Temmuz'da **2**'ye indi ve orada düzleşti — kalan iki kalem bilinçli olarak teslim sonrasına bırakılan takip borçları (#365, #366).
+
+Kaynak veri: [`burndown-sprint3.csv`](ProjectManagement/Sprint3/Burndown/burndown-sprint3.csv) — **issue-adedi bazlı** (S1/S2 ile aynı; story-point alanı board'a hâlâ eklenmedi → R4 hâlâ açık). Gerçek `createdAt`/`closedAt` verisinden deterministik üretildi.
+
 
 ---
 
@@ -718,10 +850,10 @@ Kaynak veri: [`burndown-sprint2.csv`](ProjectManagement/Sprint2/Burndown/burndow
 | Katman | Teknoloji |
 |---|---|
 | **Engine** | Python 3.12 · FastAPI · katmanlı `engine/` (ingest · conflict · scopedrift · board · query · judge) |
-| **Yapay zeka** | Gemini (embedding + "judge") · **Groq yedek judge** (kota tükenince otomatik devreye girer) · radar için tam-yerel gizlilik modu (Ollama; Ask/scope henüz kapsam dışı — #334) |
+| **Yapay zeka** | Gemini (embedding + "judge") · **Groq yedek judge** (kota tükenince otomatik devreye girer) · tam-yerel gizlilik modu (Ollama) — radar · Ask · scope **üçü de** yerel judge kullanır, bulut yedeği o modda hiç kurulmaz (#334 kapandı) |
 | **Veri** | Postgres + **pgvector** (hosted) ↔ FAISS (yerel) · `.harness/` git-senkron ortak bağlam **kanonik**, DB projeksiyon |
-| **Arayüz ×2** | React + Vite + Tailwind (web) · **MCP server** (ajanlar için: `who_is_touching` · `check_scope` · `declare_work`) |
+| **Arayüz ×2** | React + Vite + Tailwind (web) · **MCP server** (ajanlar için: `who_is_touching` · `check_scope` — yazma yolu `declare_work` bilinçli kapsam dışı) |
 | **Dağıtım** | self-host VDS (Docker Compose + host'ta Caddy) · Vercel (frontend) · her `main` merge'inde **otomatik deploy** (SHA-etiketli imaj → build'siz rollback) |
-| **Kalite** | 785 test · ruff · OpenAPI↔TS client drift guardrail'i (`make contracts`) · `.harness/` şema doğrulaması · eval/backtest harness'ı |
+| **Kalite** | 1286 backend + 389 frontend test · ruff · OpenAPI↔TS client drift guardrail'i (`make contracts`) · `.harness/` şema doğrulaması · eval/backtest harness'ı |
 
 Çalıştırma ve mimari ayrıntı → yukarıdaki *Mimari & Yapay Zeka* bölümü. İlk prototipin kendi belgesi → [`harness-dashboard/README.md`](harness-dashboard/README.md).
