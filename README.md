@@ -772,6 +772,14 @@ Log yalnız "kim ne yaptı" değil, **kararların nerede alındığını** da ta
 
 Bu sprintte board'un kendisi **ürünün bir çıktısı** hâline geldi: kartlar `Closes T-<id>` PR'larıyla otomatik oynadı, ve aynı veri bizim kendi `/board` ekranımızı besledi. Sprint sonunda canlı üründe **39 kart, beş kolon**, kaynağı `ingest` — kimse kart sürüklemedi.
 
+**Sprint sonu board durumu (2 Ağustos):** Backlog **6** · To Do **0** · In Progress **0** · In Review **0** · **Done 75**. Backlog'da kalanlar beş epic (alan etiketi, kapatılacak iş değil) ve bir takip issue'su.
+
+![GitHub Projects — Sprint 3 sonu kanban görünümü](ProjectManagement/Sprint3/Board/board-2026-08-02-end.png)
+
+Aynı board'un tablo görünümü — her kartın issue numarası, durumu ve bağlı PR'ı:
+
+![GitHub Projects — Sprint 3 sonu tablo görünümü](ProjectManagement/Sprint3/Board/board-2026-08-02-end-table.png)
+
 Kanıt görselleri → [`ProjectManagement/Sprint3/Board/`](ProjectManagement/Sprint3/Board/)
 
 ---
@@ -794,7 +802,29 @@ Teslim öncesi **dar RC kabul koşumu** yapıldı (#363 → rapor: [`rc-kabul-ra
 
 **Kalite kapıları:** **1286 backend + 389 frontend test** yeşil · `ruff` temiz · eval kapısı `precision 1.0000 · F0.5 0.8929 · korpus 118` (tabanlar `0.90 / 0.89 / 100`) · her `main` merge'inde otomatik deploy + **deploy sonrası canlı smoke** (`make smoke`, #189).
 
-Ekran görüntüleri → [`ProjectManagement/Sprint3/Screenshots/`](ProjectManagement/Sprint3/Screenshots/)
+### Çalışan ürün — canlı ekran görüntüleri (2 Ağustos 2026)
+
+**Çakışma radarı** — üç yüksek şiddetli tespit; her birinde aktörler, dokunulan modül, güven skoru ve **AI değerlendiricinin Türkçe gerekçesi**. Üstteki turuncu şerit ürünün kendi dürüstlük kuralıdır: judge'a ulaşılamayan çiftler için *"liste kısa çünkü sonuç eksik — çakışma olmadığı için değil"* der. Sessizce eksik sonuç göstermeyiz.
+
+![Çakışma radarı — yüksek şiddetli tespitler + AI gerekçesi](ProjectManagement/Sprint3/Screenshots/urun-radar-2026-08-02.png)
+
+**Kendiliğinden dolan board** — 39 kart, beş kolon, `kaynak: ingest`. Kartlar sürüklenmez; durumu ingest yazar (`T-<id>` dalına commit → "Devam ediyor", PR açılınca → "İncelemede").
+
+![Görev panosu — 39 kart, beş kolon, kaynak ingest](ProjectManagement/Sprint3/Screenshots/urun-board-2026-08-02.png)
+
+**Dokunma grafı — güç-yönlü mod** — aynı veri geometri olarak: 6 aktör × 28 modül, 91 dokunma ilişkisi. Birbirine dokunan işler birbirine yakın düşer; iki aktörün ortasında kalan modül kesişim riskinin nerede olduğunu tek bakışta gösterir. Dört görünüm modundan biri (ısı matrisi · treemap · güç-yönlü · git şeridi).
+
+![Dokunma grafı — güç-yönlü görünüm](ProjectManagement/Sprint3/Screenshots/urun-graf-2026-08-02.png)
+
+**Kapsam bekçisi** — dondurulmuş sprint kapsamı ve işlerin bu metne karşı verilmiş kararları (alıntı kanıtıyla).
+
+![Kapsam bekçisi — donmuş kapsam + kararlar](ProjectManagement/Sprint3/Screenshots/urun-scope-2026-08-02.png)
+
+**Activity** — commit/PR/issue olayları tek akışta, aktör ve türe göre filtreli.
+
+![Activity — olay akışı ve filtreler](ProjectManagement/Sprint3/Screenshots/urun-activity-2026-08-02.png)
+
+Tüm görseller → [`ProjectManagement/Sprint3/Screenshots/`](ProjectManagement/Sprint3/Screenshots/) (canlı smoke terminal kanıtları da orada: [yeşil koşum](ProjectManagement/Sprint3/Screenshots/smoke-yesil.md) · [bilinçli kırmızı koşum](ProjectManagement/Sprint3/Screenshots/smoke-kirmizi.md))
 
 ---
 
