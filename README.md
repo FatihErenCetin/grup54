@@ -79,19 +79,19 @@ Ensemble, **insanların** (web pano) ve **her üyenin AI aracının** aynı payl
 | Beyne sor — kurallı mod (anahtarsız) | 🟢 prototipte çalışıyor |
 | Beyne sor — AI modu (opsiyonel anahtar) | 🟢 prototipte çalışıyor |
 
-**2) Ensemble motoru — hedef mimari** *(Sprint 1'de iskelet kuruldu; zekâ Sprint 2'de doluyor)*
+**2) Ensemble motoru — 3 sprint sonunda ulaşılan durum** *(hepsi canlıda: [recommend2me.com](https://recommend2me.com))*
 
-| Bileşen | Durum |
-|---|---|
-| FastAPI engine iskeleti — `/health` · `/radar` · `/scope` · `/board` · `/query` endpoint'leri + port/adapter katmanı | 🟢 iskelet çalışıyor (22 test, CI) — **iş mantığı henüz yok, S2'de** |
-| `.harness/` IO — `HarnessPort` (şema doğrulamalı okuma/yazma) | 🟢 çalışıyor |
-| **Semantik çakışma + scope-drift** — embeddings + Gemini/Ollama **"judge"** + eşik kalibrasyonu/eval | 🔨 Sprint 2 (geliştiriliyor — ürünün kalbi) |
-| GitHub ingest — App auth + polling | 🔨 Sprint 2 |
-| React web pano (Radar · Board · Ask) | 🔨 Sprint 2 |
-| **MCP arayüzü** — AI araçları ortak bağlamı okur/yazar | 🟡 Sprint 3 |
-| Hosted demo (+ long-reach: üyelik) | 🟡 Sprint 3 |
+| Bileşen | Durum | Nerede görülür |
+|---|---|---|
+| FastAPI engine — `/health` · `/radar` · `/scope` · `/board` · `/query` + port/adapter katmanı | 🟢 çalışıyor | [`/health`](https://api.recommend2me.com/health) canlı yanıt veriyor |
+| `.harness/` IO — `HarnessPort` (şema doğrulamalı okuma/yazma) | 🟢 çalışıyor | `.harness/` bu reponun kendisinde |
+| **Semantik çakışma + scope-drift** — embeddings + Gemini/Groq/Ollama **"judge"** + eşik kalibrasyonu/eval | 🟢 çalışıyor | Radar canlıda **200+ tespit** döndürüyor, her biri Türkçe gerekçeli; değerlendirilemeyen çiftler `degraded` ile **açıkça beyan ediliyor** |
+| GitHub ingest — App auth + polling | 🟢 çalışıyor | Board'daki kartlar `kaynak: ingest` etiketli |
+| React web pano (Radar · Board · Scope · Ask · Graf · Activity) | 🟢 çalışıyor | Sprint 3 ekran görüntüleri ↓ |
+| **MCP arayüzü** — AI araçları ortak bağlamı **okur** (`who_is_touching` · `check_scope`; yazma bilinçli kapsam dışı) | 🟢 çalışıyor | `src/mcp/ensemble_mcp/server.py` · [`docs/kapsam-sinirlari.md`](docs/kapsam-sinirlari.md) |
+| Hosted demo | 🟢 yayında | [recommend2me.com](https://recommend2me.com) (frontend Vercel · backend+Postgres VDS) |
 
-Hedeflenen motor: **Python + FastAPI** (engine) · **Gemini veya Ollama** (embeddings + judge) · **MCP server** · **GitHub App** (webhook). Çalışma modu local-first; demo için tek hosted örnek.
+Motor: **Python + FastAPI** (engine) · **Gemini / Groq / Ollama** (embeddings + judge, üçü de takılabilir) · **MCP server** · **GitHub App**. Çalışma modu local-first; demo için tek hosted örnek. **Kalite kapısı:** 1286 backend + 389 frontend test, CI'da zorunlu.
 
 ## 🚀 Hızlı başlangıç (local-first)
 
@@ -248,7 +248,7 @@ Geliştirici ortamı kurmadan (uv/Node gerekmez) çalıştırmak için sürükle
 
 ---
 
-- **Backlog düzeni ve Story seçimleri**:
+- **Backlog Dağıtma Mantığı** (backlog düzeni ve story seçimleri):
 
 Ürün backlog'umuz, ürünü dört çekirdek özelliğe (çakışma radarı · scope-drift bekçisi · kendiliğinden dolan board · "projeye sor") indirip bunları **5 epic** altında topladıktan sonra oluştu: `engine` · `ai` · `mcp` · `frontend` · `infra`. Bu epic'ler önce 32 story'ye, ardından ~150 task'a bölündü; coverage audit ("bağlantı dokusu" boşlukları: CORS, projeksiyon yazıcı, GitHub App kaydı, eval vb.) sonrası süzülerek **58 GitHub issue** olarak işaretlendi. Story'ler **GitHub Issues** üzerinde "Bir `<rol>` olarak `<istek>` istiyorum, böylece `<fayda>`" formatında tutuluyor; her issue `story` (🔵) / `task` (🔴) label'ı, `sprint` milestone'u ve `epic` (alan) etiketi taşıyor.
 
@@ -291,7 +291,7 @@ Daily scrum'lar **WhatsApp ve Slack** üzerinden **yazılı (async)** yürütül
 
 ---
 
-- **Sprint board update**:
+- **Sprint Board Updates**:
 
 **Kapanış board'u (5 Tem — kanban):** *(canlı board: [GitHub Projects](https://github.com/users/FatihErenCetin/projects/1) — public)*
 
@@ -524,7 +524,7 @@ Kaynak veri: [`burndown-sprint1.csv`](ProjectManagement/Sprint1/Burndown/burndow
 
 ---
 
-- **Backlog düzeni ve Story seçimleri**:
+- **Backlog Dağıtma Mantığı** (backlog düzeni ve story seçimleri):
 
 Sprint 2 kapsamı **`ai` (AI çekirdek) epic**'ine ve onu canlıya bağlayan `engine`/`frontend` işlerine odaklandı. Story seçimi, çakışma radarının uçtan uca hattını tamamlayacak biçimde yapıldı: **ingest** (#16), **embeddings + vector index** (#15), **AI aşamaları** (Jaccard #22 → cosine #23 → Gemini judge #24/#50), **dedektör** (#17 ⭐), **eval hattı** (korpus #26 · backtest #27 · runner #28 · sweep #29 · **kalibrasyon #18 ⭐**), **canlı kablolama** (#151) ve **web radar sayfası** (#21; shell #19 + üretilen client #20 + router #25). Destek işleri: CORS #45 · global hata zarfı #54 · GitHub App kaydı #46 · PR triyaj #146. Her issue `story`/`task` + `sprint-2` milestone + `tema` alanı taşır.
 
@@ -554,7 +554,7 @@ Daily scrum'lar **Slack ve WhatsApp** üzerinden **yazılı (async)** yürütül
 
 ---
 
-- **Sprint board update**:
+- **Sprint Board Updates**:
 
 **Açılış board'u (8 Tem — sprint başı):** *(canlı board: [GitHub Projects](https://github.com/users/FatihErenCetin/projects/1) — public)*
 
@@ -741,7 +741,7 @@ Kaynak veri: [`burndown-sprint2.csv`](ProjectManagement/Sprint2/Burndown/burndow
 
 ---
 
-- **Backlog düzeni ve Story seçimleri**:
+- **Backlog Dağıtma Mantığı** (backlog düzeni ve story seçimleri):
 
 Sprint 3'e **43 açık issue** ile girildi; sprint sonunda **50 issue kapatıldı, 2 açık kaldı** (milestone `Sprint 3`, 52 kalem). Kapananların büyük kısmı sprint içinde açılan takip işleriydi — review ve ölçüm yeni iş üretti, bu bilinçliydi.
 
@@ -766,7 +766,7 @@ Log yalnız "kim ne yaptı" değil, **kararların nerede alındığını** da ta
 
 ---
 
-- **Sprint board update**:
+- **Sprint Board Updates**:
 
 **Araç:** GitHub Projects. **Sütunlar:** Backlog · To Do · In Progress · In Review · Done (+ Rejected). **Renk kodu:** 🔵 mavi = story, 🔴 kırmızı = task (S1'den beri aynı).
 
