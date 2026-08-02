@@ -743,7 +743,7 @@ Kaynak veri: [`burndown-sprint2.csv`](ProjectManagement/Sprint2/Burndown/burndow
 
 - **Backlog Dağıtma Mantığı** (backlog düzeni ve story seçimleri):
 
-Sprint 3'e **43 açık issue** ile girildi; sprint sonunda **50 issue kapatıldı, 2 açık kaldı** (milestone `Sprint 3`, 52 kalem). Kapananların büyük kısmı sprint içinde açılan takip işleriydi — review ve ölçüm yeni iş üretti, bu bilinçliydi.
+Sprint 3'e **43 açık issue** ile girildi; sprint sonunda milestone'daki **52 issue'nun 51'i kapatıldı, yalnız #64 açık kaldı**. Kapananların büyük kısmı sprint içinde açılan takip işleriydi — review ve ölçüm yeni iş üretti, bu bilinçliydi.
 
 Sıralama mantığı **bağımlılığa** göre kuruldu, konuya göre değil:
 
@@ -760,9 +760,9 @@ Sıralama mantığı **bağımlılığa** göre kuruldu, konuya göre değil:
 
 **Platform:** WhatsApp (ekip-içi, async — sabit saat yok) + Slack (danışman dahil). Sabit saat yerine async seçilmesinin sebebi ekibin farklı çalışma saatleri; karar Sprint 1'de alındı ve üç sprint boyunca korundu.
 
-**Kanıt:** [`ProjectManagement/Sprint3/DailyScrum/`](ProjectManagement/Sprint3/DailyScrum/) — **9 günlük ekran görüntüsü** (`daily-2026-07-20` … `daily-2026-07-28`) + gün gün yazılı özet: [`daily-scrum-log.md`](ProjectManagement/Sprint3/DailyScrum/daily-scrum-log.md).
+**Kanıt:** [`ProjectManagement/Sprint3/DailyScrum/`](ProjectManagement/Sprint3/DailyScrum/) — **10 günlük ekran görüntüsü** (`daily-2026-07-20` … `daily-2026-07-29`) + 20 Temmuz–2 Ağustos gün gün yazılı özet: [`daily-scrum-log.md`](ProjectManagement/Sprint3/DailyScrum/daily-scrum-log.md). 30 Temmuz–2 Ağustos için sonradan görsel üretilmedi; bu günler GitHub PR/commit kayıtlarıyla, sakin günler de açıkça `—` ile kaydedildi.
 
-Log yalnız "kim ne yaptı" değil, **kararların nerede alındığını** da taşıyor: 29 Temmuz'daki tasarım-parite turu, Semih'in #322 review bulguları, toplantının Marmaray kısıtı yüzünden ertelenmesi — hepsi tarihli.
+Log yalnız "kim ne yaptı" değil, **kararların nerede alındığını** da taşıyor: 29 Temmuz'daki tasarım-parite turu, Semih'in #322 review bulguları, toplantının Marmaray kısıtı yüzünden ertelenmesi ve 2 Ağustos'taki RC/PM kapanışı — hepsi tarihli.
 
 ---
 
@@ -832,14 +832,16 @@ Tüm görseller → [`ProjectManagement/Sprint3/Screenshots/`](ProjectManagement
 
 **Katılımcılar:** Fatih Eren Çetin (PO) · Esma Fazilet Karagülle (SM) · Enes Talha Erdem (Dev) · Semih Marufoğlu (Dev).
 
+**Tarih / format / kanıt sınırı:** 2 Ağustos 2026 kapanışı, canlı ürün kanıtları + RC raporu + GitHub PR kayıtları üzerinden async değerlendirildi. Katılımcı ve görüş özeti ekip üyesi tarafından doğrulandı; `Meetings/` altında ayrı bir senkron Review/Retro ekran görüntüsü alınmadı ve sonradan üretilmedi.
+
 **Gösterilen:** canlı üründe uçtan uca akış — radar tespiti ve gerekçesi, kapsam kararı, kendiliğinden dolan board, doğal dille soru + kaynaklı cevap, dört modlu graf.
 
 **Alınan kararlar:**
 
 - **Go-live hedefi tutmuş sayıldı.** Ürün canlı, otomatik deploy çalışıyor, deploy sonrası smoke yeşil.
-- **Teslim öncesi ayrı bir kabul koşumu yapılacak** (#363) — sayfaları elle gezmek yerine kritik akışları gerçek tarayıcıda ölçmek. Canlı AI bütçesi **0 çağrı** olarak donduruldu; sebebi ölçüldü: Gemini ücretsiz *generate* kotası **20 istek/gün** ve prova sorguları onu bitiriyor.
+- **Teslim öncesi ayrı kabul koşumu tamamlandı** (#363) — kritik akışlar gerçek tarayıcıda ölçüldü. Canlı AI bütçesi **0 çağrı** olarak donduruldu; sebebi ölçüldü: Gemini ücretsiz *generate* kotası **20 istek/gün** ve prova sorguları onu bitiriyor.
 - **Kapsam dışı bırakılanlar kayda geçti:** MCP write-back (`declare_work`), gerçek commit DAG'ı (`parent_sha` kontratta yok), dağıtık sayaç/Redis, WebSocket push. Hiçbiri "unutuldu" değil, hepsi **yazılı non-goal**.
-- **İki takip borcu görünür bırakıldı:** #365 (Windows'ta eval çıktısı UTF-8) ve #366 (React Router audit uyarısı) — teslimi bloklamıyor, gizlenmiyor.
+- **İki milestone-dışı takip borcu görünür bırakıldı:** #365 (Windows'ta eval çıktısı UTF-8) ve #366 (React Router audit uyarısı) — teslimi bloklamıyor, Sprint 3'ün 51/52 sonucuna dahil değiller.
 
 ---
 
@@ -868,7 +870,9 @@ Tüm görseller → [`ProjectManagement/Sprint3/Screenshots/`](ProjectManagement
 
 - **Burndown Chart** *(bonus)*:
 
-Sprint 3 burndown'ı açık issue sayısının gün bazında düşüşünü gösterir; kaynak `.csv` ile birlikte commit'lendi. Eğri **20 Temmuz'da 43 açık** ile başladı, sprintin ilk yarısında ideal çizginin **altında** seyretti (plandan hızlı), 31 Temmuz'da **2**'ye indi ve orada düzleşti — kalan iki kalem bilinçli olarak teslim sonrasına bırakılan takip borçları (#365, #366).
+![Sprint 3 burndown](ProjectManagement/Sprint3/Burndown/burndown-sprint3.png)
+
+Sprint 3 burndown'ı açık issue sayısının gün bazında düşüşünü gösterir; kaynak `.csv` ile birlikte commit'lendi. Eğri **20 Temmuz'da 43 açık** ile başladı, sprintin ilk yarısında ideal çizginin **altında** seyretti (plandan hızlı), 30 Temmuz'da **2**'ye, #363 kapanınca 2 Ağustos'ta **1**'e indi. Kalan tek milestone kalemi bu rapor/quickstart işi olan **#64** idi; #365 ve #366 milestone dışı takip borçlarıdır.
 
 Kaynak veri: [`burndown-sprint3.csv`](ProjectManagement/Sprint3/Burndown/burndown-sprint3.csv) — **issue-adedi bazlı** (S1/S2 ile aynı; story-point alanı board'a hâlâ eklenmedi → R4 hâlâ açık). Gerçek `createdAt`/`closedAt` verisinden deterministik üretildi.
 
